@@ -16,8 +16,8 @@
     "@world-studio/design-system": "workspace:*",
     "@world-studio/renderer": "workspace:*",
     "@world-studio/world-core": "workspace:*",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "three": "0.185.1"
   },
   "devDependencies": {
@@ -25,6 +25,6 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "typescript": "6.0.3",
-    "vite": "8.1.2"
+    "vite": "8.1.3"
   }
 }
