@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createLoftWorldSession,
   detectPlyKind,
+  parseObjMesh,
   parseObjMeshSummary,
   parsePointCloudPly,
   type LoftSceneManifest
 } from "@world-studio/artifacts";
 import { accents, WSButton, WSChip, WSControlsBar, WSKey, WSPanel, WSPill, WSStatusBar, WSSwitch, WSWordmark } from "@world-studio/design-system";
-import { CanvasWorldRenderer } from "@world-studio/renderer";
-import type { AgentState, CameraState, RenderMode, RenderOptions, SensorRigChannel, StudioMode, WorldSession } from "@world-studio/world-core";
+import { ThreeWorldRenderer } from "@world-studio/renderer";
+import type { AgentState, CameraState, RenderAdapter, RenderMode, RenderOptions, SensorRigChannel, StudioMode, WorldSession } from "@world-studio/world-core";
 
 const modes: Array<{ id: StudioMode; label: string; title: string; tag: string }> = [
   { id: "view", label: "View", title: "Inspect", tag: "read only" },
@@ -96,7 +97,7 @@ export function App() {
   const [docked, setDocked] = useStoredState("ws-app-docked", false);
   const [session, setSession] = useState<WorldSession | null>(null);
   const [assetSummary, setAssetSummary] = useState<AssetSummary | null>(null);
-  const [renderer, setRenderer] = useState<CanvasWorldRenderer | null>(null);
+  const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
   const [camera, setCamera] = useState(initialCamera);
   const [density, setDensity] = useState(0.9);
   const [exposure, setExposure] = useState(1);
@@ -145,6 +146,8 @@ export function App() {
     if (!canvas || !renderer) return;
     renderer.render(canvas, options);
   }, [renderer, options, scale]);
+
+  useEffect(() => () => renderer?.dispose?.(), [renderer]);
 
   useEffect(() => {
     if (!playing) return;
@@ -199,18 +202,19 @@ export function App() {
       objResponse.text()
     ]);
     const pointCloud = parsePointCloudPly(pointsText);
-    const mesh = parseObjMeshSummary(objText);
+    const mesh = parseObjMesh(objText);
+    const meshSummary = parseObjMeshSummary(objText);
     const created = createLoftWorldSession(scene, base);
     const worldSession: WorldSession = { ...created, bounds: pointCloud.bounds };
 
     setSession(worldSession);
-    setRenderer(new CanvasWorldRenderer({ pointCloud, classes: worldSession.classes }));
+    setRenderer(new ThreeWorldRenderer({ pointCloud, classes: worldSession.classes, mesh, gaussianUrl: `${base}/gaussians.ply` }));
     setAgent(worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 });
     setTrajectory([[worldSession.agentSpawn?.x ?? 1.5, worldSession.agentSpawn?.z ?? -0.5]]);
     setAssetSummary({
       gaussianKind: detectPlyKind(gaussiansText),
-      objFaces: mesh.faces,
-      objGroups: mesh.groups.length,
+      objFaces: meshSummary.faces,
+      objGroups: meshSummary.groups.length,
       pointCount: pointCloud.points.length
     });
     setSelected(new Set());
@@ -420,7 +424,7 @@ export function App() {
               { label: session ? `${session.name} · ${session.provenance.authorityStatus}` : "startup blank" },
               { label: `${renderMode} · ${Math.round(density * 100)}% density` },
               { label: `${selected.size} selected · ${deleted.size} hidden` },
-              { label: "renderer fallback", accent: true }
+              { label: "three.js · spark path", accent: true }
             ]}
           />
         </main>

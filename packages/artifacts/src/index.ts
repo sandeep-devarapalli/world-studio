@@ -38,6 +38,19 @@ export interface ObjMeshSummary {
   groups: Array<{ name: string; faces: number; material?: string }>;
 }
 
+export interface ObjTriangle {
+  a: number;
+  b: number;
+  c: number;
+  group: string;
+  material?: string;
+}
+
+export interface ParsedObjMesh {
+  vertices: Array<[number, number, number]>;
+  triangles: ObjTriangle[];
+}
+
 export interface LoftSceneManifest {
   dataset: string;
   version: string;
@@ -188,6 +201,35 @@ export function parseObjMeshSummary(source: string): ObjMeshSummary {
   return { vertices, faces, groups: groups.filter((group) => group.faces > 0) };
 }
 
+export function parseObjMesh(source: string): ParsedObjMesh {
+  const vertices: Array<[number, number, number]> = [];
+  const triangles: ObjTriangle[] = [];
+  let group = "default";
+  let material: string | undefined;
+
+  for (const line of source.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const parts = trimmed.split(/\s+/);
+    const tag = parts[0];
+
+    if (tag === "v") {
+      vertices.push([numericLiteral(parts[1], "OBJ vertex x"), numericLiteral(parts[2], "OBJ vertex y"), numericLiteral(parts[3], "OBJ vertex z")]);
+    } else if (tag === "o" || tag === "g") {
+      group = parts.slice(1).join(" ") || `group_${triangles.length}`;
+    } else if (tag === "usemtl") {
+      material = parts.slice(1).join(" ") || undefined;
+    } else if (tag === "f") {
+      const face = parts.slice(1).map((value) => parseObjVertexIndex(value, vertices.length));
+      for (let index = 1; index < face.length - 1; index++) {
+        triangles.push({ a: face[0], b: face[index], c: face[index + 1], group, material });
+      }
+    }
+  }
+
+  return { vertices, triangles };
+}
+
 export function createLoftWorldSession(scene: LoftSceneManifest, loadedVia: string): WorldSession {
   const classes: WorldClass[] = scene.classes.map((entry) => ({
     label: entry.label,
@@ -271,7 +313,26 @@ function optionalNumeric(cols: string[], index: number | undefined): number | un
   return Number.isFinite(value) ? value : undefined;
 }
 
+function numericLiteral(value: string | undefined, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} is not finite`);
+  }
+  return parsed;
+}
+
+function parseObjVertexIndex(value: string, vertexCount: number): number {
+  const raw = Number(value.split("/")[0]);
+  if (!Number.isInteger(raw) || raw === 0) {
+    throw new Error(`Invalid OBJ face index: ${value}`);
+  }
+  const index = raw > 0 ? raw - 1 : vertexCount + raw;
+  if (index < 0 || index >= vertexCount) {
+    throw new Error(`OBJ face index out of bounds: ${value}`);
+  }
+  return index;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-

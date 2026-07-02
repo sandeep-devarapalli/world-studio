@@ -12,10 +12,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@sparkjsdev/spark": "2.1.0",
     "@world-studio/artifacts": "workspace:*",
-    "@world-studio/world-core": "workspace:*"
+    "@world-studio/world-core": "workspace:*",
+    "three": "0.185.1"
   },
   "devDependencies": {
+    "@types/three": "0.185.0",
     "typescript": "6.0.3"
   }
 }

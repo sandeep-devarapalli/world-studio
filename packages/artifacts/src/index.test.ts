@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLoftWorldSession,
   detectPlyKind,
+  parseObjMesh,
   parseObjMeshSummary,
   parsePointCloudPly,
   validateBudoMediaFramesManifest,
@@ -37,6 +38,11 @@ describe("World Studio artifact loaders", () => {
     expect(parsed.vertices).toBeGreaterThan(0);
     expect(parsed.faces).toBeGreaterThan(0);
     expect(parsed.groups.length).toBeGreaterThan(1);
+
+    const renderable = parseObjMesh(mesh);
+    expect(renderable.vertices.length).toBe(parsed.vertices);
+    expect(renderable.triangles.length).toBeGreaterThanOrEqual(parsed.faces);
+    expect(renderable.triangles[0]?.group).toBeTruthy();
   });
 
   it("stamps fixture provenance", async () => {
@@ -63,4 +69,3 @@ describe("World Studio artifact loaders", () => {
     ).not.toThrow();
   });
 });
-
