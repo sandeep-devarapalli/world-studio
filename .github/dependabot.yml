@@ -1,0 +1,69 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      javascript-tooling:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      web-runtime:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+    groups:
+      desktop-runtime:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /packages/design-system
+    schedule:
+      interval: weekly
+    groups:
+      design-system:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /packages/artifacts
+    schedule:
+      interval: weekly
+    groups:
+      artifacts:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /packages/renderer
+    schedule:
+      interval: weekly
+    groups:
+      renderer:
+        patterns:
+          - "*"
+
+  - package-ecosystem: npm
+    directory: /packages/world-core
+    schedule:
+      interval: weekly
+    groups:
+      world-core:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
