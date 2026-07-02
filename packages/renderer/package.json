@@ -16,7 +16,6 @@
     "@world-studio/world-core": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "latest"
+    "typescript": "6.0.3"
   }
 }
-

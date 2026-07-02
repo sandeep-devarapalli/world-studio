@@ -9,44 +9,44 @@ importers:
   .:
     devDependencies:
       '@playwright/test':
-        specifier: latest
+        specifier: 1.61.1
         version: 1.61.1
       '@types/node':
-        specifier: latest
+        specifier: 26.1.0
         version: 26.1.0
       '@vitejs/plugin-react':
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3(vite@8.1.2(@types/node@26.1.0))
       concurrently:
-        specifier: latest
+        specifier: 10.0.3
         version: 10.0.3
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
       vite:
-        specifier: latest
+        specifier: 8.1.2
         version: 8.1.2(@types/node@26.1.0)
       vitest:
-        specifier: latest
+        specifier: 4.1.9
         version: 4.1.9(@types/node@26.1.0)(vite@8.1.2(@types/node@26.1.0))
 
   apps/desktop:
     dependencies:
       electron:
-        specifier: latest
+        specifier: 43.0.0
         version: 43.0.0
     devDependencies:
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
 
   apps/web:
     dependencies:
       '@dimforge/rapier3d-compat':
-        specifier: latest
+        specifier: 0.19.3
         version: 0.19.3
       '@sparkjsdev/spark':
-        specifier: latest
+        specifier: 2.1.0
         version: 2.1.0(three@0.185.1)
       '@world-studio/artifacts':
         specifier: workspace:*
@@ -67,23 +67,23 @@ importers:
         specifier: 18.3.1
         version: 18.3.1(react@18.3.1)
       three:
-        specifier: latest
+        specifier: 0.185.1
         version: 0.185.1
     devDependencies:
       '@types/react':
-        specifier: latest
+        specifier: 19.2.17
         version: 19.2.17
       '@types/react-dom':
-        specifier: latest
+        specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3(vite@8.1.2(@types/node@26.1.0))
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
       vite:
-        specifier: latest
+        specifier: 8.1.2
         version: 8.1.2(@types/node@26.1.0)
 
   packages/artifacts:
@@ -93,19 +93,19 @@ importers:
         version: link:../world-core
     devDependencies:
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
 
   packages/design-system:
     devDependencies:
       '@types/react':
-        specifier: latest
+        specifier: 19.2.17
         version: 19.2.17
       react:
         specifier: 18.3.1
         version: 18.3.1
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
 
   packages/renderer:
@@ -118,13 +118,13 @@ importers:
         version: link:../world-core
     devDependencies:
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
 
   packages/world-core:
     devDependencies:
       typescript:
-        specifier: latest
+        specifier: 6.0.3
         version: 6.0.3
 
 packages:

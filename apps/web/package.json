@@ -10,21 +10,21 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "latest",
-    "@sparkjsdev/spark": "latest",
+    "@dimforge/rapier3d-compat": "0.19.3",
+    "@sparkjsdev/spark": "2.1.0",
     "@world-studio/artifacts": "workspace:*",
     "@world-studio/design-system": "workspace:*",
     "@world-studio/renderer": "workspace:*",
     "@world-studio/world-core": "workspace:*",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "three": "latest"
+    "three": "0.185.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "typescript": "6.0.3",
+    "vite": "8.1.2"
   }
 }
