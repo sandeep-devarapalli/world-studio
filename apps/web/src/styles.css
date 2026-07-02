@@ -69,6 +69,49 @@ body {
   margin-top: 12px;
 }
 
+.ws-insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 330px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ws-insight-row {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.ws-insight-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.ws-insight-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: calc(var(--fs) - 1px);
+}
+
+.ws-insight-head b {
+  color: var(--ink-faint);
+  font-size: var(--fs-head);
+  font-weight: 500;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.ws-insight-summary {
+  color: var(--ink-mut);
+  font-size: calc(var(--fs) - 2px);
+  line-height: 1.35;
+  margin: 4px 0;
+}
+
 .ws-class-row {
   cursor: pointer;
 }
@@ -80,4 +123,3 @@ body {
 .ws-canvas {
   touch-action: none;
 }
-

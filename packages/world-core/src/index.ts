@@ -117,6 +117,22 @@ export interface LocalWorldPackageBinaryFile {
   headerText: string;
 }
 
+export interface LocalPackageInsightMetric {
+  label: string;
+  value: string | number;
+}
+
+export interface LocalPackageInsight {
+  id: string;
+  kind: "asset-set" | "scene-manifest" | "media-frames" | "figure-views" | "verified-export" | "json-manifest";
+  title: string;
+  artifact: string;
+  summary: string;
+  status?: string;
+  metrics: LocalPackageInsightMetric[];
+  details: LocalPackageInsightMetric[];
+}
+
 export interface LocalWorldPackagePayload {
   kind: "world-studio.local-package";
   name: string;
@@ -134,6 +150,8 @@ export interface LocalWorldPackagePayload {
   budoMediaFrames?: LocalWorldPackageTextFile;
   articleFigureViews?: LocalWorldPackageTextFile;
   verifiedExport?: LocalWorldPackageTextFile;
+  jsonManifests?: LocalWorldPackageTextFile[];
+  packageInsights?: LocalPackageInsight[];
 }
 
 export interface BudoMediaFrame {

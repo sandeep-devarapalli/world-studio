@@ -14,6 +14,7 @@ import type {
   AgentState,
   AuthorityStatus,
   CameraState,
+  LocalPackageInsight,
   LocalWorldPackagePayload,
   RenderAdapter,
   RenderMode,
@@ -91,6 +92,7 @@ interface LoadedWorldInput {
   primaryArtifact: string;
   companionArtifacts: string[];
   authorityStatus: AuthorityStatus;
+  packageInsights?: LocalPackageInsight[];
 }
 
 interface HistoryItem {
@@ -128,6 +130,7 @@ export function App() {
   const [docked, setDocked] = useStoredState("ws-app-docked", false);
   const [session, setSession] = useState<WorldSession | null>(null);
   const [assetSummary, setAssetSummary] = useState<AssetSummary | null>(null);
+  const [packageInsights, setPackageInsights] = useState<LocalPackageInsight[]>([]);
   const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [camera, setCamera] = useState(initialCamera);
@@ -260,7 +263,8 @@ export function App() {
       packageKind: "fixture",
       primaryArtifact: "gaussians.ply",
       companionArtifacts: Object.keys(scene.files),
-      authorityStatus: "visual_evidence"
+      authorityStatus: "visual_evidence",
+      packageInsights: buildFixtureInsights(scene)
     });
   }, []);
 
@@ -288,7 +292,8 @@ export function App() {
       packageKind: payload.packageKind,
       primaryArtifact: payload.primaryArtifact,
       companionArtifacts: payload.companionArtifacts,
-      authorityStatus: payload.authorityStatus
+      authorityStatus: payload.authorityStatus,
+      packageInsights: payload.packageInsights
     });
   }, []);
 
@@ -300,6 +305,7 @@ export function App() {
       setSession(worldSession);
       setRenderer(null);
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
+      setPackageInsights(input.packageInsights ?? []);
       resetTransientState(worldSession);
       return;
     }
@@ -332,6 +338,7 @@ export function App() {
       objGroups: meshSummary.groups.length,
       pointCount: pointCloud.points.length
     });
+    setPackageInsights(input.packageInsights ?? []);
     resetTransientState(worldSession);
   }, []);
 
@@ -704,42 +711,45 @@ export function App() {
     }
 
     return (
-      <WSPanel title="Provenance" meta={session?.provenance.packageKind ?? "none"}>
-        <div className="ws-kv">
-          <span>via</span>
-          <b>{session?.provenance.loadedVia ?? "blank"}</b>
-        </div>
-        <div className="ws-kv">
-          <span>path</span>
-          <b title={session?.provenance.sourcePath}>{session ? compactPath(session.provenance.sourcePath) : "none"}</b>
-        </div>
-        <div className="ws-kv">
-          <span>primary</span>
-          <b>{session?.provenance.primaryArtifact ?? "none"}</b>
-        </div>
-        <div className="ws-kv">
-          <span>status</span>
-          <b>{session?.provenance.authorityStatus ?? "none"}</b>
-        </div>
-        <div className="ws-kv">
-          <span>ui</span>
-          <button className="ws-node click" onClick={() => setDense((value) => !value)}>
-            {dense ? "dense" : "regular"}
-          </button>
-        </div>
-        <div className="ws-kv">
-          <span>panel</span>
-          <button className="ws-node click" onClick={() => setDocked((value) => !value)}>
-            {docked ? "docked" : "floating"}
-          </button>
-        </div>
-        <div className="ws-kv">
-          <span>accent</span>
-          <button className="ws-node click" onClick={() => setAccentName(nextAccent(accentName))}>
-            {accentName}
-          </button>
-        </div>
-      </WSPanel>
+      <div className="ws-row-stack">
+        <WSPanel title="Provenance" meta={session?.provenance.packageKind ?? "none"}>
+          <div className="ws-kv">
+            <span>via</span>
+            <b>{session?.provenance.loadedVia ?? "blank"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>path</span>
+            <b title={session?.provenance.sourcePath}>{session ? compactPath(session.provenance.sourcePath) : "none"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>primary</span>
+            <b>{session?.provenance.primaryArtifact ?? "none"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>status</span>
+            <b>{session?.provenance.authorityStatus ?? "none"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>ui</span>
+            <button className="ws-node click" onClick={() => setDense((value) => !value)}>
+              {dense ? "dense" : "regular"}
+            </button>
+          </div>
+          <div className="ws-kv">
+            <span>panel</span>
+            <button className="ws-node click" onClick={() => setDocked((value) => !value)}>
+              {docked ? "docked" : "floating"}
+            </button>
+          </div>
+          <div className="ws-kv">
+            <span>accent</span>
+            <button className="ws-node click" onClick={() => setAccentName(nextAccent(accentName))}>
+              {accentName}
+            </button>
+          </div>
+        </WSPanel>
+        <PackageInspector insights={packageInsights} />
+      </div>
     );
   }
 }
@@ -786,6 +796,40 @@ function createPointCloudSession(input: LoadedWorldInput, pointCount: number, cl
   };
 }
 
+function buildFixtureInsights(scene: LoftSceneManifest): LocalPackageInsight[] {
+  return [
+    {
+      id: "scene",
+      kind: "scene-manifest",
+      title: "Scene Manifest",
+      artifact: "scene.json",
+      summary: scene.dataset,
+      metrics: [
+        { label: "version", value: scene.version },
+        { label: "classes", value: scene.classes.length },
+        { label: "points", value: scene.points_total }
+      ],
+      details: [
+        { label: "units", value: scene.units },
+        { label: "up", value: scene.up_axis }
+      ]
+    },
+    {
+      id: "assets",
+      kind: "asset-set",
+      title: "Asset Set",
+      artifact: "loft_04",
+      summary: "Renderable fixture assets",
+      metrics: [
+        { label: "points", value: scene.files.points ?? "points.ply" },
+        { label: "gaussian", value: scene.files.gaussians ?? "gaussians.ply" },
+        { label: "mesh", value: scene.files.collision_mesh ?? "collision_mesh.obj" }
+      ],
+      details: []
+    }
+  ];
+}
+
 function classesFromPointCloud(points: PointRecord[]): WorldClass[] {
   const labels = new Set<number>();
   for (const point of points) {
@@ -818,6 +862,53 @@ function compactPath(value: string): string {
 
 function getDesktopApi() {
   return window.worldStudioDesktop;
+}
+
+function PackageInspector({ insights }: { insights: LocalPackageInsight[] }) {
+  return (
+    <WSPanel title="Package Inspector" meta={`${insights.length} records`}>
+      {insights.length ? (
+        <div className="ws-insight-list">
+          {insights.slice(0, 4).map((insight) => (
+            <div className="ws-insight-row" key={insight.id}>
+              <div className="ws-insight-head">
+                <span>{insight.title}</span>
+                <b>{insight.kind}</b>
+              </div>
+              <div className="ws-insight-summary">{insight.summary}</div>
+              <div className="ws-kv">
+                <span>artifact</span>
+                <b>{insight.artifact}</b>
+              </div>
+              {insight.status ? (
+                <div className="ws-kv">
+                  <span>status</span>
+                  <b>{insight.status}</b>
+                </div>
+              ) : null}
+              {insight.metrics.slice(0, 3).map((metric) => (
+                <div className="ws-kv" key={`${insight.id}-metric-${metric.label}`}>
+                  <span>{metric.label}</span>
+                  <b>{metric.value}</b>
+                </div>
+              ))}
+              {insight.details.slice(0, 2).map((detail) => (
+                <div className="ws-kv" key={`${insight.id}-detail-${detail.label}`}>
+                  <span>{detail.label}</span>
+                  <b>{detail.value}</b>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="ws-kv">
+          <span>records</span>
+          <b>none</b>
+        </div>
+      )}
+    </WSPanel>
+  );
 }
 
 function ModeCard({

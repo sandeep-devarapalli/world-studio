@@ -85,7 +85,74 @@ v -0.5 0 -0.5
 v 0.5 0 -0.5
 v 0 0.5 0.3
 f 1 2 3`
-  }
+  },
+  packageInsights: [
+    {
+      id: "scene",
+      kind: "scene-manifest",
+      title: "Scene Manifest",
+      artifact: "scene.json",
+      summary: "local_lab",
+      metrics: [
+        { label: "version", value: "v1" },
+        { label: "classes", value: 2 },
+        { label: "points", value: 12 }
+      ],
+      details: [
+        { label: "units", value: "meters" },
+        { label: "up", value: "y" }
+      ]
+    },
+    {
+      id: "assets",
+      kind: "asset-set",
+      title: "Asset Set",
+      artifact: "local files",
+      summary: "Renderable package assets detected in the selected folder.",
+      metrics: [
+        { label: "points", value: "points.ply" },
+        { label: "gaussian", value: "gaussians.ply" },
+        { label: "mesh", value: "collision_mesh.obj" }
+      ],
+      details: []
+    }
+  ]
+};
+
+const genericManifestPayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "generic_package",
+  sourcePath: "/tmp/world-studio/generic_package",
+  loadedVia: "electron-picker",
+  sourceKind: "external.local_folder",
+  packageKind: "external-local-folder",
+  primaryArtifact: "metadata/package.json",
+  companionArtifacts: ["metadata/package.json"],
+  authorityStatus: "proposal_not_ground_truth",
+  jsonManifests: [
+    {
+      relativePath: "metadata/package.json",
+      text: JSON.stringify({ schema: "acme.world.v1", captures: [], assets: { points: "cloud.ply" } })
+    }
+  ],
+  packageInsights: [
+    {
+      id: "json-metadata/package.json",
+      kind: "json-manifest",
+      title: "JSON Manifest",
+      artifact: "metadata/package.json",
+      summary: "acme.world.v1",
+      metrics: [
+        { label: "keys", value: 3 },
+        { label: "arrays", value: 1 },
+        { label: "objects", value: 1 }
+      ],
+      details: [
+        { label: "schema", value: "acme.world.v1" },
+        { label: "artifact", value: "metadata/package.json" }
+      ]
+    }
+  ]
 };
 
 test("loads loft_04 and switches all six modes", async ({ page }) => {
@@ -160,7 +227,29 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
   await expect(page.getByText("world-studio-local-folder")).toBeVisible();
   await expect(page.getByText("electron-picker")).toBeVisible();
   await expect(page.getByText("/tmp/world-studio/local_lab")).toBeVisible();
-  await expect(page.getByText("gaussians.ply")).toBeVisible();
+  await expect(page.getByText("gaussians.ply").first()).toBeVisible();
+  await expect(page.getByText("Package Inspector")).toBeVisible();
+  await expect(page.getByText("Scene Manifest")).toBeVisible();
+  await expect(page.getByText("Asset Set")).toBeVisible();
+});
+
+test("loads generic manifest-only packages through the desktop bridge", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => payload.sourcePath,
+      openLocalPackage: async () => payload
+    };
+  }, genericManifestPayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+
+  await expect(page.locator(".ws-logo-sub", { hasText: "generic_package · loaded" })).toBeVisible();
+  await expect(page.getByText("external-local-folder")).toBeVisible();
+  await expect(page.getByText("proposal_not_ground_truth", { exact: true })).toBeVisible();
+  await expect(page.getByText("JSON Manifest")).toBeVisible();
+  await expect(page.getByText("acme.world.v1").first()).toBeVisible();
+  await expect(page.getByText("metadata/package.json").first()).toBeVisible();
 });
 
 async function expectCanvasScreenshot(page: Page) {
