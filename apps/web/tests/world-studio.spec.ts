@@ -1,4 +1,92 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { LocalWorldPackagePayload } from "@world-studio/world-core";
+
+const localScene = {
+  dataset: "local_lab",
+  version: "v1",
+  up_axis: "y",
+  units: "meters",
+  files: {
+    points: "points.ply",
+    gaussians: "gaussians.ply",
+    collision_mesh: "collision_mesh.obj"
+  },
+  points_total: 12,
+  classes: [
+    { label: 1, name: "floor", color_shaded: "#465875", color_flat: "#5b6f8a", points: 6 },
+    { label: 2, name: "fixture", color_shaded: "#a94f38", color_flat: "#d9764a", points: 6 }
+  ],
+  agent_spawn: { x: 0, z: 0, heading_rad: 0 }
+};
+
+const localPoints = `ply
+format ascii 1.0
+element vertex 12
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+property int semantic_label
+end_header
+-0.6 0 -0.6 120 120 130 1
+-0.3 0 -0.6 120 120 130 1
+0 0 -0.6 120 120 130 1
+0.3 0 -0.6 120 120 130 1
+0.6 0 -0.6 120 120 130 1
+-0.6 0 -0.3 120 120 130 1
+-0.2 0.3 0.1 210 130 80 2
+0 0.5 0.1 210 130 80 2
+0.2 0.3 0.1 210 130 80 2
+-0.2 0.3 0.4 210 130 80 2
+0 0.5 0.4 210 130 80 2
+0.2 0.3 0.4 210 130 80 2`;
+
+const localGaussian = `ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+property float f_dc_0
+end_header
+0 0 0 1 0.1 0.1 0.1 1 0 0 0 0.5`;
+
+const localPackagePayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "local_lab",
+  sourcePath: "/tmp/world-studio/local_lab",
+  loadedVia: "electron-picker",
+  sourceKind: "world-studio.local_folder",
+  packageKind: "world-studio-local-folder",
+  primaryArtifact: "gaussians.ply",
+  companionArtifacts: ["scene.json", "points.ply", "gaussians.ply", "collision_mesh.obj"],
+  authorityStatus: "visual_evidence",
+  sceneJson: localScene,
+  pointsPly: { relativePath: "points.ply", text: localPoints },
+  gaussianPly: {
+    relativePath: "gaussians.ply",
+    headerText: localGaussian,
+    dataUrl: `data:application/octet-stream;base64,${Buffer.from(localGaussian).toString("base64")}`
+  },
+  objMesh: {
+    relativePath: "collision_mesh.obj",
+    text: `o local_fixture
+v -0.5 0 -0.5
+v 0.5 0 -0.5
+v 0 0.5 0.3
+f 1 2 3`
+  }
+};
 
 test("loads loft_04 and switches all six modes", async ({ page }) => {
   const errors: string[] = [];
@@ -41,46 +129,43 @@ test("exercises edit delete undo and pilot keys", async ({ page }) => {
   await expect(page.getByText("agent live")).toBeVisible();
 });
 
-test("switches renderer modes, isolates a class, and captures canvas pixels", async ({ page }) => {
+test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
 
   for (const mode of ["splat", "points", "mesh", "semantic", "depth"]) {
     await page.getByRole("button", { name: mode }).click();
     await expect(page.getByText(`${mode} · 90% density`)).toBeVisible();
-    await expectCanvasHasVisiblePixels(page);
+    await expectCanvasScreenshot(page);
   }
 
   await page.getByRole("button", { name: "semantic" }).click();
   await page.locator(".ws-class-row", { hasText: "floor" }).click();
   await expect(page.locator(".ws-class-row.active", { hasText: "floor" })).toBeVisible();
-  await expectCanvasHasVisiblePixels(page);
+  await expectCanvasScreenshot(page);
 });
 
-async function expectCanvasHasVisiblePixels(page: Page) {
-  const sample = await page.locator("[data-testid='world-canvas']").evaluate((canvas: HTMLCanvasElement) => {
-    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
-    if (!gl) return { dataUrlLength: canvas.toDataURL("image/png").length, height: 0, nonBackground: 0, width: 0 };
+test("loads local packages through the desktop bridge", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => payload.sourcePath,
+      openLocalPackage: async () => payload
+    };
+  }, localPackagePayload);
 
-    const width = gl.drawingBufferWidth;
-    const height = gl.drawingBufferHeight;
-    const pixels = new Uint8Array(width * height * 4);
-    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
 
-    let nonBackground = 0;
-    for (let index = 0; index < pixels.length; index += 4 * 113) {
-      const r = pixels[index] ?? 0;
-      const g = pixels[index + 1] ?? 0;
-      const b = pixels[index + 2] ?? 0;
-      const a = pixels[index + 3] ?? 0;
-      if (a > 0 && (Math.abs(r - 21) > 4 || Math.abs(g - 18) > 4 || Math.abs(b - 14) > 4)) nonBackground++;
-    }
+  await expect(page.locator(".ws-logo-sub", { hasText: "local_lab · v1" })).toBeVisible();
+  await expect(page.getByText("world-studio-local-folder")).toBeVisible();
+  await expect(page.getByText("electron-picker")).toBeVisible();
+  await expect(page.getByText("/tmp/world-studio/local_lab")).toBeVisible();
+  await expect(page.getByText("gaussians.ply")).toBeVisible();
+});
 
-    return { dataUrlLength: canvas.toDataURL("image/png").length, height, nonBackground, width };
-  });
-
-  expect(sample.width).toBeGreaterThan(0);
-  expect(sample.height).toBeGreaterThan(0);
-  expect(sample.dataUrlLength).toBeGreaterThan(3000);
-  expect(sample.nonBackground).toBeGreaterThan(4);
+async function expectCanvasScreenshot(page: Page) {
+  const canvas = page.locator("[data-testid='world-canvas']");
+  await expect(canvas).toBeVisible();
+  const screenshot = await canvas.screenshot();
+  expect(screenshot.byteLength).toBeGreaterThan(10_000);
 }

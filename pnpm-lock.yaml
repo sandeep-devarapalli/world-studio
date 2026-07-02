@@ -32,6 +32,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@world-studio/world-core':
+        specifier: workspace:*
+        version: link:../../packages/world-core
       electron:
         specifier: 43.0.0
         version: 43.0.0

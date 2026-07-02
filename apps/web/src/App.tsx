@@ -5,11 +5,24 @@ import {
   parseObjMesh,
   parseObjMeshSummary,
   parsePointCloudPly,
-  type LoftSceneManifest
+  type LoftSceneManifest,
+  type PointRecord
 } from "@world-studio/artifacts";
 import { accents, WSButton, WSChip, WSControlsBar, WSKey, WSPanel, WSPill, WSStatusBar, WSSwitch, WSWordmark } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
-import type { AgentState, CameraState, RenderAdapter, RenderMode, RenderOptions, SensorRigChannel, StudioMode, WorldSession } from "@world-studio/world-core";
+import type {
+  AgentState,
+  AuthorityStatus,
+  CameraState,
+  LocalWorldPackagePayload,
+  RenderAdapter,
+  RenderMode,
+  RenderOptions,
+  SensorRigChannel,
+  StudioMode,
+  WorldClass,
+  WorldSession
+} from "@world-studio/world-core";
 
 const modes: Array<{ id: StudioMode; label: string; title: string; tag: string }> = [
   { id: "view", label: "View", title: "Inspect", tag: "read only" },
@@ -21,6 +34,8 @@ const modes: Array<{ id: StudioMode; label: string; title: string; tag: string }
 ];
 
 const renderModes: RenderMode[] = ["splat", "points", "mesh", "semantic", "depth"];
+
+const fallbackClassColors = ["#5b6f8a", "#3d4a5c", "#b04a8f", "#d9764a", "#c9a93f", "#e8e26a", "#4fae62", "#8f6fd9", "#4fc3d9"];
 
 const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = {
   view: [
@@ -62,6 +77,22 @@ interface AssetSummary {
   pointCount: number;
 }
 
+interface LoadedWorldInput {
+  name: string;
+  scene?: LoftSceneManifest;
+  pointsText?: string;
+  gaussianHeaderText?: string;
+  gaussianUrl?: string;
+  objText?: string;
+  loadedVia: string;
+  sourcePath: string;
+  sourceKind: string;
+  packageKind: string;
+  primaryArtifact: string;
+  companionArtifacts: string[];
+  authorityStatus: AuthorityStatus;
+}
+
 interface HistoryItem {
   id: string;
   type: "select" | "delete";
@@ -98,6 +129,7 @@ export function App() {
   const [session, setSession] = useState<WorldSession | null>(null);
   const [assetSummary, setAssetSummary] = useState<AssetSummary | null>(null);
   const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [camera, setCamera] = useState(initialCamera);
   const [density, setDensity] = useState(0.9);
   const [exposure, setExposure] = useState(1);
@@ -143,7 +175,12 @@ export function App() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !renderer) return;
+    if (!canvas) return;
+    if (!renderer) {
+      const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+      gl?.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      return;
+    }
     renderer.render(canvas, options);
   }, [renderer, options, scale]);
 
@@ -160,7 +197,7 @@ export function App() {
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       setPressed((current) => new Set(current).add(event.key.toLowerCase()));
-      if (event.key.toLowerCase() === "l") void loadFixture();
+      if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
       if (event.key.toLowerCase() === "r" && mode === "pilot") resetAgent();
       if (event.key === "Delete" && mode === "edit") deleteSelected();
@@ -184,6 +221,15 @@ export function App() {
     };
   }, [mode, selected, history]);
 
+  const resetTransientState = useCallback((worldSession: WorldSession) => {
+    const spawn = worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
+    setAgent(spawn);
+    setTrajectory([[spawn.x, spawn.z]]);
+    setSelected(new Set());
+    setDeleted(new Set());
+    setHistory([]);
+  }, []);
+
   const loadFixture = useCallback(async () => {
     const base = "/fixtures/loft_04";
     const [sceneResponse, pointsResponse, gaussiansResponse, objResponse] = await Promise.all([
@@ -201,25 +247,92 @@ export function App() {
       gaussiansResponse.text(),
       objResponse.text()
     ]);
-    const pointCloud = parsePointCloudPly(pointsText);
-    const mesh = parseObjMesh(objText);
-    const meshSummary = parseObjMeshSummary(objText);
-    const created = createLoftWorldSession(scene, base);
-    const worldSession: WorldSession = { ...created, bounds: pointCloud.bounds };
+    applyLoadedWorld({
+      name: scene.dataset,
+      scene,
+      pointsText,
+      gaussianHeaderText: gaussiansText,
+      gaussianUrl: `${base}/gaussians.ply`,
+      objText,
+      loadedVia: base,
+      sourcePath: base,
+      sourceKind: "world-studio.fixture.loft_04",
+      packageKind: "fixture",
+      primaryArtifact: "gaussians.ply",
+      companionArtifacts: Object.keys(scene.files),
+      authorityStatus: "visual_evidence"
+    });
+  }, []);
+
+  const loadLocalPackage = useCallback(async () => {
+    try {
+      const payload = await getDesktopApi()?.openLocalPackage?.();
+      if (!payload) return;
+      applyLocalPackage(payload);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Failed to load local package");
+    }
+  }, []);
+
+  const applyLocalPackage = useCallback((payload: LocalWorldPackagePayload) => {
+    applyLoadedWorld({
+      name: payload.name,
+      scene: payload.sceneJson as LoftSceneManifest | undefined,
+      pointsText: payload.pointsPly?.text,
+      gaussianHeaderText: payload.gaussianPly?.headerText,
+      gaussianUrl: payload.gaussianPly?.dataUrl,
+      objText: payload.objMesh?.text,
+      loadedVia: payload.loadedVia,
+      sourcePath: payload.sourcePath,
+      sourceKind: payload.sourceKind,
+      packageKind: payload.packageKind,
+      primaryArtifact: payload.primaryArtifact,
+      companionArtifacts: payload.companionArtifacts,
+      authorityStatus: payload.authorityStatus
+    });
+  }, []);
+
+  const applyLoadedWorld = useCallback((input: LoadedWorldInput) => {
+    setLoadError(null);
+
+    if (!input.pointsText) {
+      const worldSession = createManifestOnlySession(input);
+      setSession(worldSession);
+      setRenderer(null);
+      setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
+      resetTransientState(worldSession);
+      return;
+    }
+
+    const pointCloud = parsePointCloudPly(input.pointsText);
+    const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
+    const meshSummary = input.objText ? parseObjMeshSummary(input.objText) : { faces: 0, groups: [] };
+    const created = input.scene ? createLoftWorldSession(input.scene, input.loadedVia) : createPointCloudSession(input, pointCloud.points.length, classesFromPointCloud(pointCloud.points));
+    const worldSession: WorldSession = {
+      ...created,
+      bounds: pointCloud.bounds,
+      pointCount: pointCloud.points.length,
+      provenance: {
+        sourceKind: input.sourceKind,
+        packageKind: input.packageKind,
+        loadedVia: input.loadedVia,
+        sourcePath: input.sourcePath,
+        primaryArtifact: input.primaryArtifact,
+        companionArtifacts: input.companionArtifacts,
+        loadedAt: new Date().toISOString(),
+        authorityStatus: input.authorityStatus
+      }
+    };
 
     setSession(worldSession);
-    setRenderer(new ThreeWorldRenderer({ pointCloud, classes: worldSession.classes, mesh, gaussianUrl: `${base}/gaussians.ply` }));
-    setAgent(worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 });
-    setTrajectory([[worldSession.agentSpawn?.x ?? 1.5, worldSession.agentSpawn?.z ?? -0.5]]);
+    setRenderer(new ThreeWorldRenderer({ pointCloud, classes: worldSession.classes, mesh, gaussianUrl: input.gaussianUrl }));
     setAssetSummary({
-      gaussianKind: detectPlyKind(gaussiansText),
+      gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded",
       objFaces: meshSummary.faces,
       objGroups: meshSummary.groups.length,
       pointCount: pointCloud.points.length
     });
-    setSelected(new Set());
-    setDeleted(new Set());
-    setHistory([]);
+    resetTransientState(worldSession);
   }, []);
 
   const paintAt = useCallback(
@@ -348,6 +461,7 @@ export function App() {
 
   const activeMode = modes.find((entry) => entry.id === mode) ?? modes[0];
   const rootClass = `ws-root ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
+  const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
 
   return (
     <div className="ws-stage-shell">
@@ -412,7 +526,9 @@ export function App() {
                       <WSButton accent onClick={() => void loadFixture()}>
                         Load loft_04
                       </WSButton>
+                      {hasDesktopApi ? <WSButton onClick={() => void loadLocalPackage()}>Open Local</WSButton> : null}
                     </div>
+                    {loadError ? <div className="ws-mode-copy">{loadError}</div> : null}
                   </div>
                 </WSPanel>
               </div>
@@ -590,8 +706,12 @@ export function App() {
     return (
       <WSPanel title="Provenance" meta={session?.provenance.packageKind ?? "none"}>
         <div className="ws-kv">
-          <span>loaded</span>
+          <span>via</span>
           <b>{session?.provenance.loadedVia ?? "blank"}</b>
+        </div>
+        <div className="ws-kv">
+          <span>path</span>
+          <b title={session?.provenance.sourcePath}>{session ? compactPath(session.provenance.sourcePath) : "none"}</b>
         </div>
         <div className="ws-kv">
           <span>primary</span>
@@ -622,6 +742,82 @@ export function App() {
       </WSPanel>
     );
   }
+}
+
+function createManifestOnlySession(input: LoadedWorldInput): WorldSession {
+  return {
+    id: `local-${input.name}`,
+    name: input.name,
+    units: input.scene?.units ?? "unknown",
+    upAxis: input.scene?.up_axis ?? "unknown",
+    pointCount: 0,
+    classes: input.scene?.classes.map(sceneClassToWorldClass) ?? [],
+    provenance: {
+      sourceKind: input.sourceKind,
+      packageKind: input.packageKind,
+      loadedVia: input.loadedVia,
+      sourcePath: input.sourcePath,
+      primaryArtifact: input.primaryArtifact,
+      companionArtifacts: input.companionArtifacts,
+      loadedAt: new Date().toISOString(),
+      authorityStatus: input.authorityStatus
+    }
+  };
+}
+
+function createPointCloudSession(input: LoadedWorldInput, pointCount: number, classes: WorldClass[]): WorldSession {
+  return {
+    id: `local-${input.name}`,
+    name: input.name,
+    units: "meters",
+    upAxis: "y",
+    pointCount,
+    classes,
+    provenance: {
+      sourceKind: input.sourceKind,
+      packageKind: input.packageKind,
+      loadedVia: input.loadedVia,
+      sourcePath: input.sourcePath,
+      primaryArtifact: input.primaryArtifact,
+      companionArtifacts: input.companionArtifacts,
+      loadedAt: new Date().toISOString(),
+      authorityStatus: input.authorityStatus
+    }
+  };
+}
+
+function classesFromPointCloud(points: PointRecord[]): WorldClass[] {
+  const labels = new Set<number>();
+  for (const point of points) {
+    if (point.semanticLabel !== undefined) labels.add(point.semanticLabel);
+  }
+  return [...labels]
+    .sort((a, b) => a - b)
+    .map((label, index) => ({
+      label,
+      name: `class ${label}`,
+      colorFlat: fallbackClassColors[index % fallbackClassColors.length],
+      points: points.filter((point) => point.semanticLabel === label).length
+    }));
+}
+
+function sceneClassToWorldClass(entry: LoftSceneManifest["classes"][number]): WorldClass {
+  return {
+    label: entry.label,
+    name: entry.name,
+    colorShaded: entry.color_shaded,
+    colorFlat: entry.color_flat,
+    points: entry.points
+  };
+}
+
+function compactPath(value: string): string {
+  if (value.length <= 42) return value;
+  return `...${value.slice(-39)}`;
+}
+
+function getDesktopApi() {
+  return window.worldStudioDesktop;
 }
 
 function ModeCard({

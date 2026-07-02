@@ -157,7 +157,7 @@
 .ws-mono-val { font-family: var(--mono); font-size: calc(var(--fs) - 1px); color: var(--ink); min-width: 44px; text-align: right; }
 .ws-kv { display: flex; justify-content: space-between; gap: 16px; padding: 4px 0; font-size: calc(var(--fs) - 1px); }
 .ws-kv span { color: var(--ink-faint); font-family: var(--mono); font-size: var(--fs-head); letter-spacing: 0.08em; text-transform: uppercase; padding-top: 2px; }
-.ws-kv b { font-weight: 500; font-family: var(--mono); font-size: calc(var(--fs) - 2px); color: var(--ink); text-align: right; }
+.ws-kv b { font-weight: 500; font-family: var(--mono); font-size: calc(var(--fs) - 2px); color: var(--ink); text-align: right; max-width: 250px; overflow-wrap: anywhere; }
 .ws-kv b.acc, .acc { color: var(--acc); }
 
 /* ---------- ramp ---------- */
