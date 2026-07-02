@@ -28,6 +28,7 @@ declare module "@sparkjsdev/spark" {
   export class SplatMesh extends THREE.Object3D {
     initialized?: Promise<SplatMesh>;
     isInitialized?: boolean;
+    numSplats?: number;
     opacity: number;
     constructor(options?: SplatMeshOptions);
     dispose(): void;

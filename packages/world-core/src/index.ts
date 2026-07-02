@@ -106,6 +106,36 @@ export interface RenderAdapter {
   dispose?(): void;
 }
 
+export interface LocalWorldPackageTextFile {
+  relativePath: string;
+  text: string;
+}
+
+export interface LocalWorldPackageBinaryFile {
+  relativePath: string;
+  dataUrl: string;
+  headerText: string;
+}
+
+export interface LocalWorldPackagePayload {
+  kind: "world-studio.local-package";
+  name: string;
+  sourcePath: string;
+  loadedVia: "electron-picker";
+  sourceKind: string;
+  packageKind: string;
+  primaryArtifact: string;
+  companionArtifacts: string[];
+  authorityStatus: AuthorityStatus;
+  sceneJson?: unknown;
+  pointsPly?: LocalWorldPackageTextFile;
+  gaussianPly?: LocalWorldPackageBinaryFile;
+  objMesh?: LocalWorldPackageTextFile;
+  budoMediaFrames?: LocalWorldPackageTextFile;
+  articleFigureViews?: LocalWorldPackageTextFile;
+  verifiedExport?: LocalWorldPackageTextFile;
+}
+
 export interface BudoMediaFrame {
   display_name?: string;
   rgb_path?: string;

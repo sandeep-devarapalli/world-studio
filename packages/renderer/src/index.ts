@@ -44,7 +44,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private trajectoryLine?: THREE.Line;
   private sparkState: SparkState = "idle";
   private sparkRenderer?: THREE.Object3D & { dispose?: () => void };
-  private sparkMesh?: THREE.Object3D & { dispose?: () => void; initialized?: Promise<unknown>; isInitialized?: boolean };
+  private sparkMesh?: THREE.Object3D & { dispose?: () => void; getBoundingBox?: (centersOnly?: boolean) => THREE.Box3; initialized?: Promise<unknown>; isInitialized?: boolean; numSplats?: number };
+  private sparkRenderable = false;
   private lastCanvas?: HTMLCanvasElement;
   private lastOptions?: RenderOptions;
   private frameRequested = false;
@@ -124,6 +125,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.trajectoryLine = undefined;
     this.sparkRenderer = undefined;
     this.sparkMesh = undefined;
+    this.sparkRenderable = false;
     this.sparkState = "idle";
   }
 
@@ -206,8 +208,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private syncPointCloud(options: RenderOptions): void {
     if (!this.pointCloud || !this.camera) return;
-    const useSpark = options.mode === "splat" && this.sparkState === "ready";
-    this.pointCloud.visible = options.mode !== "mesh" && !useSpark;
+    this.pointCloud.visible = options.mode !== "mesh";
     if (!this.pointCloud.visible) return;
 
     const material = this.pointCloud.material as THREE.PointsMaterial;
@@ -320,7 +321,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private syncSpark(options: RenderOptions): void {
     if (this.sparkState === "idle") void this.initializeSpark();
-    const visible = options.mode === "splat" && this.sparkState === "ready";
+    const visible = options.mode === "splat" && this.sparkState === "ready" && this.sparkRenderable;
     if (this.sparkMesh) this.sparkMesh.visible = visible;
     if (this.sparkRenderer) this.sparkRenderer.visible = visible;
   }
@@ -344,6 +345,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
         editable: true,
         raycastable: true,
         onLoad: () => {
+          this.sparkRenderable = this.hasRenderableSparkBounds();
           this.sparkState = "ready";
           this.requestFrame();
         }
@@ -351,15 +353,37 @@ export class ThreeWorldRenderer implements RenderAdapter {
       this.sparkMesh.visible = false;
       this.scene.add(this.sparkMesh);
       this.sparkMesh.initialized?.then(() => {
+        this.sparkRenderable = this.hasRenderableSparkBounds();
         this.sparkState = "ready";
         this.requestFrame();
       }).catch(() => {
+        this.sparkRenderable = false;
         this.sparkState = "failed";
         this.requestFrame();
       });
     } catch {
+      this.sparkRenderable = false;
       this.sparkState = "failed";
       this.requestFrame();
+    }
+  }
+
+  private hasRenderableSparkBounds(): boolean {
+    if (!this.sparkMesh || (this.sparkMesh.numSplats ?? 1) <= 0) return false;
+    try {
+      const bounds = this.sparkMesh.getBoundingBox?.(true);
+      return Boolean(
+        bounds &&
+          Number.isFinite(bounds.min.x) &&
+          Number.isFinite(bounds.min.y) &&
+          Number.isFinite(bounds.min.z) &&
+          Number.isFinite(bounds.max.x) &&
+          Number.isFinite(bounds.max.y) &&
+          Number.isFinite(bounds.max.z) &&
+          !bounds.isEmpty()
+      );
+    } catch {
+      return false;
     }
   }
 

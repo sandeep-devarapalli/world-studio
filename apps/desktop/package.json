@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@world-studio/world-core": "workspace:*",
     "electron": "43.0.0"
   },
   "devDependencies": {
