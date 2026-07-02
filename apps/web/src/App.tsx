@@ -131,6 +131,7 @@ export function App() {
   const [session, setSession] = useState<WorldSession | null>(null);
   const [assetSummary, setAssetSummary] = useState<AssetSummary | null>(null);
   const [packageInsights, setPackageInsights] = useState<LocalPackageInsight[]>([]);
+  const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [camera, setCamera] = useState(initialCamera);
@@ -165,6 +166,10 @@ export function App() {
       grid: true
     }),
     [accent, agent, camera, deleted, density, exposure, isolatedClass, mode, renderMode, selected, showDeleted, trajectory]
+  );
+  const activePackageInsight = useMemo(
+    () => packageInsights.find((insight) => insight.id === selectedInsightId) ?? packageInsights[0] ?? null,
+    [packageInsights, selectedInsightId]
   );
 
   useEffect(() => {
@@ -301,15 +306,18 @@ export function App() {
     setLoadError(null);
 
     if (!input.pointsText) {
+      const nextInsights = input.packageInsights ?? [];
       const worldSession = createManifestOnlySession(input);
       setSession(worldSession);
       setRenderer(null);
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
-      setPackageInsights(input.packageInsights ?? []);
+      setPackageInsights(nextInsights);
+      setSelectedInsightId(nextInsights[0]?.id ?? null);
       resetTransientState(worldSession);
       return;
     }
 
+    const nextInsights = input.packageInsights ?? [];
     const pointCloud = parsePointCloudPly(input.pointsText);
     const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
     const meshSummary = input.objText ? parseObjMeshSummary(input.objText) : { faces: 0, groups: [] };
@@ -338,7 +346,8 @@ export function App() {
       objGroups: meshSummary.groups.length,
       pointCount: pointCloud.points.length
     });
-    setPackageInsights(input.packageInsights ?? []);
+    setPackageInsights(nextInsights);
+    setSelectedInsightId(nextInsights[0]?.id ?? null);
     resetTransientState(worldSession);
   }, []);
 
@@ -748,7 +757,8 @@ export function App() {
             </button>
           </div>
         </WSPanel>
-        <PackageInspector insights={packageInsights} />
+        <PackageInspector insights={packageInsights} selectedId={activePackageInsight?.id ?? null} onSelect={setSelectedInsightId} />
+        <PackageInsightDetail insight={activePackageInsight} />
       </div>
     );
   }
@@ -812,7 +822,19 @@ function buildFixtureInsights(scene: LoftSceneManifest): LocalPackageInsight[] {
       details: [
         { label: "units", value: scene.units },
         { label: "up", value: scene.up_axis }
-      ]
+      ],
+      sections: [
+        {
+          title: "Scene",
+          rows: [
+            { label: "dataset", value: scene.dataset },
+            { label: "version", value: scene.version },
+            { label: "units", value: scene.units },
+            { label: "up", value: scene.up_axis }
+          ]
+        }
+      ],
+      previewText: JSON.stringify(scene, null, 2)
     },
     {
       id: "assets",
@@ -825,7 +847,17 @@ function buildFixtureInsights(scene: LoftSceneManifest): LocalPackageInsight[] {
         { label: "gaussian", value: scene.files.gaussians ?? "gaussians.ply" },
         { label: "mesh", value: scene.files.collision_mesh ?? "collision_mesh.obj" }
       ],
-      details: []
+      details: [],
+      sections: [
+        {
+          title: "Renderable Assets",
+          rows: [
+            { label: "points", value: scene.files.points ?? "points.ply" },
+            { label: "gaussian", value: scene.files.gaussians ?? "gaussians.ply" },
+            { label: "mesh", value: scene.files.collision_mesh ?? "collision_mesh.obj" }
+          ]
+        }
+      ]
     }
   ];
 }
@@ -864,13 +896,28 @@ function getDesktopApi() {
   return window.worldStudioDesktop;
 }
 
-function PackageInspector({ insights }: { insights: LocalPackageInsight[] }) {
+function PackageInspector({
+  insights,
+  selectedId,
+  onSelect
+}: {
+  insights: LocalPackageInsight[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   return (
     <WSPanel title="Package Inspector" meta={`${insights.length} records`}>
       {insights.length ? (
         <div className="ws-insight-list">
-          {insights.slice(0, 4).map((insight) => (
-            <div className="ws-insight-row" key={insight.id}>
+          {insights.map((insight) => (
+            <button
+              aria-label={`Open ${insight.title} detail`}
+              aria-pressed={selectedId === insight.id}
+              className={`ws-insight-row ${selectedId === insight.id ? "active" : ""}`}
+              key={insight.id}
+              onClick={() => onSelect(insight.id)}
+              type="button"
+            >
               <div className="ws-insight-head">
                 <span>{insight.title}</span>
                 <b>{insight.kind}</b>
@@ -898,12 +945,70 @@ function PackageInspector({ insights }: { insights: LocalPackageInsight[] }) {
                   <b>{detail.value}</b>
                 </div>
               ))}
-            </div>
+            </button>
           ))}
         </div>
       ) : (
         <div className="ws-kv">
           <span>records</span>
+          <b>none</b>
+        </div>
+      )}
+    </WSPanel>
+  );
+}
+
+function PackageInsightDetail({ insight }: { insight: LocalPackageInsight | null }) {
+  return (
+    <WSPanel title="Inspector Detail" meta={insight?.kind ?? "none"} className="ws-detail-panel">
+      {insight ? (
+        <div className="ws-detail-body">
+          <div className="ws-insight-head">
+            <span>{insight.title}</span>
+            <b>{insight.artifact}</b>
+          </div>
+          <div className="ws-insight-summary">{insight.summary}</div>
+          {insight.status ? (
+            <div className="ws-kv">
+              <span>status</span>
+              <b>{insight.status}</b>
+            </div>
+          ) : null}
+          {[...(insight.metrics ?? []), ...(insight.details ?? [])].map((row) => (
+            <div className="ws-kv" key={`${insight.id}-detail-row-${row.label}`}>
+              <span>{row.label}</span>
+              <b>{row.value}</b>
+            </div>
+          ))}
+          {insight.sections?.map((section) => (
+            <div className="ws-detail-section" key={`${insight.id}-section-${section.title}`}>
+              <div className="ws-detail-section-title">{section.title}</div>
+              {section.rows.length ? (
+                section.rows.map((row) => (
+                  <div className="ws-kv" key={`${insight.id}-${section.title}-${row.label}`}>
+                    <span>{row.label}</span>
+                    <b>{row.value}</b>
+                  </div>
+                ))
+              ) : (
+                <div className="ws-kv">
+                  <span>rows</span>
+                  <b>none</b>
+                </div>
+              )}
+              {section.previewText ? <pre className="ws-detail-preview">{section.previewText}</pre> : null}
+            </div>
+          ))}
+          {insight.previewText ? (
+            <div className="ws-detail-section">
+              <div className="ws-detail-section-title">JSON Preview</div>
+              <pre className="ws-detail-preview">{insight.previewText}</pre>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="ws-kv">
+          <span>detail</span>
           <b>none</b>
         </div>
       )}

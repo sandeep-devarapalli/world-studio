@@ -150,7 +150,134 @@ const genericManifestPayload: LocalWorldPackagePayload = {
       details: [
         { label: "schema", value: "acme.world.v1" },
         { label: "artifact", value: "metadata/package.json" }
-      ]
+      ],
+      sections: [
+        {
+          title: "Structure",
+          rows: [
+            { label: "schema", value: "acme.world.v1" },
+            { label: "artifact", value: "metadata/package.json" },
+            { label: "keys", value: 3 }
+          ]
+        },
+        {
+          title: "Top Level",
+          rows: [
+            { label: "schema", value: "acme.world.v1" },
+            { label: "captures", value: "0 items" },
+            { label: "assets", value: "1 keys" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ schema: "acme.world.v1", captures: [], assets: { points: "cloud.ply" } }, null, 2)
+    }
+  ]
+};
+
+const adapterDrilldownPayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "adapter_package",
+  sourcePath: "/tmp/world-studio/adapter_package",
+  loadedVia: "electron-picker",
+  sourceKind: "external.local_folder",
+  packageKind: "world-package-with-adapters",
+  primaryArtifact: "budo.media_frames.v0.8.json",
+  companionArtifacts: ["budo.media_frames.v0.8.json", "budo.article_figure_3d_views.v0.1.json", "verified_export/manifest.json"],
+  authorityStatus: "proposal_not_ground_truth",
+  packageInsights: [
+    {
+      id: "media-frames",
+      kind: "media-frames",
+      title: "Media Frames",
+      artifact: "budo.media_frames.v0.8.json",
+      summary: "Media-frame manifest adapter",
+      status: "capture_review",
+      metrics: [
+        { label: "frames", value: 2 },
+        { label: "width", value: 1920 },
+        { label: "height", value: 1080 }
+      ],
+      details: [
+        { label: "schema", value: "budo.media_frames.v0.8" },
+        { label: "first", value: "rgb/frame_001.png" }
+      ],
+      sections: [
+        {
+          title: "Manifest",
+          rows: [
+            { label: "schema", value: "budo.media_frames.v0.8" },
+            { label: "source", value: "capture_review" }
+          ]
+        },
+        {
+          title: "Frame Paths",
+          rows: [
+            { label: "frame 1", value: "rgb/frame_001.png" },
+            { label: "frame 2", value: "rgb/frame_002.png" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ schema: "budo.media_frames.v0.8", frames: [{ rgb_path: "rgb/frame_001.png" }, { rgb_path: "rgb/frame_002.png" }] }, null, 2)
+    },
+    {
+      id: "figure-views",
+      kind: "figure-views",
+      title: "Figure Views",
+      artifact: "budo.article_figure_3d_views.v0.1.json",
+      summary: "Saved 3D view manifest adapter",
+      metrics: [
+        { label: "views", value: 1 },
+        { label: "point clouds", value: 1 },
+        { label: "mesh refs", value: 1 }
+      ],
+      details: [
+        { label: "schema", value: "budo.article_figure_3d_views.v0.1" },
+        { label: "first", value: "view_cloud.ply" }
+      ],
+      sections: [
+        {
+          title: "View References",
+          rows: [
+            { label: "view 1", value: "view_cloud.ply" },
+            { label: "mesh", value: "collision_mesh.obj" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ schema: "budo.article_figure_3d_views.v0.1", views: [{ point_cloud_path: "view_cloud.ply", mesh_paths: ["collision_mesh.obj"] }] }, null, 2)
+    },
+    {
+      id: "verified-export",
+      kind: "verified-export",
+      title: "Verified Export",
+      artifact: "verified_export/manifest.json",
+      summary: "proposal labels are not collision authority",
+      status: "human_verified_semantic_labels",
+      metrics: [
+        { label: "components", value: 4 },
+        { label: "files", value: 2 },
+        { label: "hashes", value: 1 }
+      ],
+      details: [
+        { label: "schema", value: "budo.semantic_labels.verified_export.v0.1" },
+        { label: "status", value: "human_verified_semantic_labels" }
+      ],
+      sections: [
+        {
+          title: "Authority",
+          rows: [
+            { label: "status", value: "human_verified_semantic_labels" },
+            { label: "boundary", value: "proposal labels are not collision authority" }
+          ]
+        },
+        {
+          title: "Files",
+          rows: [
+            { label: "components", value: "semantic_components.json" },
+            { label: "palette", value: "semantic_palette.json" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ status: "human_verified_semantic_labels", files: { components: "semantic_components.json" } }, null, 2)
     }
   ]
 };
@@ -229,8 +356,8 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
   await expect(page.getByText("/tmp/world-studio/local_lab")).toBeVisible();
   await expect(page.getByText("gaussians.ply").first()).toBeVisible();
   await expect(page.getByText("Package Inspector")).toBeVisible();
-  await expect(page.getByText("Scene Manifest")).toBeVisible();
-  await expect(page.getByText("Asset Set")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Scene Manifest detail" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Asset Set detail" })).toBeVisible();
 });
 
 test("loads generic manifest-only packages through the desktop bridge", async ({ page }) => {
@@ -247,9 +374,47 @@ test("loads generic manifest-only packages through the desktop bridge", async ({
   await expect(page.locator(".ws-logo-sub", { hasText: "generic_package · loaded" })).toBeVisible();
   await expect(page.getByText("external-local-folder")).toBeVisible();
   await expect(page.getByText("proposal_not_ground_truth", { exact: true })).toBeVisible();
-  await expect(page.getByText("JSON Manifest")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open JSON Manifest detail" })).toBeVisible();
   await expect(page.getByText("acme.world.v1").first()).toBeVisible();
   await expect(page.getByText("metadata/package.json").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Open JSON Manifest detail" }).click();
+  const detail = page.locator(".ws-detail-panel");
+  await expect(detail).toContainText("Inspector Detail");
+  await expect(detail).toContainText("Structure");
+  await expect(detail).toContainText("Top Level");
+  await expect(detail).toContainText("JSON Preview");
+  await expect(detail).toContainText('"schema": "acme.world.v1"');
+});
+
+test("opens package inspector drilldowns for adapter manifests", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => payload.sourcePath,
+      openLocalPackage: async () => payload
+    };
+  }, adapterDrilldownPayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+
+  const detail = page.locator(".ws-detail-panel");
+  await expect(page.getByRole("button", { name: "Open Media Frames detail" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Figure Views detail" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Verified Export detail" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open Media Frames detail" }).click();
+  await expect(detail).toContainText("Frame Paths");
+  await expect(detail).toContainText("rgb/frame_001.png");
+
+  await page.getByRole("button", { name: "Open Figure Views detail" }).click();
+  await expect(detail).toContainText("View References");
+  await expect(detail).toContainText("view_cloud.ply");
+
+  await page.getByRole("button", { name: "Open Verified Export detail" }).click();
+  await expect(detail).toContainText("Authority");
+  await expect(detail).toContainText("human_verified_semantic_labels");
+  await expect(detail).toContainText("semantic_components.json");
 });
 
 async function expectCanvasScreenshot(page: Page) {

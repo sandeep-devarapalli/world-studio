@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const maxTextBytes = 64 * 1024 * 1024;
 const maxBinaryBytes = 96 * 1024 * 1024;
+const maxPreviewChars = 8_000;
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -260,7 +261,17 @@ function buildPackageInsights(input: {
         { label: "gaussian", value: input.gaussianPly ? input.gaussianPly.relativePath : "missing" },
         { label: "mesh", value: input.objMesh ? input.objMesh.relativePath : "missing" }
       ],
-      details: []
+      details: [],
+      sections: [
+        {
+          title: "Renderable Assets",
+          rows: [
+            { label: "points", value: input.pointsPly ? input.pointsPly.relativePath : "missing" },
+            { label: "gaussian", value: input.gaussianPly ? input.gaussianPly.relativePath : "missing" },
+            { label: "mesh", value: input.objMesh ? input.objMesh.relativePath : "missing" }
+          ]
+        }
+      ]
     });
   }
 
@@ -281,7 +292,20 @@ function buildPackageInsights(input: {
       details: [
         { label: "units", value: stringValue(scene.units) ?? "unknown" },
         { label: "up", value: stringValue(scene.up_axis) ?? "unknown" }
-      ]
+      ],
+      sections: [
+        {
+          title: "Scene",
+          rows: [
+            { label: "dataset", value: stringValue(scene.dataset) ?? "unknown" },
+            { label: "version", value: stringValue(scene.version) ?? "unknown" },
+            { label: "units", value: stringValue(scene.units) ?? "unknown" },
+            { label: "up", value: stringValue(scene.up_axis) ?? "unknown" }
+          ]
+        },
+        { title: "Top Level", rows: rowsFromRecord(scene) }
+      ],
+      previewText: previewJson(scene)
     });
   }
 
@@ -305,7 +329,20 @@ function buildPackageInsights(input: {
       details: [
         { label: "schema", value: stringValue(manifest.schema) ?? "unknown" },
         { label: "first", value: stringValue(firstFrame.display_name) ?? stringValue(firstFrame.rgb_path) ?? "none" }
-      ]
+      ],
+      sections: [
+        {
+          title: "Manifest",
+          rows: [
+            { label: "schema", value: stringValue(manifest.schema) ?? "unknown" },
+            { label: "source", value: stringValue(manifest.source_kind) ?? "unknown" },
+            { label: "artifact", value: input.budoMediaFrames.relativePath }
+          ]
+        },
+        { title: "First Frame", rows: rowsFromRecord(firstFrame) },
+        { title: "Frame Paths", rows: rowsForRecords(frames, "frame", (frame) => stringValue(frame.display_name) ?? stringValue(frame.rgb_path) ?? "unknown") }
+      ],
+      previewText: previewJson(manifest)
     });
   }
 
@@ -328,13 +365,31 @@ function buildPackageInsights(input: {
       details: [
         { label: "schema", value: stringValue(manifest.schema) ?? "unknown" },
         { label: "first", value: stringValue(firstView.display_name) ?? stringValue(firstView.notes) ?? "none" }
-      ]
+      ],
+      sections: [
+        {
+          title: "Manifest",
+          rows: [
+            { label: "schema", value: stringValue(manifest.schema) ?? "unknown" },
+            { label: "artifact", value: input.articleFigureViews.relativePath },
+            { label: "views", value: views.length }
+          ]
+        },
+        { title: "First View", rows: rowsFromRecord(firstView) },
+        {
+          title: "View References",
+          rows: rowsForRecords(views, "view", (view) => stringValue(view.point_cloud_path) ?? stringValue(view.display_name) ?? stringValue(view.notes) ?? "unknown")
+        }
+      ],
+      previewText: previewJson(manifest)
     });
   }
 
   if (input.verifiedExport) {
     handled.add(input.verifiedExport.relativePath);
     const manifest = parseJsonRecord(input.verifiedExport.text);
+    const files = isRecord(manifest.files) ? manifest.files : {};
+    const hashes = isRecord(manifest.hashes) ? manifest.hashes : {};
     insights.push({
       id: "verified-export",
       kind: "verified-export",
@@ -344,13 +399,26 @@ function buildPackageInsights(input: {
       status: stringValue(manifest.status),
       metrics: [
         { label: "components", value: numberValue(manifest.component_count) ?? "unknown" },
-        { label: "files", value: isRecord(manifest.files) ? Object.keys(manifest.files).length : 0 },
-        { label: "hashes", value: isRecord(manifest.hashes) ? Object.keys(manifest.hashes).length : 0 }
+        { label: "files", value: Object.keys(files).length },
+        { label: "hashes", value: Object.keys(hashes).length }
       ],
       details: [
         { label: "schema", value: stringValue(manifest.schema) ?? "unknown" },
         { label: "status", value: stringValue(manifest.status) ?? "unknown" }
-      ]
+      ],
+      sections: [
+        {
+          title: "Authority",
+          rows: [
+            { label: "status", value: stringValue(manifest.status) ?? "unknown" },
+            { label: "boundary", value: stringValue(manifest.boundary) ?? "unknown" },
+            { label: "components", value: numberValue(manifest.component_count) ?? "unknown" }
+          ]
+        },
+        { title: "Files", rows: rowsFromRecord(files) },
+        { title: "Hashes", rows: rowsFromRecord(hashes, 4) }
+      ],
+      previewText: previewJson(manifest)
     });
   }
 
@@ -358,21 +426,34 @@ function buildPackageInsights(input: {
     if (handled.has(file.relativePath)) continue;
     const manifest = parseJsonRecord(file.text);
     const schema = stringValue(manifest.schema) ?? stringValue(manifest.type) ?? stringValue(manifest.kind);
+    const metrics = [
+      { label: "keys", value: Object.keys(manifest).length },
+      { label: "arrays", value: Object.values(manifest).filter(Array.isArray).length },
+      { label: "objects", value: Object.values(manifest).filter(isRecord).length }
+    ];
     insights.push({
       id: `json-${file.relativePath}`,
       kind: "json-manifest",
       title: schema ? "JSON Manifest" : "JSON File",
       artifact: file.relativePath,
       summary: schema ?? "Generic JSON package metadata",
-      metrics: [
-        { label: "keys", value: Object.keys(manifest).length },
-        { label: "arrays", value: Object.values(manifest).filter(Array.isArray).length },
-        { label: "objects", value: Object.values(manifest).filter(isRecord).length }
-      ],
+      metrics,
       details: [
         { label: "schema", value: schema ?? "none" },
         { label: "artifact", value: file.relativePath }
-      ]
+      ],
+      sections: [
+        {
+          title: "Structure",
+          rows: [
+            { label: "schema", value: schema ?? "none" },
+            { label: "artifact", value: file.relativePath },
+            ...metrics
+          ]
+        },
+        { title: "Top Level", rows: rowsFromRecord(manifest) }
+      ],
+      previewText: previewJson(manifest)
     });
   }
 
@@ -406,4 +487,37 @@ function countField(values: unknown[], field: string): number {
 
 function countArrayField(values: unknown[], field: string): number {
   return values.reduce<number>((count, value) => count + (isRecord(value) && Array.isArray(value[field]) ? value[field].length : 0), 0);
+}
+
+function previewJson(value: unknown): string {
+  const text = JSON.stringify(value, null, 2) ?? "{}";
+  return text.length > maxPreviewChars ? `${text.slice(0, maxPreviewChars)}\n... truncated` : text;
+}
+
+function rowsFromRecord(record: Record<string, unknown>, limit = 8): Array<{ label: string; value: string | number }> {
+  return Object.entries(record)
+    .slice(0, limit)
+    .map(([label, value]) => ({ label, value: summarizeValue(value) }));
+}
+
+function rowsForRecords(
+  values: unknown[],
+  label: string,
+  pickValue: (value: Record<string, unknown>) => string | number,
+  limit = 6
+): Array<{ label: string; value: string | number }> {
+  return values.slice(0, limit).map((value, index) => ({
+    label: `${label} ${index + 1}`,
+    value: isRecord(value) ? pickValue(value) : summarizeValue(value)
+  }));
+}
+
+function summarizeValue(value: unknown): string | number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.length) return value;
+  if (typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `${value.length} items`;
+  if (isRecord(value)) return `${Object.keys(value).length} keys`;
+  if (value === null) return "null";
+  return "unknown";
 }
