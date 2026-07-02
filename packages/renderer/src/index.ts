@@ -1,16 +1,15 @@
-import type { ParsedPointCloud, PointRecord } from "@world-studio/artifacts";
+import type { ParsedObjMesh, ParsedPointCloud, PointRecord } from "@world-studio/artifacts";
 import type { RenderAdapter, RenderOptions, WorldClass } from "@world-studio/world-core";
+import * as THREE from "three";
 
-export interface CanvasRendererInput {
+export interface ThreeRendererInput {
   pointCloud: ParsedPointCloud;
   classes: WorldClass[];
+  mesh?: ParsedObjMesh;
+  gaussianUrl?: string;
 }
 
-interface Projected {
-  x: number;
-  y: number;
-  d: number;
-}
+type SparkState = "idle" | "loading" | "ready" | "failed";
 
 const fallbackClassColors = [
   "#5b6f8a",
@@ -24,87 +23,82 @@ const fallbackClassColors = [
   "#4fc3d9"
 ];
 
-export class CanvasWorldRenderer implements RenderAdapter {
-  private readonly points: PointRecord[];
-  private readonly classColors: Map<number, string>;
-  private readonly classNames: Map<number, string>;
+const hiddenPoint = 1_000_000;
 
-  constructor(input: CanvasRendererInput) {
+export class ThreeWorldRenderer implements RenderAdapter {
+  private readonly points: PointRecord[];
+  private readonly classColors: Map<number, THREE.Color>;
+  private readonly mesh?: ParsedObjMesh;
+  private readonly gaussianUrl?: string;
+  private canvas?: HTMLCanvasElement;
+  private webgl?: THREE.WebGLRenderer;
+  private scene?: THREE.Scene;
+  private camera?: THREE.PerspectiveCamera;
+  private pointCloud?: THREE.Points;
+  private pointPositions: Float32Array;
+  private pointColors: Float32Array;
+  private meshGroup?: THREE.Group;
+  private grid?: THREE.GridHelper;
+  private frustums?: THREE.LineSegments;
+  private agentGroup?: THREE.Group;
+  private trajectoryLine?: THREE.Line;
+  private sparkState: SparkState = "idle";
+  private sparkRenderer?: THREE.Object3D & { dispose?: () => void };
+  private sparkMesh?: THREE.Object3D & { dispose?: () => void; initialized?: Promise<unknown>; isInitialized?: boolean };
+  private lastCanvas?: HTMLCanvasElement;
+  private lastOptions?: RenderOptions;
+  private frameRequested = false;
+
+  constructor(input: ThreeRendererInput) {
     this.points = input.pointCloud.points;
+    this.mesh = input.mesh;
+    this.gaussianUrl = input.gaussianUrl;
+    this.pointPositions = new Float32Array(this.points.length * 3);
+    this.pointColors = new Float32Array(this.points.length * 3);
     this.classColors = new Map(
-      input.classes.map((entry, index) => [entry.label, entry.colorFlat ?? entry.colorShaded ?? fallbackClassColors[index % fallbackClassColors.length] ?? "#ece2d4"])
+      input.classes.map((entry, index) => [
+        entry.label,
+        new THREE.Color(entry.colorFlat ?? entry.colorShaded ?? fallbackClassColors[index % fallbackClassColors.length] ?? "#ece2d4")
+      ])
     );
-    this.classNames = new Map(input.classes.map((entry) => [entry.label, entry.name]));
   }
 
   render(canvas: HTMLCanvasElement, options: RenderOptions): void {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(1, Math.floor(rect.width * window.devicePixelRatio));
-    const height = Math.max(1, Math.floor(rect.height * window.devicePixelRatio));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-    }
+    this.lastCanvas = canvas;
+    this.lastOptions = options;
+    this.ensureThree(canvas);
+    if (!this.webgl || !this.scene || !this.camera) return;
 
-    ctx.fillStyle = "#15120e";
-    ctx.fillRect(0, 0, width, height);
-    this.drawGlow(ctx, width, height, options.accent);
-    if (options.grid) this.drawGrid(ctx, width, height, options);
+    this.syncSize(canvas, options);
+    this.syncPointCloud(options);
+    this.syncMesh(options);
+    this.syncSpark(options);
+    this.syncAgent(options);
+    this.syncTrajectory(options);
+    this.syncWorldGuides(options);
 
-    const stride = options.density >= 1 ? 1 : Math.max(1, Math.round(1 / options.density));
-    const depthMin = Math.max(0.5, options.camera.distance - 4);
-    const depthMax = options.camera.distance + 5;
-
-    for (let index = 0; index < this.points.length; index += stride) {
-      const point = this.points[index];
-      if (!point) continue;
-      if (options.deleted.has(index) && !options.showDeleted) continue;
-      if (options.isolatedClass !== undefined && point.semanticLabel !== options.isolatedClass && options.mode === "semantic") {
-        ctx.globalAlpha = 0.18;
-      } else {
-        ctx.globalAlpha = 1;
-      }
-
-      const projected = projectPoint(point, width, height, options);
-      if (!projected) continue;
-      const selected = options.selected.has(index);
-      const deleted = options.deleted.has(index);
-      const color = deleted
-        ? "rgba(220,70,50,0.14)"
-        : selected
-          ? options.accent
-          : this.colorForPoint(point, options, projected.d, depthMin, depthMax);
-
-      const radius = options.mode === "splat" ? Math.max(1.2, 14 / projected.d) : Math.max(0.8, 4.8 / projected.d);
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(projected.x, projected.y, radius * window.devicePixelRatio, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.globalAlpha = 1;
-    if (options.trajectory) this.drawTrajectory(ctx, width, height, options);
-    if (options.agent) this.drawAgent(ctx, width, height, options);
-    this.drawModeLabel(ctx, options);
+    this.webgl.render(this.scene, this.camera);
   }
 
   collectInRadius(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number, radius: number): number[] {
+    this.ensureThree(canvas);
+    if (!this.camera) return [];
+    this.updateCamera(canvas, options);
+
     const rect = canvas.getBoundingClientRect();
-    const sx = (x - rect.left) * window.devicePixelRatio;
-    const sy = (y - rect.top) * window.devicePixelRatio;
-    const r2 = radius * radius * window.devicePixelRatio * window.devicePixelRatio;
+    const sx = ((x - rect.left) / rect.width) * 2 - 1;
+    const sy = -(((y - rect.top) / rect.height) * 2 - 1);
+    const normalizedRadius = (radius / Math.max(rect.width, rect.height)) * 2;
+    const r2 = normalizedRadius * normalizedRadius;
     const out: number[] = [];
 
     for (let index = 0; index < this.points.length; index++) {
       const point = this.points[index];
       if (!point || options.deleted.has(index)) continue;
-      const projected = projectPoint(point, canvas.width, canvas.height, options);
-      if (!projected) continue;
+      const projected = new THREE.Vector3(point.x, point.y, point.z).project(this.camera);
       const dx = projected.x - sx;
       const dy = projected.y - sy;
-      if (dx * dx + dy * dy <= r2) out.push(index);
+      if (projected.z <= 1 && dx * dx + dy * dy <= r2) out.push(index);
     }
 
     return out;
@@ -114,183 +108,385 @@ export class CanvasWorldRenderer implements RenderAdapter {
     return canvas.toDataURL("image/png");
   }
 
-  private colorForPoint(point: PointRecord, options: RenderOptions, depth: number, depthMin: number, depthMax: number): string {
-    if (options.mode === "depth") {
-      return depthColor((depth - depthMin) / (depthMax - depthMin));
-    }
-    if (options.mode === "semantic") {
-      return this.classColors.get(point.semanticLabel ?? -1) ?? "#ece2d4";
-    }
-    if (options.mode === "mesh") {
-      return "rgba(236,226,212,0.26)";
-    }
-    const red = clampColor((point.red ?? 236) * options.exposure);
-    const green = clampColor((point.green ?? 226) * options.exposure);
-    const blue = clampColor((point.blue ?? 212) * options.exposure);
-    const alpha = options.mode === "splat" ? 0.52 : 0.95;
-    return `rgba(${red},${green},${blue},${alpha})`;
+  dispose(): void {
+    this.sparkMesh?.dispose?.();
+    this.sparkRenderer?.dispose?.();
+    this.webgl?.dispose();
+    this.canvas = undefined;
+    this.webgl = undefined;
+    this.scene = undefined;
+    this.camera = undefined;
+    this.pointCloud = undefined;
+    this.meshGroup = undefined;
+    this.grid = undefined;
+    this.frustums = undefined;
+    this.agentGroup = undefined;
+    this.trajectoryLine = undefined;
+    this.sparkRenderer = undefined;
+    this.sparkMesh = undefined;
+    this.sparkState = "idle";
   }
 
-  private drawGlow(ctx: CanvasRenderingContext2D, width: number, height: number, accent: string): void {
-    const glow = ctx.createRadialGradient(width * 0.5, height * 0.62, height * 0.1, width * 0.5, height * 0.62, height * 0.85);
-    glow.addColorStop(0, hexWithAlpha(accent, 0.09));
-    glow.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, height);
-  }
+  private ensureThree(canvas: HTMLCanvasElement): void {
+    if (this.webgl && this.canvas === canvas) return;
+    this.dispose();
+    this.canvas = canvas;
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color("#15120e");
+    this.camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.02, 1000);
+    this.webgl = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    this.webgl.setClearColor("#15120e", 1);
+    this.webgl.outputColorSpace = THREE.SRGBColorSpace;
 
-  private drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, options: RenderOptions): void {
-    ctx.strokeStyle = "rgba(232,221,208,0.08)";
-    ctx.lineWidth = window.devicePixelRatio;
-    for (let i = -6; i <= 6; i++) {
-      line3(ctx, width, height, options, [i, 0, -6], [i, 0, 6]);
-      line3(ctx, width, height, options, [-6, 0, i], [6, 0, i]);
-    }
-  }
+    this.grid = new THREE.GridHelper(12, 24, "#6f6254", "#2b241d");
+    this.grid.material.transparent = true;
+    this.grid.material.opacity = 0.34;
+    this.scene.add(this.grid);
 
-  private drawTrajectory(ctx: CanvasRenderingContext2D, width: number, height: number, options: RenderOptions): void {
-    if (!options.trajectory) return;
-    ctx.strokeStyle = options.accent;
-    ctx.lineWidth = 2 * window.devicePixelRatio;
-    ctx.setLineDash([8 * window.devicePixelRatio, 7 * window.devicePixelRatio]);
-    ctx.beginPath();
-    let started = false;
-    for (const [x, z] of options.trajectory) {
-      const projected = project3([x, 0.03, z], width, height, options);
-      if (!projected) continue;
-      if (!started) {
-        ctx.moveTo(projected.x, projected.y);
-        started = true;
-      } else {
-        ctx.lineTo(projected.x, projected.y);
-      }
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+    this.frustums = createFrustums();
+    this.scene.add(this.frustums);
 
-  private drawAgent(ctx: CanvasRenderingContext2D, width: number, height: number, options: RenderOptions): void {
-    if (!options.agent) return;
-    const base = project3([options.agent.x, 0.05, options.agent.z], width, height, options);
-    const top = project3([options.agent.x, 0.9, options.agent.z], width, height, options);
-    const heading = project3(
-      [options.agent.x + Math.cos(options.agent.heading) * 0.8, 0.05, options.agent.z + Math.sin(options.agent.heading) * 0.8],
-      width,
-      height,
-      options
+    this.pointCloud = this.createPointCloud();
+    this.scene.add(this.pointCloud);
+
+    this.meshGroup = this.createMeshGroup();
+    this.scene.add(this.meshGroup);
+
+    this.agentGroup = createAgentGroup();
+    this.scene.add(this.agentGroup);
+
+    this.trajectoryLine = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: "#e0683a", transparent: true, opacity: 0.9 })
     );
-    if (!base || !top) return;
-    ctx.strokeStyle = options.accent;
-    ctx.fillStyle = options.accent;
-    ctx.lineWidth = 2 * window.devicePixelRatio;
-    ctx.beginPath();
-    ctx.arc(base.x, base.y, 16 * window.devicePixelRatio, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(base.x, base.y);
-    ctx.lineTo(top.x, top.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(top.x, top.y, 6 * window.devicePixelRatio, 0, Math.PI * 2);
-    ctx.fill();
-    if (heading) {
-      ctx.setLineDash([6 * window.devicePixelRatio, 5 * window.devicePixelRatio]);
-      ctx.beginPath();
-      ctx.moveTo(base.x, base.y);
-      ctx.lineTo(heading.x, heading.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+    this.scene.add(this.trajectoryLine);
+
+    void this.initializeSpark();
+  }
+
+  private syncSize(canvas: HTMLCanvasElement, options: RenderOptions): void {
+    if (!this.webgl || !this.camera) return;
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width));
+    const height = Math.max(1, Math.floor(rect.height));
+    this.webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.webgl.setSize(width, height, false);
+    this.updateCamera(canvas, options);
+  }
+
+  private updateCamera(canvas: HTMLCanvasElement, options: RenderOptions): void {
+    if (!this.camera) return;
+    const rect = canvas.getBoundingClientRect();
+    const { yaw, pitch, distance, target, fov } = options.camera;
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    this.camera.fov = fov;
+    this.camera.aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+    this.camera.position.set(target[0] + distance * cp * sy, target[1] + distance * sp, target[2] + distance * cp * cy);
+    this.camera.lookAt(target[0], target[1], target[2]);
+    this.camera.updateProjectionMatrix();
+  }
+
+  private createPointCloud(): THREE.Points {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(this.pointPositions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(this.pointColors, 3));
+    const material = new THREE.PointsMaterial({
+      size: 0.035,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.96,
+      depthWrite: false
+    });
+    return new THREE.Points(geometry, material);
+  }
+
+  private syncPointCloud(options: RenderOptions): void {
+    if (!this.pointCloud || !this.camera) return;
+    const useSpark = options.mode === "splat" && this.sparkState === "ready";
+    this.pointCloud.visible = options.mode !== "mesh" && !useSpark;
+    if (!this.pointCloud.visible) return;
+
+    const material = this.pointCloud.material as THREE.PointsMaterial;
+    material.size = options.mode === "splat" ? 0.062 : 0.034;
+    material.opacity = options.mode === "splat" ? 0.74 : 0.96;
+    material.needsUpdate = true;
+
+    const stride = options.density >= 1 ? 1 : Math.max(1, Math.round(1 / options.density));
+    const maxDistance = Math.max(1, options.camera.distance + 5);
+
+    for (let index = 0; index < this.points.length; index++) {
+      const point = this.points[index];
+      const offset = index * 3;
+      const deleted = options.deleted.has(index);
+      const densitySkipped = index % stride !== 0 && !options.selected.has(index);
+      if (!point || densitySkipped || (deleted && !options.showDeleted)) {
+        this.pointPositions[offset] = hiddenPoint;
+        this.pointPositions[offset + 1] = hiddenPoint;
+        this.pointPositions[offset + 2] = hiddenPoint;
+        this.pointColors[offset] = 0;
+        this.pointColors[offset + 1] = 0;
+        this.pointColors[offset + 2] = 0;
+        continue;
+      }
+
+      this.pointPositions[offset] = point.x;
+      this.pointPositions[offset + 1] = point.y;
+      this.pointPositions[offset + 2] = point.z;
+
+      const color = this.colorForPoint(point, index, options, maxDistance);
+      this.pointColors[offset] = color.r;
+      this.pointColors[offset + 1] = color.g;
+      this.pointColors[offset + 2] = color.b;
+    }
+
+    const geometry = this.pointCloud.geometry;
+    const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+    const colors = geometry.getAttribute("color") as THREE.BufferAttribute;
+    positions.needsUpdate = true;
+    colors.needsUpdate = true;
+    geometry.computeBoundingSphere();
+  }
+
+  private colorForPoint(point: PointRecord, index: number, options: RenderOptions, maxDistance: number): THREE.Color {
+    if (options.deleted.has(index)) return new THREE.Color("#8e3b34").multiplyScalar(0.72);
+    if (options.selected.has(index)) return new THREE.Color(options.accent);
+
+    if (options.mode === "depth" && this.camera) {
+      const distance = this.camera.position.distanceTo(new THREE.Vector3(point.x, point.y, point.z));
+      return depthColor(distance / maxDistance);
+    }
+
+    if (options.mode === "semantic") {
+      const semantic = this.classColors.get(point.semanticLabel ?? -1) ?? new THREE.Color("#ece2d4");
+      if (options.isolatedClass !== undefined && point.semanticLabel !== options.isolatedClass) {
+        return semantic.clone().lerp(new THREE.Color("#15120e"), 0.72);
+      }
+      return semantic.clone();
+    }
+
+    return new THREE.Color(
+      clampUnit(((point.red ?? 236) / 255) * options.exposure),
+      clampUnit(((point.green ?? 226) / 255) * options.exposure),
+      clampUnit(((point.blue ?? 212) / 255) * options.exposure)
+    );
+  }
+
+  private createMeshGroup(): THREE.Group {
+    const group = new THREE.Group();
+    if (!this.mesh?.triangles.length) return group;
+
+    const positions = new Float32Array(this.mesh.triangles.length * 9);
+    for (let index = 0; index < this.mesh.triangles.length; index++) {
+      const triangle = this.mesh.triangles[index];
+      const a = this.mesh.vertices[triangle.a];
+      const b = this.mesh.vertices[triangle.b];
+      const c = this.mesh.vertices[triangle.c];
+      if (!a || !b || !c) continue;
+      positions.set([...a, ...b, ...c], index * 9);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+
+    const solid = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: "#d8c9b2",
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    group.add(solid);
+
+    const wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(geometry),
+      new THREE.LineBasicMaterial({ color: "#f2dfc7", transparent: true, opacity: 0.42 })
+    );
+    group.add(wire);
+    return group;
+  }
+
+  private syncMesh(options: RenderOptions): void {
+    if (!this.meshGroup) return;
+    this.meshGroup.visible = options.mode === "mesh";
+  }
+
+  private syncSpark(options: RenderOptions): void {
+    if (this.sparkState === "idle") void this.initializeSpark();
+    const visible = options.mode === "splat" && this.sparkState === "ready";
+    if (this.sparkMesh) this.sparkMesh.visible = visible;
+    if (this.sparkRenderer) this.sparkRenderer.visible = visible;
+  }
+
+  private async initializeSpark(): Promise<void> {
+    if (!this.gaussianUrl || !this.webgl || !this.scene || this.sparkState !== "idle") return;
+    this.sparkState = "loading";
+    try {
+      const spark = await import("@sparkjsdev/spark");
+      this.sparkRenderer = new spark.SparkRenderer({
+        renderer: this.webgl,
+        onDirty: () => this.requestFrame(),
+        minAlpha: 1 / 255,
+        maxPixelRadius: 180,
+        focalAdjustment: 1.5
+      });
+      this.scene.add(this.sparkRenderer);
+
+      this.sparkMesh = new spark.SplatMesh({
+        url: this.gaussianUrl,
+        editable: true,
+        raycastable: true,
+        onLoad: () => {
+          this.sparkState = "ready";
+          this.requestFrame();
+        }
+      });
+      this.sparkMesh.visible = false;
+      this.scene.add(this.sparkMesh);
+      this.sparkMesh.initialized?.then(() => {
+        this.sparkState = "ready";
+        this.requestFrame();
+      }).catch(() => {
+        this.sparkState = "failed";
+        this.requestFrame();
+      });
+    } catch {
+      this.sparkState = "failed";
+      this.requestFrame();
     }
   }
 
-  private drawModeLabel(ctx: CanvasRenderingContext2D, options: RenderOptions): void {
-    ctx.font = `${12 * window.devicePixelRatio}px IBM Plex Mono, monospace`;
-    ctx.fillStyle = "rgba(236,226,212,0.68)";
-    const isolate =
-      options.isolatedClass === undefined ? "" : ` · isolate ${this.classNames.get(options.isolatedClass) ?? options.isolatedClass}`;
-    ctx.fillText(`${options.mode}${isolate}`, 24 * window.devicePixelRatio, 32 * window.devicePixelRatio);
+  private syncAgent(options: RenderOptions): void {
+    if (!this.agentGroup) return;
+    this.agentGroup.visible = Boolean(options.agent);
+    if (!options.agent) return;
+    this.agentGroup.position.set(options.agent.x, 0.05, options.agent.z);
+    this.agentGroup.rotation.y = Math.PI / 2 - options.agent.heading;
+    const accent = new THREE.Color(options.accent);
+    this.agentGroup.traverse((object) => {
+      const material = (object as THREE.Mesh | THREE.Line).material;
+      if (material && "color" in material) {
+        (material as THREE.MeshBasicMaterial | THREE.LineBasicMaterial).color.copy(accent);
+      }
+    });
+  }
+
+  private syncTrajectory(options: RenderOptions): void {
+    if (!this.trajectoryLine) return;
+    this.trajectoryLine.visible = Boolean(options.trajectory?.length);
+    if (!options.trajectory?.length) return;
+    const points = options.trajectory.map(([x, z]) => new THREE.Vector3(x, 0.04, z));
+    this.trajectoryLine.geometry.dispose();
+    this.trajectoryLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = this.trajectoryLine.material as THREE.LineBasicMaterial;
+    material.color.set(options.accent);
+  }
+
+  private syncWorldGuides(options: RenderOptions): void {
+    if (this.grid) this.grid.visible = options.grid;
+    if (this.frustums) this.frustums.visible = options.grid;
+  }
+
+  private requestFrame(): void {
+    if (this.frameRequested || !this.lastCanvas || !this.lastOptions) return;
+    this.frameRequested = true;
+    window.requestAnimationFrame(() => {
+      this.frameRequested = false;
+      if (this.lastCanvas && this.lastOptions) this.render(this.lastCanvas, this.lastOptions);
+    });
   }
 }
 
-export function createSparkRendererAdapter(): never {
-  throw new Error("Spark/Three.js adapter is planned behind RenderAdapter; canvas fallback is active in this scaffold.");
+export const CanvasWorldRenderer = ThreeWorldRenderer;
+
+export function createSparkRendererAdapter(input: ThreeRendererInput): ThreeWorldRenderer {
+  return new ThreeWorldRenderer(input);
 }
 
-function projectPoint(point: PointRecord, width: number, height: number, options: RenderOptions): Projected | null {
-  return project3([point.x, point.y, point.z], width, height, options);
+function createAgentGroup(): THREE.Group {
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.22, 0.012, 8, 36),
+    new THREE.MeshBasicMaterial({ color: "#e0683a", transparent: true, opacity: 0.95 })
+  );
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+
+  const mast = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0.8, 0)]),
+    new THREE.LineBasicMaterial({ color: "#e0683a", transparent: true, opacity: 0.86 })
+  );
+  group.add(mast);
+
+  const heading = new THREE.Mesh(
+    new THREE.ConeGeometry(0.13, 0.42, 3),
+    new THREE.MeshBasicMaterial({ color: "#e0683a", transparent: true, opacity: 0.95 })
+  );
+  heading.rotation.x = Math.PI / 2;
+  heading.position.z = 0.42;
+  heading.position.y = 0.08;
+  group.add(heading);
+  return group;
 }
 
-function project3(point: [number, number, number], width: number, height: number, options: RenderOptions): Projected | null {
-  const { yaw, pitch, distance, target, fov } = options.camera;
-  const cy = Math.cos(yaw);
-  const sy = Math.sin(yaw);
-  const cp = Math.cos(pitch);
-  const sp = Math.sin(pitch);
-  const eye = [
-    target[0] + distance * cp * sy,
-    target[1] + distance * sp,
-    target[2] + distance * cp * cy
-  ];
-  const dx = point[0] - eye[0];
-  const dy = point[1] - eye[1];
-  const dz = point[2] - eye[2];
-  const rx = dx * cy - dz * sy;
-  const ry = -dx * sp * sy + dy * cp - dz * sp * cy;
-  const d = -dx * cp * sy - dy * sp - dz * cp * cy;
-  if (d < 0.1) return null;
-  const fl = (height / 2) / Math.tan((fov * Math.PI) / 360);
-  return {
-    x: width / 2 + (rx / d) * fl,
-    y: height / 2 - (ry / d) * fl,
-    d
-  };
+function createFrustums(): THREE.LineSegments {
+  const positions: number[] = [];
+  const placements = [
+    [-2.4, 1.7, -1.8, 0.45],
+    [0.2, 2.1, 2.1, -2.35],
+    [2.4, 1.5, -1.5, 2.62]
+  ] as const;
+
+  for (const [x, y, z, yaw] of placements) {
+    const apex = new THREE.Vector3(x, y, z);
+    const corners = [
+      new THREE.Vector3(-0.36, -0.22, 0.72),
+      new THREE.Vector3(0.36, -0.22, 0.72),
+      new THREE.Vector3(0.36, 0.22, 0.72),
+      new THREE.Vector3(-0.36, 0.22, 0.72)
+    ].map((corner) => corner.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).add(apex));
+    for (const corner of corners) pushLine(positions, apex, corner);
+    pushLine(positions, corners[0], corners[1]);
+    pushLine(positions, corners[1], corners[2]);
+    pushLine(positions, corners[2], corners[3]);
+    pushLine(positions, corners[3], corners[0]);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  return new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({ color: "#c7b69f", transparent: true, opacity: 0.24 })
+  );
 }
 
-function line3(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  options: RenderOptions,
-  a: [number, number, number],
-  b: [number, number, number]
-): void {
-  const pa = project3(a, width, height, options);
-  const pb = project3(b, width, height, options);
-  if (!pa || !pb) return;
-  ctx.beginPath();
-  ctx.moveTo(pa.x, pa.y);
-  ctx.lineTo(pb.x, pb.y);
-  ctx.stroke();
+function pushLine(out: number[], a: THREE.Vector3, b: THREE.Vector3): void {
+  out.push(a.x, a.y, a.z, b.x, b.y, b.z);
 }
 
-function depthColor(t: number): string {
+function depthColor(t: number): THREE.Color {
   const stops = [
-    [252, 222, 156],
-    [240, 142, 86],
-    [196, 78, 82],
-    [120, 41, 99],
-    [48, 18, 76],
-    [8, 6, 25]
+    new THREE.Color("#fce09d"),
+    new THREE.Color("#f08e56"),
+    new THREE.Color("#c44e52"),
+    new THREE.Color("#782963"),
+    new THREE.Color("#30124c"),
+    new THREE.Color("#080619")
   ];
   const clamped = Math.max(0, Math.min(1, t));
   const f = clamped * (stops.length - 1);
   const index = Math.min(stops.length - 2, Math.floor(f));
   const u = f - index;
-  const a = stops[index] ?? stops[0];
-  const b = stops[index + 1] ?? stops[stops.length - 1];
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * u)},${Math.round(a[1] + (b[1] - a[1]) * u)},${Math.round(a[2] + (b[2] - a[2]) * u)})`;
+  return stops[index]?.clone().lerp(stops[index + 1] ?? stops[index], u) ?? new THREE.Color("#fce09d");
 }
 
-function clampColor(value: number): number {
-  return Math.max(0, Math.min(255, Math.round(value)));
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
-
-function hexWithAlpha(hex: string, alpha: number): string {
-  const clean = hex.replace("#", "");
-  if (clean.length !== 6) return `rgba(224,104,58,${alpha})`;
-  const red = Number.parseInt(clean.slice(0, 2), 16);
-  const green = Number.parseInt(clean.slice(2, 4), 16);
-  const blue = Number.parseInt(clean.slice(4, 6), 16);
-  return `rgba(${red},${green},${blue},${alpha})`;
-}
-

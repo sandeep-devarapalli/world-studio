@@ -103,6 +103,7 @@ export interface RenderAdapter {
   render(canvas: HTMLCanvasElement, options: RenderOptions): void;
   collectInRadius(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number, radius: number): number[];
   capture(canvas: HTMLCanvasElement): string;
+  dispose?(): void;
 }
 
 export interface BudoMediaFrame {
@@ -144,4 +145,3 @@ export interface VerifiedSemanticExportManifest {
   hashes: Record<string, string>;
   boundary: string;
 }
-
