@@ -122,6 +122,12 @@ export interface LocalPackageInsightMetric {
   value: string | number;
 }
 
+export interface LocalPackageInsightSection {
+  title: string;
+  rows: LocalPackageInsightMetric[];
+  previewText?: string;
+}
+
 export interface LocalPackageInsight {
   id: string;
   kind: "asset-set" | "scene-manifest" | "media-frames" | "figure-views" | "verified-export" | "json-manifest";
@@ -131,6 +137,8 @@ export interface LocalPackageInsight {
   status?: string;
   metrics: LocalPackageInsightMetric[];
   details: LocalPackageInsightMetric[];
+  sections?: LocalPackageInsightSection[];
+  previewText?: string;
 }
 
 export interface LocalWorldPackagePayload {
