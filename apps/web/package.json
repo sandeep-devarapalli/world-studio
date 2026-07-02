@@ -1,0 +1,30 @@
+{
+  "name": "@world-studio/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "latest",
+    "@sparkjsdev/spark": "latest",
+    "@world-studio/artifacts": "workspace:*",
+    "@world-studio/design-system": "workspace:*",
+    "@world-studio/renderer": "workspace:*",
+    "@world-studio/world-core": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}

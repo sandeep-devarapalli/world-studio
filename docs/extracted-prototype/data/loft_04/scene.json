@@ -1,0 +1,90 @@
+{
+  "dataset": "loft_04",
+  "version": "v3",
+  "generator": "ws-render.js buildScene(seed=1337)",
+  "up_axis": "y",
+  "units": "meters",
+  "room": {
+    "width": 6,
+    "depth": 5,
+    "height": 2.8
+  },
+  "files": {
+    "gaussians.ply": "Gaussian field - INRIA 3DGS PLY (SH degree 0), drives the Gaussians render mode",
+    "points.ply": "Point cloud - shaded RGB + per-point semantic label, drives Points / Semantic / Depth modes",
+    "collision_mesh.obj": "Collision mesh - box primitives grouped+material-tagged by class, drives Mesh mode",
+    "collision_mesh.mtl": "Flat semantic palette for the collision mesh"
+  },
+  "points_total": 16060,
+  "boxes_total": 13,
+  "classes": [
+    {
+      "label": 0,
+      "name": "floor",
+      "color_shaded": "#8a7a64",
+      "color_flat": "#5b6f8a",
+      "points": 4200
+    },
+    {
+      "label": 1,
+      "name": "wall",
+      "color_shaded": "#5c544a",
+      "color_flat": "#3d4a5c",
+      "points": 2600
+    },
+    {
+      "label": 2,
+      "name": "rug",
+      "color_shaded": "#b0563a",
+      "color_flat": "#b04a8f",
+      "points": 1500
+    },
+    {
+      "label": 3,
+      "name": "sofa",
+      "color_shaded": "#c97b4e",
+      "color_flat": "#d9764a",
+      "points": 3300
+    },
+    {
+      "label": 4,
+      "name": "table",
+      "color_shaded": "#9c8b5e",
+      "color_flat": "#c9a93f",
+      "points": 1240
+    },
+    {
+      "label": 5,
+      "name": "lamp",
+      "color_shaded": "#e8c87a",
+      "color_flat": "#e8e26a",
+      "points": 720
+    },
+    {
+      "label": 6,
+      "name": "plant",
+      "color_shaded": "#6f8f5a",
+      "color_flat": "#4fae62",
+      "points": 700
+    },
+    {
+      "label": 7,
+      "name": "shelf",
+      "color_shaded": "#7a6a8f",
+      "color_flat": "#8f6fd9",
+      "points": 1100
+    },
+    {
+      "label": 8,
+      "name": "window",
+      "color_shaded": "#6e93a8",
+      "color_flat": "#4fc3d9",
+      "points": 700
+    }
+  ],
+  "agent_spawn": {
+    "x": 1.5,
+    "z": -0.5,
+    "heading_rad": 4.4
+  }
+}

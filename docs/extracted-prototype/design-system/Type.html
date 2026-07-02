@@ -1,0 +1,72 @@
+<!-- @dsCard group="Type" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>World Studio — Typography</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../ws-styles.css" />
+<style>
+  html, body { margin: 0; background: #15120e; }
+  .ds-page { font-family: "Spline Sans", sans-serif; color: #ece2d4; padding: 40px 48px 56px; }
+  .ds-h { font-family: "Source Serif 4", serif; font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+  .ds-sub { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #9b8d7b; margin: 0 0 28px; }
+  .ds-sec { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #6b5d4a; margin: 30px 0 12px; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 18px; }
+  .ds-row { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: baseline; padding: 12px 0; border-bottom: 1px dashed rgba(255,255,255,0.06); }
+  .ds-meta { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: #6b5d4a; line-height: 1.6; }
+  .ds-meta b { color: #9b8d7b; font-weight: 500; display: block; }
+</style>
+</head>
+<body>
+<div class="ds-page">
+  <h1 class="ds-h">Typography</h1>
+  <p class="ds-sub">Three voices: serif identity · sans UI · mono data</p>
+
+  <div class="ds-sec">Faces</div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Source Serif 4 · 600</b>--serif · identity &amp; mode titles only</div>
+    <div style="font-family:'Source Serif 4',serif;font-weight:600;font-size:28px">World Studio — gaussians</div>
+  </div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Spline Sans · 400/500</b>--sans · row names, body, controls</div>
+    <div style="font-size:15px">Gaussian field · Collision mesh · sofa_01 · Drag into world, physics on</div>
+  </div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>IBM Plex Mono · 400–600</b>--mono · labels, values, chips, keys, status</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:13px">0064 / 0120 · 10,05,385 splats · x 0.92 · θ 206°</div>
+  </div>
+
+  <div class="ds-sec">Scale (regular density · 1920×1080 frame)</div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Micro-label “ws-head” · 11px</b>mono 500 · tracking 0.18em · uppercase · --ink-mut</div>
+    <div><span class="ws-head" style="--ink-mut:#9b8d7b;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#9b8d7b;font-weight:500">Sensor rig — rig_a</span></div>
+  </div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Chip / status · 12px</b>mono 400 · tracking 0.04–0.08em</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#9b8d7b">aligned · 47,173 pts</div>
+  </div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Row / body · 14px</b>sans 400 · --ink</div>
+    <div style="font-size:14px">Point cloud — 47,173 points, aligned to gaussian field</div>
+  </div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Mode title · 22px</b>serif 600</div>
+    <div style="font-family:'Source Serif 4',serif;font-weight:600;font-size:22px">semantic</div>
+  </div>
+  <div class="ds-row">
+    <div class="ds-meta"><b>Wordmark · 20px</b>serif 600 + mono 11px subline</div>
+    <div>
+      <div style="font-family:'Source Serif 4',serif;font-weight:600;font-size:20px;line-height:1.1">World Studio</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.22em;color:#6b5d4a;text-transform:uppercase;margin-top:3px">WORLD · LOFT_04</div>
+    </div>
+  </div>
+
+  <div class="ds-sec">Rules</div>
+  <div style="font-size:14px;line-height:1.7;color:#9b8d7b;max-width:680px">
+    Serif appears at most twice per screen (wordmark + one mode title). All numerals that update live are mono.
+    Compact density multiplies sizes ≈0.9 (14→12.5, 11→10). Never use mono for sentence-length copy;
+    never use sans for tabular values. Uppercase tracking ≥0.14em is mandatory for micro-labels.
+  </div>
+</div>
+</body>
+</html>

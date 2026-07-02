@@ -1,0 +1,27 @@
+{
+  "name": "world-studio",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "dev": "pnpm --filter @world-studio/web dev",
+    "desktop:dev": "pnpm --filter @world-studio/desktop dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:ui": "playwright test",
+    "clone:upstreams": "node scripts/clone-upstreams.mjs",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/node": "latest",
+    "@vitejs/plugin-react": "latest",
+    "concurrently": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest"
+  }
+}

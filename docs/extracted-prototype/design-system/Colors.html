@@ -1,0 +1,76 @@
+<!-- @dsCard group="Colors" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>World Studio — Colors</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../ws-styles.css" />
+<style>
+  html, body { margin: 0; background: #15120e; }
+  .ds-page { font-family: "Spline Sans", sans-serif; color: #ece2d4; padding: 40px 48px 56px; }
+  .ds-h { font-family: "Source Serif 4", serif; font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+  .ds-sub { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #9b8d7b; margin: 0 0 28px; }
+  .ds-sec { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: #6b5d4a; margin: 30px 0 12px; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 18px; }
+  .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .ds-sw { border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; overflow: hidden; }
+  .ds-sw .c { height: 56px; }
+  .ds-sw .m { padding: 8px 10px; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: #9b8d7b; line-height: 1.5; }
+  .ds-sw .m b { display: block; color: #ece2d4; font-weight: 500; }
+  .ds-ramp-demo { height: 18px; border-radius: 9px; background: linear-gradient(90deg, #08061a, #30124c, #782963, #c44e52, #f08e56, #fcde9c); }
+</style>
+</head>
+<body>
+<div class="ds-page">
+  <h1 class="ds-h">Colors</h1>
+  <p class="ds-sub">World Studio · warm charcoal + orange accent</p>
+
+  <div class="ds-sec">Surfaces &amp; ink (CSS custom properties on .ws-root)</div>
+  <div class="ds-grid">
+    <div class="ds-sw"><div class="c" style="background:#15120e"></div><div class="m"><b>--bg</b>#15120E · viewport base</div></div>
+    <div class="ds-sw"><div class="c" style="background:#080604"></div><div class="m"><b>stage</b>#080604 · letterbox</div></div>
+    <div class="ds-sw"><div class="c" style="background:rgba(37,32,26,0.88)"></div><div class="m"><b>--panel</b>rgba(37,32,26,.88) + blur 18px</div></div>
+    <div class="ds-sw"><div class="c" style="background:#201c17"></div><div class="m"><b>--panel-solid</b>#201C17 · docked mode</div></div>
+    <div class="ds-sw"><div class="c" style="background:#ece2d4"></div><div class="m"><b>--ink</b>#ECE2D4 · primary text</div></div>
+    <div class="ds-sw"><div class="c" style="background:#9b8d7b"></div><div class="m"><b>--ink-mut</b>#9B8D7B · labels</div></div>
+    <div class="ds-sw"><div class="c" style="background:#6b5d4a"></div><div class="m"><b>--ink-faint</b>#6B5D4A · hints</div></div>
+    <div class="ds-sw"><div class="c" style="background:rgba(255,255,255,0.07)"></div><div class="m"><b>--line</b>rgba(255,255,255,.07) · borders</div></div>
+  </div>
+
+  <div class="ds-sec">Accent (--acc) — default orange; alternates are user-selectable</div>
+  <div class="ds-grid">
+    <div class="ds-sw"><div class="c" style="background:#E0683A"></div><div class="m"><b>--acc default</b>#E0683A · ember</div></div>
+    <div class="ds-sw"><div class="c" style="background:#4A8FD9"></div><div class="m"><b>alt</b>#4A8FD9 · signal blue</div></div>
+    <div class="ds-sw"><div class="c" style="background:#3FAE7C"></div><div class="m"><b>alt</b>#3FAE7C · field green</div></div>
+    <div class="ds-sw"><div class="c" style="background:#C9A93F"></div><div class="m"><b>alt</b>#C9A93F · brass</div></div>
+    <div class="ds-sw"><div class="c" style="background:#1A0F08"></div><div class="m"><b>on-accent ink</b>#1A0F08 · text on accent fills</div></div>
+  </div>
+
+  <div class="ds-sec">Semantic class palette (flat, for segmentation overlays &amp; legends)</div>
+  <div class="ds-grid">
+    <div class="ds-sw"><div class="c" style="background:#d9764a"></div><div class="m"><b>sofa</b>#D9764A</div></div>
+    <div class="ds-sw"><div class="c" style="background:#c9a93f"></div><div class="m"><b>table</b>#C9A93F</div></div>
+    <div class="ds-sw"><div class="c" style="background:#e8e26a"></div><div class="m"><b>lamp</b>#E8E26A</div></div>
+    <div class="ds-sw"><div class="c" style="background:#4fae62"></div><div class="m"><b>plant</b>#4FAE62</div></div>
+    <div class="ds-sw"><div class="c" style="background:#8f6fd9"></div><div class="m"><b>shelf</b>#8F6FD9</div></div>
+    <div class="ds-sw"><div class="c" style="background:#b04a8f"></div><div class="m"><b>rug</b>#B04A8F</div></div>
+    <div class="ds-sw"><div class="c" style="background:#4fc3d9"></div><div class="m"><b>window</b>#4FC3D9</div></div>
+    <div class="ds-sw"><div class="c" style="background:#5b6f8a"></div><div class="m"><b>floor</b>#5B6F8A</div></div>
+    <div class="ds-sw"><div class="c" style="background:#3d4a5c"></div><div class="m"><b>wall</b>#3D4A5C</div></div>
+  </div>
+
+  <div class="ds-sec">Depth ramp (magma) — used for depth render mode and histogram ramps</div>
+  <div class="ds-ramp-demo"></div>
+  <div class="m" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#9b8d7b;margin-top:8px">
+    #08061A → #30124C → #782963 → #C44E52 → #F08E56 → #FCDE9C
+  </div>
+
+  <div class="ds-sec">Rules</div>
+  <div style="font-size:14px;line-height:1.7;color:#9b8d7b;max-width:680px">
+    Accent is reserved for: active/selected state, record indicators, playheads, agent overlays, primary actions.
+    Never use accent for static decoration. Deleted/ghosted geometry renders red at 10% alpha.
+    State colors derive from --acc via color-mix (13% fill / 55% border for selected rows).
+  </div>
+</div>
+</body>
+</html>

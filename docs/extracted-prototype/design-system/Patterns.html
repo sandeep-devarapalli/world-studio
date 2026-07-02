@@ -1,0 +1,127 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>World Studio — Patterns</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=Spline+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../ws-styles.css" />
+<style>
+  html, body { margin: 0; background: #15120e; }
+  .ds-root { position: static; width: auto; height: auto; overflow: visible; }
+  .ds-page { padding: 40px 48px 56px; }
+  .ds-h { font-family: var(--serif); font-size: 26px; font-weight: 600; margin: 0 0 4px; color: var(--ink); }
+  .ds-sub { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-mut); margin: 0 0 28px; }
+  .ds-sec { font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); margin: 34px 0 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .ds-note { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); margin-top: 8px; letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+<div class="ws-root ds-root">
+<div class="ds-page">
+  <h1 class="ds-h">Patterns</h1>
+  <p class="ds-sub">Composite layouts · timeline · status · sensor strip</p>
+
+  <div class="ds-sec">Timeline capsule (.ws-timeline) — floats bottom-center</div>
+  <div class="ws-timeline ws-panel" style="position:static">
+    <button class="ws-play"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M6 4h2.6v12H6zM11.4 4H14v12h-2.6z" fill="currentColor"/></svg></button>
+    <button class="ws-tl-btn"><svg width="13" height="13" viewBox="0 0 20 20"><path d="M4 4l7 6-7 6zM13 4h2.4v12H13z" fill="currentColor"/></svg></button>
+    <div class="ws-tl-track">
+      <div class="ws-tl-ticks"><span class="maj"></span><span></span><span></span><span></span><span></span><span class="maj"></span><span></span><span></span><span></span><span></span><span class="maj"></span><span></span><span></span><span></span><span></span><span class="maj"></span><span></span><span></span><span></span><span></span><span class="maj"></span><span></span><span></span><span></span><span></span><span class="maj"></span><span></span><span></span><span></span><span></span></div>
+      <div class="ws-tl-fill" style="width:62%"></div>
+      <div class="ws-tl-head" style="left:62%"></div>
+    </div>
+    <span class="ws-mono-val ws-tl-frame">0182 / 0292</span>
+    <span class="ws-rec"><span class="ws-dot pulse" style="background:var(--acc)"></span> REC</span>
+  </div>
+
+  <div class="ds-sec">Episode tracks (.ws-tracks-panel) — actions, events, captures + playhead</div>
+  <div class="ws-panel ws-tracks-panel">
+    <div class="ws-tracks-head">
+      <button class="ws-play"><svg width="16" height="16" viewBox="0 0 20 20"><path d="M6 4l10 6-10 6z" fill="currentColor"/></svg></button>
+      <span class="ws-mono-val">0064 / 0120</span>
+      <span class="ws-rec"><span class="ws-dot pulse" style="background:var(--acc)"></span> REC</span>
+      <span class="ws-head" style="margin-left:auto">1.0× · sim time 00:42.6</span>
+    </div>
+    <div class="ws-tracks">
+      <div class="ws-track-row">
+        <span class="ws-head ws-track-lab">Agent</span>
+        <div class="ws-track-lane">
+          <span class="ws-act" style="left:2%;width:14%">MoveAhead ×4</span>
+          <span class="ws-act" style="left:18%;width:8%">Rotate 45°</span>
+          <span class="ws-act on" style="left:28%;width:12%">PickUp(mug)</span>
+          <span class="ws-act" style="left:42%;width:14%">MoveAhead ×5</span>
+        </div>
+      </div>
+      <div class="ws-track-row">
+        <span class="ws-head ws-track-lab">Objects</span>
+        <div class="ws-track-lane"><span class="ws-evt" style="left:33%">mug grasped</span></div>
+      </div>
+      <div class="ws-track-row">
+        <span class="ws-head ws-track-lab">Captures</span>
+        <div class="ws-track-lane ws-cap-lane"><span class="ws-cap" style="left:5%"></span><span class="ws-cap" style="left:10%"></span><span class="ws-cap" style="left:15%"></span><span class="ws-cap" style="left:20%"></span><span class="ws-cap" style="left:25%"></span><span class="ws-cap" style="left:30%"></span><span class="ws-cap" style="left:35%"></span><span class="ws-cap" style="left:40%"></span><span class="ws-cap" style="left:45%"></span><span class="ws-cap" style="left:50%"></span></div>
+      </div>
+      <div class="ws-playhead" style="left:calc(116px + (100% - 132px) * 0.4); margin-left:0"></div>
+    </div>
+  </div>
+
+  <div class="ds-sec">Sensor strip (.ws-strip) — multi-channel previews, accent border = active</div>
+  <div class="ws-strip" style="display:inline-flex">
+    <div class="ws-strip-cell on"><div style="position:absolute;inset:0;background:linear-gradient(135deg,#4a3a2c,#241c12)"></div><span class="ws-strip-lab">RGB</span></div>
+    <div class="ws-strip-cell"><div style="position:absolute;inset:0;background:linear-gradient(135deg,#782963,#30124c)"></div><span class="ws-strip-lab">DEPTH</span></div>
+    <div class="ws-strip-cell"><div style="position:absolute;inset:0;background:linear-gradient(135deg,#3d4a5c,#1c2330)"></div><span class="ws-strip-lab">SEG</span></div>
+    <div class="ws-strip-cell"><div style="position:absolute;inset:0;background:linear-gradient(135deg,#23303a,#101820)"></div><span class="ws-strip-lab">LIDAR</span></div>
+  </div>
+  <div class="ds-note">cells hold live canvases in app · .ws-strip-lab pins bottom-left</div>
+
+  <div class="ds-sec">View tag (.ws-view-tag) &amp; PiP frame (.ws-pip)</div>
+  <div style="display:flex;gap:18px;align-items:flex-start">
+    <div class="ws-view-tag" style="position:static">
+      <span class="ws-head">Sensor feed</span><span class="ws-chip">cam_front · frame 0182</span>
+    </div>
+    <div class="ws-pip" style="position:relative;width:300px;height:182px">
+      <div style="position:absolute;inset:0;background:linear-gradient(135deg,#4a3a2c,#1c150c)"></div>
+      <span class="ws-pip-lab"><span class="ws-dot pulse" style="background:var(--acc)"></span> agent eye · cam_front</span>
+    </div>
+  </div>
+
+  <div class="ds-sec">Status bar (.ws-statusbar) — bottom gradient strip, mono, centered items</div>
+  <div style="position:relative;height:60px;background:#100d09;border-radius:10px;overflow:hidden">
+    <div class="ws-statusbar">
+      <span class="ws-status-item">loft_04 · mipnerf360 capture · 292 frames</span>
+      <span class="ws-status-item">physics: bullet @ 240 Hz</span>
+      <span class="ws-status-item">GPU 2.6 / 12.9 GB</span>
+      <span class="ws-status-item acc">62 fps</span>
+    </div>
+  </div>
+
+  <div class="ds-sec">Rig topology (.ws-rig) — node graph with dashed links</div>
+  <div class="ws-panel ws-rig">
+    <div class="ws-panel-head"><span class="ws-head">Sensor rig — rig_a</span></div>
+    <div class="ws-panel-body">
+      <div class="ws-rig-grid">
+        <div class="ws-rig-col"><span class="ws-node">CAM F</span><span class="ws-node">CAM L</span><span class="ws-node">CAM R</span></div>
+        <div class="ws-rig-lines"><span></span><span></span><span></span></div>
+        <div class="ws-rig-col"><span class="ws-node on">RGB</span><span class="ws-node">DEPTH</span><span class="ws-node">SEG</span></div>
+      </div>
+      <div class="ws-rig-row2"><span class="ws-node">LIDAR · 64ch</span><span class="ws-node">IMU · 200Hz</span></div>
+    </div>
+  </div>
+
+  <div class="ds-sec">Placement system (floating mode)</div>
+  <div style="font-size:14px;line-height:1.8;color:var(--ink-mut);max-width:720px">
+    Panels float over a full-bleed 1920×1080 viewport at fixed anchor slots:
+    <b style="color:var(--ink)">.ws-top-left</b> (wordmark + tool rail) ·
+    <b style="color:var(--ink)">.ws-top-center</b> (mode switcher; second row at top:96 for render pills) ·
+    <b style="color:var(--ink)">.ws-top-right / .ws-right-col</b> (inspectors, 408px) ·
+    <b style="color:var(--ink)">.ws-left</b> (primary list panel, 396px at 96,122) ·
+    <b style="color:var(--ink)">.ws-bottom-center</b> (timeline) ·
+    <b style="color:var(--ink)">.ws-bottom-right</b> (mode card / PiP) ·
+    <b style="color:var(--ink)">.ws-statusbar</b> (full-width). Inset = 28px (docked: 10px).
+    Docked mode (`.docked` on .ws-root) removes blur/shadows, squares radii to 9px, solid panel fills.
+    Compact density (`.dense`) drops paddings ~30% and font sizes ~10%.
+  </div>
+</div>
+</div>
+</body>
+</html>

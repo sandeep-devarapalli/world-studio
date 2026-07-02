@@ -1,0 +1,55 @@
+# semantic flat palette
+newmtl floor
+Kd 0.3569 0.4353 0.5412
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl wall
+Kd 0.2392 0.2902 0.3608
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl rug
+Kd 0.6902 0.2902 0.5608
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl sofa
+Kd 0.8510 0.4627 0.2902
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl table
+Kd 0.7882 0.6627 0.2471
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl lamp
+Kd 0.9098 0.8863 0.4157
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl plant
+Kd 0.3098 0.6824 0.3843
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl shelf
+Kd 0.5608 0.4353 0.8510
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+
+newmtl window
+Kd 0.3098 0.7647 0.8510
+Ka 0 0 0
+Ks 0 0 0
+d 1.0
+

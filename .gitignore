@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+
+# Local upstream reference clones are kept for study, not shipped in the Apache repo.
+references/upstream/*
+!references/upstream/README.md
+
+# Local internal Budo source notes are retained for private reference only.
+docs/source-materials/budo_studio_*.md
+
+# Electron build outputs.
+out/
+release/

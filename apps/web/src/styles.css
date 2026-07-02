@@ -1,0 +1,83 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: #080604;
+  overflow: hidden;
+}
+
+body {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ws-stage-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #080604;
+}
+
+.ws-stage {
+  width: 1920px;
+  height: 1080px;
+  transform-origin: center center;
+}
+
+.ws-render-row {
+  position: absolute;
+  top: 78px;
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.ws-empty-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.ws-empty-state .ws-panel {
+  pointer-events: auto;
+  width: 420px;
+}
+
+.ws-mode-copy {
+  color: var(--ink-mut);
+  line-height: 1.55;
+}
+
+.ws-row-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ws-class-row {
+  cursor: pointer;
+}
+
+.ws-bottom-right .ws-mode-card {
+  width: 392px;
+}
+
+.ws-canvas {
+  touch-action: none;
+}
+
