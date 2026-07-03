@@ -523,6 +523,27 @@ test("exercises edit delete undo and pilot keys", async ({ page }) => {
   await expect(page.getByText("agent live")).toBeVisible();
 });
 
+test("shows Rapier physics diagnostics and steps the pilot agent", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+
+  const physicsPanel = page.locator(".ws-card", { hasText: "Physics" });
+  await expect(physicsPanel).toContainText("rapier3d-compat");
+  await expect(physicsPanel).toContainText("60hz");
+  await expect(physicsPanel).toContainText("colliders");
+
+  await page.keyboard.press("s");
+  await expect(page.locator(".ws-statusbar")).toContainText("physics rapier3d-compat");
+
+  await page.getByRole("button", { name: "Pilot" }).click();
+  await page.keyboard.press("w");
+  const pilotPanel = page.locator(".ws-agent-pad");
+  await expect(pilotPanel).toContainText("rapier3d-compat");
+  await expect(pilotPanel).toContainText("grounded");
+  await expect(page.locator(".ws-statusbar")).toContainText(/step [1-9]/);
+});
+
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();

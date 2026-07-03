@@ -6,11 +6,13 @@ import {
   parseObjMeshSummary,
   parsePointCloudPly,
   type LoftSceneManifest,
+  type ParsedObjMesh,
   type PointRecord
 } from "@world-studio/artifacts";
 import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel, WSPill, WSRamp, WSSliderRow, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
+import { RapierSimulation, unavailablePhysicsDiagnostics, type DriveCommand } from "./simulation";
 import type {
   AgentState,
   AuthorityStatus,
@@ -18,6 +20,7 @@ import type {
   LocalPackageInsight,
   LocalPackageIssue,
   LocalWorldPackagePayload,
+  PhysicsDiagnostics,
   RendererDiagnostics,
   RenderAdapter,
   RenderMode,
@@ -160,6 +163,8 @@ export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect"; x: number; y: number } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
+  const simulationRef = useRef<RapierSimulation | null>(null);
+  const simulationTokenRef = useRef(0);
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
@@ -184,6 +189,7 @@ export function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [agent, setAgent] = useState<AgentState>({ x: 1.5, z: -0.5, heading: 4.4 });
   const [trajectory, setTrajectory] = useState<Array<[number, number]>>([[1.5, -0.5]]);
+  const [physicsDiagnostics, setPhysicsDiagnostics] = useState<PhysicsDiagnostics>(unavailablePhysicsDiagnostics());
   const [sensors, setSensors] = useState(initialSensors);
   const [playhead, setPlayhead] = useState(0.28);
   const [playing, setPlaying] = useState(false);
@@ -221,8 +227,8 @@ export function App() {
       deleted,
       showDeleted,
       isolatedClass,
-      agent: mode === "pilot" ? agent : mode === "episode" ? replayAgent : undefined,
-      trajectory: mode === "pilot" || mode === "episode" ? trajectory : undefined,
+      agent: mode === "simulate" || mode === "pilot" ? agent : mode === "episode" ? replayAgent : undefined,
+      trajectory: mode === "simulate" || mode === "pilot" || mode === "episode" ? trajectory : undefined,
       grid: true
     }),
     [accent, agent, camera, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, trajectory]
@@ -253,6 +259,7 @@ export function App() {
   }, [renderer, options, scale]);
 
   useEffect(() => () => renderer?.dispose?.(), [renderer]);
+  useEffect(() => () => simulationRef.current?.dispose(), []);
 
   useEffect(() => {
     if (!playing) return;
@@ -273,6 +280,7 @@ export function App() {
       }
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
+      if (event.key.toLowerCase() === "s" && mode === "simulate") stepPhysics({ move: 0, turn: 0 }, "PhysicsStep(1/60s)");
       if (mode === "episode" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
         const delta = (event.key === "ArrowRight" ? 1 : -1) / Math.max(trajectory.length - 1, 1);
         setPlayhead((value) => Math.min(1, Math.max(0, value + delta)));
@@ -299,6 +307,32 @@ export function App() {
     };
   }, [mode, selected, history, trajectory]);
 
+  const initializeSimulation = useCallback((worldSession: WorldSession, mesh?: ParsedObjMesh) => {
+    const spawn = worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
+    const token = simulationTokenRef.current + 1;
+    simulationTokenRef.current = token;
+    simulationRef.current?.dispose();
+    simulationRef.current = null;
+    setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
+
+    void RapierSimulation.create({ mesh, agent: spawn })
+      .then((simulation) => {
+        if (simulationTokenRef.current !== token) {
+          simulation.dispose();
+          return;
+        }
+        simulationRef.current = simulation;
+        const step = simulation.reset(spawn);
+        setAgent(step.agent);
+        setPhysicsDiagnostics(step.diagnostics);
+      })
+      .catch(() => {
+        if (simulationTokenRef.current === token) {
+          setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
+        }
+      });
+  }, []);
+
   const resetTransientState = useCallback((worldSession: WorldSession) => {
     const spawn = worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
     setAgent(spawn);
@@ -308,6 +342,7 @@ export function App() {
     setHistory([]);
     setStepCount(0);
     setLastAction("idle");
+    setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
   }, []);
 
   const loadFixture = useCallback(async () => {
@@ -381,6 +416,7 @@ export function App() {
     setLoadError(null);
 
     if (!input.pointsText) {
+      const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
       const nextInsights = input.packageInsights ?? [];
       const nextIssues = input.packageIssues ?? [];
       const worldSession = createManifestOnlySession(input);
@@ -394,6 +430,7 @@ export function App() {
       setPackageIssues(nextIssues);
       setSelectedInsightId(nextInsights[0]?.id ?? null);
       resetTransientState(worldSession);
+      initializeSimulation(worldSession, mesh);
       return;
     }
 
@@ -441,7 +478,8 @@ export function App() {
     setPackageIssues(nextIssues);
     setSelectedInsightId(nextInsights[0]?.id ?? null);
     resetTransientState(worldSession);
-  }, []);
+    initializeSimulation(worldSession, mesh);
+  }, [initializeSimulation, resetTransientState]);
 
   const toStage = useCallback(
     (clientX: number, clientY: number) => {
@@ -506,17 +544,31 @@ export function App() {
 
   const resetAgent = () => {
     const spawn = session?.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
-    setAgent(spawn);
-    setTrajectory([[spawn.x, spawn.z]]);
+    const step = simulationRef.current?.reset(spawn);
+    const nextAgent = step?.agent ?? spawn;
+    setAgent(nextAgent);
+    setPhysicsDiagnostics(step?.diagnostics ?? unavailablePhysicsDiagnostics());
+    setTrajectory([[nextAgent.x, nextAgent.z]]);
     setStepCount(0);
     setLastAction("idle");
   };
 
-  const driveAgent = (key: string) => {
+  const stepPhysics = (command: DriveCommand, action: string) => {
     setStepCount((count) => count + 1);
-    setLastAction(
-      key === "w" ? "MoveAhead(0.12)" : key === "s" ? "MoveBack(0.12)" : key === "a" ? "Rotate(-9°)" : "Rotate(+9°)"
-    );
+    setLastAction(action);
+    const step = simulationRef.current?.step(command);
+    if (step) {
+      setAgent(step.agent);
+      setPhysicsDiagnostics(step.diagnostics);
+      setTrajectory((points) => [...points.slice(-42), [step.agent.x, step.agent.z]]);
+      return true;
+    }
+    return false;
+  };
+
+  const driveAgent = (key: string) => {
+    if (stepPhysics(driveCommandForKey(key), driveActionLabel(key))) return;
+
     setAgent((current) => {
       const step = 0.12;
       const turn = 0.16;
@@ -775,6 +827,28 @@ export function App() {
                     <b>{stepCount}</b>
                   </div>
                 </WSPanel>
+                <WSPanel title="Physics" className="ws-card">
+                  <div className="ws-kv">
+                    <span>backend</span>
+                    <b>{physicsDiagnostics.backend}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>rate</span>
+                    <b>{physicsDiagnostics.stepRateHz}hz</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>bodies</span>
+                    <b>
+                      {physicsDiagnostics.bodyCount} bodies · {physicsDiagnostics.colliderCount} colliders
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>contacts</span>
+                    <b>
+                      {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
+                    </b>
+                  </div>
+                </WSPanel>
                 <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
                   <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
                 </WSPanel>
@@ -873,7 +947,9 @@ export function App() {
               { label: `${renderMode} · ${Math.round(density * 100)}% density` },
               { label: `${selected.size} selected · ${deleted.size} hidden` },
               mode === "pilot"
-                ? { label: `step ${stepCount}`, accent: true }
+                ? { label: `physics ${physicsDiagnostics.backend} · step ${stepCount}`, accent: true }
+                : mode === "simulate"
+                  ? { label: `physics ${physicsDiagnostics.backend} · ${physicsDiagnostics.colliderCount} colliders`, accent: true }
                 : mode === "episode"
                   ? { label: `step ${episodeStep} / ${totalSteps}`, accent: true }
                   : { label: rendererStatusLabel(renderMode, rendererDiagnostics), accent: true }
@@ -965,6 +1041,16 @@ export function App() {
             <span>pose</span>
             <b>
               x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)}
+            </b>
+          </div>
+          <div className="ws-kv">
+            <span>physics</span>
+            <b>{physicsDiagnostics.backend}</b>
+          </div>
+          <div className="ws-kv">
+            <span>contacts</span>
+            <b>
+              {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
             </b>
           </div>
           <div className="ws-kv">
@@ -1623,6 +1709,20 @@ function ToolRail({ tool, onSelect }: { tool: string; onSelect: (tool: string) =
       ))}
     </div>
   );
+}
+
+function driveCommandForKey(key: string): DriveCommand {
+  if (key === "w") return { move: 1, turn: 0 };
+  if (key === "s") return { move: -1, turn: 0 };
+  if (key === "a") return { move: 0, turn: -1 };
+  return { move: 0, turn: 1 };
+}
+
+function driveActionLabel(key: string): string {
+  if (key === "w") return "MoveAhead(0.12)";
+  if (key === "s") return "MoveBack(0.12)";
+  if (key === "a") return "Rotate(-9deg)";
+  return "Rotate(+9deg)";
 }
 
 function nextAccent(current: keyof typeof accents): keyof typeof accents {
