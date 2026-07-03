@@ -56,6 +56,19 @@ on first use. `desktop:dev` also runs that check before opening the shell. The E
 app wraps the same web app and is the path for future local filesystem loading, proof
 capture, and packaged macOS/Windows/Linux builds.
 
+## Package Desktop App
+
+On macOS:
+
+```bash
+pnpm desktop:package
+open "release/mac-$(uname -m)/World Studio.app"
+```
+
+This creates an ad-hoc signed local smoke bundle from Electron's native app shell plus
+the built `apps/web/dist` and `apps/desktop/dist` outputs. It is for local validation,
+not notarized distribution.
+
 ## Test
 
 ```bash
