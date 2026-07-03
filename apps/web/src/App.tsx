@@ -15,6 +15,7 @@ import type {
   AuthorityStatus,
   CameraState,
   LocalPackageInsight,
+  LocalPackageIssue,
   LocalWorldPackagePayload,
   RenderAdapter,
   RenderMode,
@@ -93,6 +94,7 @@ interface LoadedWorldInput {
   companionArtifacts: string[];
   authorityStatus: AuthorityStatus;
   packageInsights?: LocalPackageInsight[];
+  packageIssues?: LocalPackageIssue[];
 }
 
 interface HistoryItem {
@@ -131,6 +133,7 @@ export function App() {
   const [session, setSession] = useState<WorldSession | null>(null);
   const [assetSummary, setAssetSummary] = useState<AssetSummary | null>(null);
   const [packageInsights, setPackageInsights] = useState<LocalPackageInsight[]>([]);
+  const [packageIssues, setPackageIssues] = useState<LocalPackageIssue[]>([]);
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -269,7 +272,8 @@ export function App() {
       primaryArtifact: "gaussians.ply",
       companionArtifacts: Object.keys(scene.files),
       authorityStatus: "visual_evidence",
-      packageInsights: buildFixtureInsights(scene)
+      packageInsights: buildFixtureInsights(scene),
+      packageIssues: []
     });
   }, []);
 
@@ -298,7 +302,8 @@ export function App() {
       primaryArtifact: payload.primaryArtifact,
       companionArtifacts: payload.companionArtifacts,
       authorityStatus: payload.authorityStatus,
-      packageInsights: payload.packageInsights
+      packageInsights: payload.packageInsights,
+      packageIssues: payload.packageIssues
     });
   }, []);
 
@@ -307,17 +312,20 @@ export function App() {
 
     if (!input.pointsText) {
       const nextInsights = input.packageInsights ?? [];
+      const nextIssues = input.packageIssues ?? [];
       const worldSession = createManifestOnlySession(input);
       setSession(worldSession);
       setRenderer(null);
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
       setPackageInsights(nextInsights);
+      setPackageIssues(nextIssues);
       setSelectedInsightId(nextInsights[0]?.id ?? null);
       resetTransientState(worldSession);
       return;
     }
 
     const nextInsights = input.packageInsights ?? [];
+    const nextIssues = input.packageIssues ?? [];
     const pointCloud = parsePointCloudPly(input.pointsText);
     const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
     const meshSummary = input.objText ? parseObjMeshSummary(input.objText) : { faces: 0, groups: [] };
@@ -347,6 +355,7 @@ export function App() {
       pointCount: pointCloud.points.length
     });
     setPackageInsights(nextInsights);
+    setPackageIssues(nextIssues);
     setSelectedInsightId(nextInsights[0]?.id ?? null);
     resetTransientState(worldSession);
   }, []);
@@ -757,6 +766,7 @@ export function App() {
             </button>
           </div>
         </WSPanel>
+        <PackageIssues issues={packageIssues} />
         <PackageInspector insights={packageInsights} selectedId={activePackageInsight?.id ?? null} onSelect={setSelectedInsightId} />
         <PackageInsightDetail insight={activePackageInsight} />
       </div>
@@ -894,6 +904,35 @@ function compactPath(value: string): string {
 
 function getDesktopApi() {
   return window.worldStudioDesktop;
+}
+
+function PackageIssues({ issues }: { issues: LocalPackageIssue[] }) {
+  if (!issues.length) return null;
+  return (
+    <WSPanel title="Package Issues" meta={`${issues.length} findings`} className="ws-issue-panel">
+      <div className="ws-issue-list">
+        {issues.map((issue) => (
+          <div className={`ws-issue-row ${issue.severity}`} key={issue.id}>
+            <div className="ws-insight-head">
+              <span>{issue.title}</span>
+              <b>{issue.severity}</b>
+            </div>
+            <div className="ws-insight-summary">{issue.message}</div>
+            <div className="ws-kv">
+              <span>code</span>
+              <b>{issue.code}</b>
+            </div>
+            {issue.artifact ? (
+              <div className="ws-kv">
+                <span>artifact</span>
+                <b>{issue.artifact}</b>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </WSPanel>
+  );
 }
 
 function PackageInspector({

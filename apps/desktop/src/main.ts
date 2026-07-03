@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import type { AuthorityStatus, LocalPackageInsight, LocalWorldPackagePayload, LocalWorldPackageTextFile } from "@world-studio/world-core";
+import type { AuthorityStatus, LocalPackageInsight, LocalPackageIssue, LocalWorldPackagePayload, LocalWorldPackageTextFile } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,14 +67,26 @@ app.on("activate", () => {
 
 async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayload> {
   const sourcePath = path.resolve(folder);
-  const sceneFile = await readOptionalText(sourcePath, "scene.json");
-  const pointsPly = await readFirstText(sourcePath, ["points.ply", "point_cloud.ply", "cloud.ply"]);
-  const gaussianPly = await readFirstBinary(sourcePath, ["gaussians.ply", "splats.ply", "splat.ply"]);
-  const objMesh = await readFirstText(sourcePath, ["collision_mesh.obj", "mesh.obj", "model.obj"]);
-  const budoMediaFrames = await readOptionalText(sourcePath, "budo.media_frames.v0.8.json");
-  const articleFigureViews = await readOptionalText(sourcePath, "budo.article_figure_3d_views.v0.1.json");
-  const verifiedExport = await readOptionalText(sourcePath, "verified_export/manifest.json");
-  const jsonManifests = await readPackageJsonManifests(sourcePath);
+  const packageIssues: LocalPackageIssue[] = [];
+  const sceneFile = await readOptionalText(sourcePath, "scene.json", packageIssues);
+  const pointsPly = await readFirstText(sourcePath, ["points.ply", "point_cloud.ply", "cloud.ply"], packageIssues);
+  const gaussianPly = await readFirstBinary(sourcePath, ["gaussians.ply", "splats.ply", "splat.ply"], packageIssues);
+  const objMesh = await readFirstText(sourcePath, ["collision_mesh.obj", "mesh.obj", "model.obj"], packageIssues);
+  const budoMediaFrames = await readOptionalText(sourcePath, "budo.media_frames.v0.8.json", packageIssues);
+  const articleFigureViews = await readOptionalText(sourcePath, "budo.article_figure_3d_views.v0.1.json", packageIssues);
+  const verifiedExport = await readOptionalText(sourcePath, "verified_export/manifest.json", packageIssues);
+  const jsonManifests = await readPackageJsonManifests(sourcePath, packageIssues);
+  const parsedSceneJson = sceneFile ? parseJsonRecord(sceneFile.text, sceneFile.relativePath, packageIssues) : undefined;
+  const sceneJson = parsedSceneJson && isSceneManifestRecord(parsedSceneJson) ? parsedSceneJson : undefined;
+  if (sceneFile && parsedSceneJson && !sceneJson) {
+    pushIssue(packageIssues, {
+      artifact: sceneFile.relativePath,
+      code: "unsupported_layout",
+      message: "scene.json was readable JSON, but it did not include the scene fields World Studio expects.",
+      severity: "warning",
+      title: "Unsupported scene manifest"
+    });
+  }
   const companionArtifacts = [...new Set([
     sceneFile?.relativePath,
     pointsPly?.relativePath,
@@ -97,6 +109,18 @@ async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayloa
     objMesh?.relativePath ??
     jsonManifests[0]?.relativePath ??
     "folder";
+  addPackageLayoutIssues({
+    articleFigureViews,
+    budoMediaFrames,
+    companionArtifacts,
+    gaussianPly,
+    jsonManifests,
+    objMesh,
+    packageIssues,
+    pointsPly,
+    sceneFile,
+    verifiedExport
+  });
 
   return {
     kind: "world-studio.local-package",
@@ -113,7 +137,7 @@ async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayloa
     primaryArtifact,
     companionArtifacts,
     authorityStatus,
-    sceneJson: sceneFile ? JSON.parse(sceneFile.text) : undefined,
+    sceneJson,
     pointsPly,
     gaussianPly,
     objMesh,
@@ -130,7 +154,8 @@ async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayloa
       pointsPly,
       sceneFile,
       verifiedExport
-    })
+    }, packageIssues),
+    packageIssues
   };
 }
 
@@ -153,21 +178,28 @@ function classifyAuthority(packageKind: string): AuthorityStatus {
   return "visual_evidence";
 }
 
-async function readFirstText(root: string, relativePaths: string[]): Promise<LocalWorldPackageTextFile | undefined> {
+async function readFirstText(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile | undefined> {
   for (const relativePath of relativePaths) {
-    const file = await readOptionalText(root, relativePath);
+    const file = await readOptionalText(root, relativePath, packageIssues);
     if (file) return file;
   }
   return undefined;
 }
 
-async function readOptionalText(root: string, relativePath: string): Promise<LocalWorldPackageTextFile | undefined> {
+async function readOptionalText(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile | undefined> {
   const filePath = resolveInside(root, relativePath);
   try {
     const info = await stat(filePath);
     if (!info.isFile()) return undefined;
     if (info.size > maxTextBytes) {
-      throw new Error(`${relativePath} is larger than ${maxTextBytes} bytes`);
+      pushIssue(packageIssues, {
+        artifact: relativePath,
+        code: "file_too_large",
+        message: `${relativePath} is ${info.size} bytes; World Studio reads text manifests up to ${maxTextBytes} bytes.`,
+        severity: "error",
+        title: "File too large"
+      });
+      return undefined;
     }
     return { relativePath, text: await readFile(filePath, "utf8") };
   } catch (error) {
@@ -176,7 +208,7 @@ async function readOptionalText(root: string, relativePath: string): Promise<Loc
   }
 }
 
-async function readPackageJsonManifests(root: string): Promise<LocalWorldPackageTextFile[]> {
+async function readPackageJsonManifests(root: string, packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile[]> {
   const candidates = new Set<string>();
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (entry.isFile() && entry.name.endsWith(".json")) candidates.add(entry.name);
@@ -193,27 +225,34 @@ async function readPackageJsonManifests(root: string): Promise<LocalWorldPackage
 
   const out: LocalWorldPackageTextFile[] = [];
   for (const relativePath of [...candidates].sort()) {
-    const file = await readOptionalText(root, relativePath);
+    const file = await readOptionalText(root, relativePath, packageIssues);
     if (file) out.push(file);
   }
   return out;
 }
 
-async function readFirstBinary(root: string, relativePaths: string[]) {
+async function readFirstBinary(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[]) {
   for (const relativePath of relativePaths) {
-    const file = await readOptionalBinary(root, relativePath);
+    const file = await readOptionalBinary(root, relativePath, packageIssues);
     if (file) return file;
   }
   return undefined;
 }
 
-async function readOptionalBinary(root: string, relativePath: string) {
+async function readOptionalBinary(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]) {
   const filePath = resolveInside(root, relativePath);
   try {
     const info = await stat(filePath);
     if (!info.isFile()) return undefined;
     if (info.size > maxBinaryBytes) {
-      throw new Error(`${relativePath} is larger than ${maxBinaryBytes} bytes`);
+      pushIssue(packageIssues, {
+        artifact: relativePath,
+        code: "file_too_large",
+        message: `${relativePath} is ${info.size} bytes; World Studio reads binary assets up to ${maxBinaryBytes} bytes in this desktop bridge.`,
+        severity: "error",
+        title: "File too large"
+      });
+      return undefined;
     }
     const bytes = await readFile(filePath);
     return {
@@ -245,7 +284,7 @@ function buildPackageInsights(input: {
   pointsPly?: LocalWorldPackageTextFile;
   sceneFile?: LocalWorldPackageTextFile;
   verifiedExport?: LocalWorldPackageTextFile;
-}): LocalPackageInsight[] {
+}, packageIssues: LocalPackageIssue[] = []): LocalPackageInsight[] {
   const insights: LocalPackageInsight[] = [];
   const handled = new Set<string>();
 
@@ -311,7 +350,7 @@ function buildPackageInsights(input: {
 
   if (input.budoMediaFrames) {
     handled.add(input.budoMediaFrames.relativePath);
-    const manifest = parseJsonRecord(input.budoMediaFrames.text);
+    const manifest = parseJsonRecord(input.budoMediaFrames.text, input.budoMediaFrames.relativePath, packageIssues);
     const frames = Array.isArray(manifest.frames) ? manifest.frames : [];
     const firstFrame = isRecord(frames[0]) ? frames[0] : {};
     insights.push({
@@ -348,7 +387,7 @@ function buildPackageInsights(input: {
 
   if (input.articleFigureViews) {
     handled.add(input.articleFigureViews.relativePath);
-    const manifest = parseJsonRecord(input.articleFigureViews.text);
+    const manifest = parseJsonRecord(input.articleFigureViews.text, input.articleFigureViews.relativePath, packageIssues);
     const views = Array.isArray(manifest.views) ? manifest.views : Array.isArray(manifest.frames) ? manifest.frames : [];
     const firstView = isRecord(views[0]) ? views[0] : {};
     insights.push({
@@ -387,7 +426,7 @@ function buildPackageInsights(input: {
 
   if (input.verifiedExport) {
     handled.add(input.verifiedExport.relativePath);
-    const manifest = parseJsonRecord(input.verifiedExport.text);
+    const manifest = parseJsonRecord(input.verifiedExport.text, input.verifiedExport.relativePath, packageIssues);
     const files = isRecord(manifest.files) ? manifest.files : {};
     const hashes = isRecord(manifest.hashes) ? manifest.hashes : {};
     insights.push({
@@ -424,7 +463,7 @@ function buildPackageInsights(input: {
 
   for (const file of input.jsonManifests) {
     if (handled.has(file.relativePath)) continue;
-    const manifest = parseJsonRecord(file.text);
+    const manifest = parseJsonRecord(file.text, file.relativePath, packageIssues);
     const schema = stringValue(manifest.schema) ?? stringValue(manifest.type) ?? stringValue(manifest.kind);
     const metrics = [
       { label: "keys", value: Object.keys(manifest).length },
@@ -460,17 +499,71 @@ function buildPackageInsights(input: {
   return insights;
 }
 
-function parseJsonRecord(text: string): Record<string, unknown> {
+function addPackageLayoutIssues(input: {
+  articleFigureViews?: LocalWorldPackageTextFile;
+  budoMediaFrames?: LocalWorldPackageTextFile;
+  companionArtifacts: string[];
+  gaussianPly?: { relativePath: string };
+  jsonManifests: LocalWorldPackageTextFile[];
+  objMesh?: LocalWorldPackageTextFile;
+  packageIssues: LocalPackageIssue[];
+  pointsPly?: LocalWorldPackageTextFile;
+  sceneFile?: LocalWorldPackageTextFile;
+  verifiedExport?: LocalWorldPackageTextFile;
+}) {
+  const hasRenderable = Boolean(input.pointsPly || input.gaussianPly || input.objMesh);
+  const hasManifest = Boolean(input.sceneFile || input.budoMediaFrames || input.articleFigureViews || input.verifiedExport || input.jsonManifests.length);
+  if (!input.companionArtifacts.length) {
+    pushIssue(input.packageIssues, {
+      code: "unsupported_layout",
+      message: "World Studio did not find scene.json, recognized PLY/OBJ assets, Budo-compatible manifests, verified_export/manifest.json, or generic JSON manifests in this folder.",
+      severity: "error",
+      title: "Unsupported package layout"
+    });
+    return;
+  }
+
+  if (!hasRenderable && !input.verifiedExport && !input.budoMediaFrames && !input.articleFigureViews) {
+    pushIssue(input.packageIssues, {
+      code: "missing_primary_artifact",
+      message: hasManifest
+        ? "This package can be inspected as metadata, but no points, Gaussian PLY, or OBJ mesh was found for rendering."
+        : "No renderable primary artifact was found.",
+      severity: "warning",
+      title: "Missing renderable primary artifact"
+    });
+  }
+}
+
+function parseJsonRecord(text: string, artifact?: string, packageIssues?: LocalPackageIssue[]): Record<string, unknown> {
   try {
     const value = JSON.parse(text);
     return isRecord(value) ? value : {};
-  } catch {
+  } catch (error) {
+    pushIssue(packageIssues, {
+      artifact,
+      code: "malformed_json",
+      message: `${artifact ?? "JSON manifest"} could not be parsed: ${error instanceof Error ? error.message : "invalid JSON"}`,
+      severity: "error",
+      title: "Malformed JSON"
+    });
     return {};
   }
 }
 
+function pushIssue(packageIssues: LocalPackageIssue[] | undefined, issue: Omit<LocalPackageIssue, "id">) {
+  if (!packageIssues) return;
+  const id = `${issue.code}:${issue.artifact ?? "package"}`;
+  if (packageIssues.some((entry) => entry.id === id)) return;
+  packageIssues.push({ id, ...issue });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSceneManifestRecord(value: Record<string, unknown>) {
+  return typeof value.dataset === "string" && typeof value.version === "string" && Array.isArray(value.classes);
 }
 
 function stringValue(value: unknown): string | undefined {

@@ -282,6 +282,51 @@ const adapterDrilldownPayload: LocalWorldPackagePayload = {
   ]
 };
 
+const invalidPackagePayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "invalid_package",
+  sourcePath: "/tmp/world-studio/invalid_package",
+  loadedVia: "electron-picker",
+  sourceKind: "external.local_folder",
+  packageKind: "external-local-folder",
+  primaryArtifact: "folder",
+  companionArtifacts: [],
+  authorityStatus: "proposal_not_ground_truth",
+  packageInsights: [],
+  packageIssues: [
+    {
+      id: "malformed_json:metadata/bad.json",
+      severity: "error",
+      code: "malformed_json",
+      title: "Malformed JSON",
+      message: "metadata/bad.json could not be parsed: Unexpected token }",
+      artifact: "metadata/bad.json"
+    },
+    {
+      id: "file_too_large:gaussians.ply",
+      severity: "error",
+      code: "file_too_large",
+      title: "File too large",
+      message: "gaussians.ply is larger than the desktop bridge limit.",
+      artifact: "gaussians.ply"
+    },
+    {
+      id: "missing_primary_artifact:package",
+      severity: "warning",
+      code: "missing_primary_artifact",
+      title: "Missing renderable primary artifact",
+      message: "No points, Gaussian PLY, or OBJ mesh was found for rendering."
+    },
+    {
+      id: "unsupported_layout:package",
+      severity: "error",
+      code: "unsupported_layout",
+      title: "Unsupported package layout",
+      message: "World Studio did not find a supported package layout in this folder."
+    }
+  ]
+};
+
 test("loads loft_04 and switches all six modes", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (message) => {
@@ -415,6 +460,29 @@ test("opens package inspector drilldowns for adapter manifests", async ({ page }
   await expect(detail).toContainText("Authority");
   await expect(detail).toContainText("human_verified_semantic_labels");
   await expect(detail).toContainText("semantic_components.json");
+});
+
+test("shows package validation issues for unsupported local packages", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => payload.sourcePath,
+      openLocalPackage: async () => payload
+    };
+  }, invalidPackagePayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+
+  const issues = page.locator(".ws-issue-panel");
+  await expect(page.locator(".ws-logo-sub", { hasText: "invalid_package · loaded" })).toBeVisible();
+  await expect(issues).toContainText("Package Issues");
+  await expect(issues).toContainText("Malformed JSON");
+  await expect(issues).toContainText("malformed_json");
+  await expect(issues).toContainText("metadata/bad.json");
+  await expect(issues).toContainText("File too large");
+  await expect(issues).toContainText("file_too_large");
+  await expect(issues).toContainText("Missing renderable primary artifact");
+  await expect(issues).toContainText("Unsupported package layout");
 });
 
 async function expectCanvasScreenshot(page: Page) {
