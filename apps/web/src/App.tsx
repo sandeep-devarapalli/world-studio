@@ -8,7 +8,7 @@ import {
   type LoftSceneManifest,
   type PointRecord
 } from "@world-studio/artifacts";
-import { accents, WSButton, WSChip, WSControlsBar, WSKey, WSPanel, WSPill, WSStatusBar, WSSwitch, WSWordmark } from "@world-studio/design-system";
+import { accents, WSButton, WSChip, WSControlsBar, WSIcon, WSKey, WSPanel, WSPill, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
 import type {
   AgentState,
@@ -39,20 +39,20 @@ const renderModes: RenderMode[] = ["splat", "points", "mesh", "semantic", "depth
 
 const fallbackClassColors = ["#5b6f8a", "#3d4a5c", "#b04a8f", "#d9764a", "#c9a93f", "#e8e26a", "#4fae62", "#8f6fd9", "#4fc3d9"];
 
-const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = {
+const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName; label: string }>> = {
   view: [
     { keyName: "L", label: "load" },
-    { keyName: "drag", label: "orbit" },
-    { keyName: "wheel", label: "zoom" }
+    { glyph: "mouseL", label: "orbit" },
+    { glyph: "wheel", label: "zoom" }
   ],
   edit: [
-    { keyName: "drag", label: "brush" },
+    { glyph: "mouseL", label: "brush" },
     { keyName: "⌘Z", label: "undo" },
     { keyName: "Del", label: "delete" }
   ],
   simulate: [
     { keyName: "F", label: "frames" },
-    { keyName: "drag", label: "inspect" },
+    { glyph: "mouseL", label: "inspect" },
     { keyName: "S", label: "sync" }
   ],
   pilot: [
@@ -63,7 +63,7 @@ const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = 
   sensors: [
     { keyName: "G", label: "place" },
     { keyName: "/", label: "filter" },
-    { keyName: "drag", label: "orbit" }
+    { glyph: "mouseL", label: "orbit" }
   ],
   episode: [
     { keyName: "Space", label: "play" },
@@ -71,6 +71,15 @@ const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = 
     { keyName: "E", label: "export" }
   ]
 };
+
+const editTools: Array<{ id: string; icon: WSIconName; title: string }> = [
+  { id: "orbit", icon: "orbit", title: "orbit" },
+  { id: "brush", icon: "brush", title: "brush select" },
+  { id: "rect", icon: "rect", title: "rect select" },
+  { id: "crop", icon: "crop", title: "crop box" },
+  { id: "move", icon: "move", title: "transform" },
+  { id: "ruler", icon: "ruler", title: "measure" }
+];
 
 interface AssetSummary {
   gaussianKind: string;
@@ -151,6 +160,7 @@ export function App() {
   const [playhead, setPlayhead] = useState(0.28);
   const [playing, setPlaying] = useState(false);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
+  const [tool, setTool] = useState("brush");
   const accent = accents[accentName];
 
   const options: RenderOptions = useMemo(
@@ -440,7 +450,7 @@ export function App() {
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (mode === "edit" && renderer) {
+    if (mode === "edit" && renderer && tool === "brush") {
       interactionRef.current = { kind: "brush", x: event.clientX, y: event.clientY };
       brushStrokeRef.current = new Set();
       paintAt(event);
@@ -490,7 +500,8 @@ export function App() {
 
   return (
     <div className="ws-stage-shell">
-      <div className="ws-stage" style={{ transform: `scale(${scale})` }}>
+      {hasDesktopApi ? <div className="ws-drag-strip" /> : null}
+      <div className="ws-stage" style={{ transform: `translate(-50%, -50%) scale(${scale})` }}>
         <main className={rootClass} style={{ "--acc": accent } as React.CSSProperties}>
           <canvas
             ref={canvasRef}
@@ -505,11 +516,12 @@ export function App() {
           <div className="ws-overlay">
             <div className="ws-top-left">
               <WSWordmark context={session ? `${session.name} · ${session.version ?? "loaded"}` : "no world loaded"} />
-              {mode === "edit" ? <ToolRail /> : null}
+              {mode === "edit" ? <ToolRail tool={tool} onSelect={setTool} /> : null}
             </div>
 
             <div className="ws-top-center">
               <WSPanel className="ws-mode-switch">
+                <span className="ws-head">Mode</span>
                 {modes.map((entry) => (
                   <WSPill key={entry.id} active={entry.id === mode} onClick={() => setMode(entry.id)}>
                     {entry.label}
@@ -519,11 +531,14 @@ export function App() {
             </div>
 
             <div className="ws-render-row">
-              {renderModes.map((entry) => (
-                <WSPill key={entry} className="sm" active={entry === renderMode} onClick={() => setRenderMode(entry)}>
-                  {entry}
-                </WSPill>
-              ))}
+              <WSPanel className="ws-mode-switch">
+                <span className="ws-head">Render</span>
+                {renderModes.map((entry) => (
+                  <WSPill key={entry} className="sm" active={entry === renderMode} onClick={() => setRenderMode(entry)}>
+                    {entry}
+                  </WSPill>
+                ))}
+              </WSPanel>
             </div>
 
             <aside className="ws-left">{renderLeftPanel()}</aside>
@@ -536,7 +551,9 @@ export function App() {
             </div>
 
             <div className="ws-bottom-center">
-              <WSControlsBar controls={controls[mode]} />
+              <div className="ws-bottom-stack">
+                <WSControlsBar controls={controls[mode]} />
+              </div>
             </div>
 
             {!session ? (
@@ -1094,12 +1111,17 @@ function ModeCard({
   );
 }
 
-function ToolRail() {
+function ToolRail({ tool, onSelect }: { tool: string; onSelect: (tool: string) => void }) {
   return (
     <div className="ws-rail">
-      {["◌", "✕", "↺", "⇱"].map((item, index) => (
-        <button className={`ws-rail-btn ${index === 0 ? "on" : ""}`} key={item} title={item}>
-          {item}
+      {editTools.map((entry) => (
+        <button
+          className={`ws-rail-btn ${entry.id === tool ? "on" : ""}`}
+          key={entry.id}
+          title={entry.title}
+          onClick={() => onSelect(entry.id)}
+        >
+          <WSIcon name={entry.icon} />
         </button>
       ))}
     </div>
