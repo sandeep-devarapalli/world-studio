@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { LocalWorldPackagePayload } from "@world-studio/world-core";
+import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
   label: string;
@@ -23,6 +24,8 @@ const localScene = {
   ],
   agent_spawn: { x: 0, z: 0, heading_rad: 0 }
 };
+
+const loftFixture = (name: string) => new URL(`../public/fixtures/loft_04/${name}`, import.meta.url);
 
 const localPoints = `ply
 format ascii 1.0
@@ -48,23 +51,7 @@ end_header
 0 0.5 0.4 210 130 80 2
 0.2 0.3 0.4 210 130 80 2`;
 
-const localGaussian = `ply
-format ascii 1.0
-element vertex 1
-property float x
-property float y
-property float z
-property float opacity
-property float scale_0
-property float scale_1
-property float scale_2
-property float rot_0
-property float rot_1
-property float rot_2
-property float rot_3
-property float f_dc_0
-end_header
-0 0 0 1 0.1 0.1 0.1 1 0 0 0 0.5`;
+const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
 
 const localPackagePayload: LocalWorldPackagePayload = {
   kind: "world-studio.local-package",
@@ -567,6 +554,7 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: "Open Local" }).click();
+  const statusbar = page.locator(".ws-statusbar");
 
   await expect(page.locator(".ws-logo-sub", { hasText: "local_lab · v1" })).toBeVisible();
   await expect(page.getByText("world-studio-local-folder")).toBeVisible();
@@ -576,6 +564,13 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
   await expect(page.getByText("Package Inspector")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Scene Manifest detail" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Asset Set detail" })).toBeVisible();
+  await page.getByRole("button", { name: "splat" }).click();
+  await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
+  await expect(statusbar).toContainText("16060 splats");
+  await expect(page.getByText("ply source")).toBeVisible();
+  await expect(page.getByText("ascii", { exact: true })).toBeVisible();
+  await expect(page.getByText("spark prep")).toBeVisible();
+  await expect(page.getByText("converted", { exact: true })).toBeVisible();
 });
 
 test("loads generic manifest-only packages through the desktop bridge", async ({ page }) => {

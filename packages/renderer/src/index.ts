@@ -47,6 +47,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private sparkMesh?: THREE.Object3D & { dispose?: () => void; getBoundingBox?: (centersOnly?: boolean) => THREE.Box3; initialized?: Promise<unknown>; isInitialized?: boolean; numSplats?: number };
   private sparkRenderable = false;
   private sparkFailureReason?: string;
+  private gaussianSourceFormat?: string;
+  private gaussianPreparedForSpark?: boolean;
   private sparkObjectUrl?: string;
   private lastCanvas?: HTMLCanvasElement;
   private lastOptions?: RenderOptions;
@@ -147,6 +149,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
       sparkState: this.gaussianUrl ? this.sparkState : "unavailable",
       sparkRenderable,
       hasGaussianSource: Boolean(this.gaussianUrl),
+      gaussianSourceFormat: this.gaussianSourceFormat,
+      gaussianPreparedForSpark: this.gaussianPreparedForSpark,
       gaussianSplatCount: this.sparkMesh?.numSplats,
       sparkFailureReason: this.sparkFailureReason
     };
@@ -171,6 +175,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.sparkMesh = undefined;
     this.sparkRenderable = false;
     this.sparkFailureReason = undefined;
+    this.gaussianSourceFormat = undefined;
+    this.gaussianPreparedForSpark = undefined;
     this.sparkObjectUrl = undefined;
     this.sparkState = "idle";
   }
@@ -380,7 +386,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.notifyDiagnostics();
     try {
       const spark = await import("@sparkjsdev/spark");
-      const sparkUrl = await sparkCompatiblePlyUrl(this.gaussianUrl);
+      const sparkUrl = await this.sparkCompatiblePlyUrl(this.gaussianUrl);
       if (sparkUrl !== this.gaussianUrl) this.sparkObjectUrl = sparkUrl;
       this.sparkRenderer = new spark.SparkRenderer({
         renderer: this.webgl,
@@ -484,6 +490,19 @@ export class ThreeWorldRenderer implements RenderAdapter {
     });
   }
 
+  private async sparkCompatiblePlyUrl(url: string): Promise<string> {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Unable to load Gaussian PLY: ${response.status}`);
+    const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer());
+    this.gaussianSourceFormat = prepared.sourceFormat;
+    this.gaussianPreparedForSpark = prepared.converted;
+    this.notifyDiagnostics();
+    if (!prepared.converted) return url;
+    const blobBytes = new ArrayBuffer(prepared.bytes.byteLength);
+    new Uint8Array(blobBytes).set(prepared.bytes);
+    return URL.createObjectURL(new Blob([blobBytes], { type: "application/octet-stream" }));
+  }
+
   private notifyDiagnostics(): void {
     this.onDiagnosticsChange?.(this.getDiagnostics());
   }
@@ -493,16 +512,6 @@ export const CanvasWorldRenderer = ThreeWorldRenderer;
 
 export function createSparkRendererAdapter(input: ThreeRendererInput): ThreeWorldRenderer {
   return new ThreeWorldRenderer(input);
-}
-
-async function sparkCompatiblePlyUrl(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Unable to load Gaussian PLY: ${response.status}`);
-  const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer());
-  if (!prepared.converted) return url;
-  const blobBytes = new ArrayBuffer(prepared.bytes.byteLength);
-  new Uint8Array(blobBytes).set(prepared.bytes);
-  return URL.createObjectURL(new Blob([blobBytes], { type: "application/octet-stream" }));
 }
 
 function createAgentGroup(): THREE.Group {

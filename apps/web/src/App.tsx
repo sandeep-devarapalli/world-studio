@@ -1188,6 +1188,24 @@ export function App() {
             <b>{session?.provenance.authorityStatus ?? "none"}</b>
           </div>
           <div className="ws-kv">
+            <span>renderer</span>
+            <b>{rendererStatusLabel(renderMode, rendererDiagnostics)}</b>
+          </div>
+          <div className="ws-kv">
+            <span>ply source</span>
+            <b>{rendererDiagnostics?.gaussianSourceFormat ?? "unknown"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>spark prep</span>
+            <b>{rendererPreparationLabel(rendererDiagnostics)}</b>
+          </div>
+          {rendererDiagnostics?.sparkFailureReason ? (
+            <div className="ws-kv">
+              <span>fallback</span>
+              <b>{rendererDiagnostics.sparkFailureReason}</b>
+            </div>
+          ) : null}
+          <div className="ws-kv">
             <span>ui</span>
             <button className="ws-node click" onClick={() => setDense((value) => !value)}>
               {dense ? "dense" : "regular"}
@@ -1248,6 +1266,12 @@ function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagno
   }
   if (diagnostics.sparkState === "failed") return `splat fallback · ${diagnostics.sparkFailureReason ?? "spark failed"}`;
   return "splat fallback · not renderable";
+}
+
+function rendererPreparationLabel(diagnostics: RendererDiagnostics | null): string {
+  if (!diagnostics?.hasGaussianSource) return "none";
+  if (diagnostics.gaussianPreparedForSpark === undefined) return "pending";
+  return diagnostics.gaussianPreparedForSpark ? "converted" : "native";
 }
 
 function createPointCloudSession(input: LoadedWorldInput, pointCount: number, classes: WorldClass[]): WorldSession {
