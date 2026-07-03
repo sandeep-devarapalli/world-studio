@@ -7,6 +7,7 @@
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "dev": "pnpm --filter @world-studio/web dev",
+    "desktop:setup": "pnpm --filter @world-studio/desktop run setup",
     "desktop:dev": "pnpm --filter @world-studio/desktop dev",
     "build": "pnpm -r build",
     "test": "vitest run",

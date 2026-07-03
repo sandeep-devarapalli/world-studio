@@ -47,11 +47,14 @@ pnpm dev
 In another:
 
 ```bash
+pnpm desktop:setup
 pnpm desktop:dev
 ```
 
-The Electron app wraps the same web app and is the path for future local filesystem
-loading, proof capture, and packaged macOS/Windows/Linux builds.
+`desktop:setup` checks that Electron's native app binary is present and downloads it
+on first use. `desktop:dev` also runs that check before opening the shell. The Electron
+app wraps the same web app and is the path for future local filesystem loading, proof
+capture, and packaged macOS/Windows/Linux builds.
 
 ## Test
 
@@ -85,4 +88,3 @@ license review.
 GPL code, including LichtFeld Studio, is reference-only unless the project intentionally
 changes licensing. Unreal/Omniverse-heavy systems are also reference-first, not default
 runtime dependencies.
-
