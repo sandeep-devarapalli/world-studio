@@ -1,6 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { LocalWorldPackagePayload } from "@world-studio/world-core";
 
+type PackageFixtureChoice = {
+  label: string;
+  payload: LocalWorldPackagePayload;
+};
+
 const localScene = {
   dataset: "local_lab",
   version: "v1",
@@ -171,7 +176,163 @@ const genericManifestPayload: LocalWorldPackagePayload = {
       ],
       previewText: JSON.stringify({ schema: "acme.world.v1", captures: [], assets: { points: "cloud.ply" } }, null, 2)
     }
+  ],
+  packageIssues: [
+    {
+      id: "missing_primary_artifact:package",
+      severity: "warning",
+      code: "missing_primary_artifact",
+      title: "Missing renderable primary artifact",
+      message: "This package can be inspected as metadata, but no points, Gaussian PLY, or OBJ mesh was found for rendering."
+    }
   ]
+};
+
+const budoCompatiblePayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "budo_compat",
+  sourcePath: "/tmp/world-studio/budo_compat",
+  loadedVia: "electron-picker",
+  sourceKind: "budo.local_folder",
+  packageKind: "budo-media-bundle",
+  primaryArtifact: "budo.media_frames.v0.8.json",
+  companionArtifacts: ["budo.media_frames.v0.8.json", "budo.article_figure_3d_views.v0.1.json"],
+  authorityStatus: "visual_evidence",
+  budoMediaFrames: {
+    relativePath: "budo.media_frames.v0.8.json",
+    text: JSON.stringify({
+      schema: "budo.media_frames.v0.8",
+      source_kind: "budo.capture",
+      frames: [
+        { display_name: "frame 1", rgb_path: "rgb/0001.jpg", width: 1920, height: 1080 },
+        { display_name: "frame 2", rgb_path: "rgb/0002.jpg", width: 1920, height: 1080 }
+      ]
+    })
+  },
+  articleFigureViews: {
+    relativePath: "budo.article_figure_3d_views.v0.1.json",
+    text: JSON.stringify({
+      schema: "budo.article_figure_3d_views.v0.1",
+      views: [{ display_name: "overview", point_cloud_path: "points.ply", mesh_paths: ["collision_mesh.obj"] }]
+    })
+  },
+  packageInsights: [
+    {
+      id: "media-frames",
+      kind: "media-frames",
+      title: "Media Frames",
+      artifact: "budo.media_frames.v0.8.json",
+      summary: "Media-frame manifest adapter",
+      status: "budo.capture",
+      metrics: [
+        { label: "frames", value: 2 },
+        { label: "width", value: 1920 },
+        { label: "height", value: 1080 }
+      ],
+      details: [
+        { label: "schema", value: "budo.media_frames.v0.8" },
+        { label: "first", value: "frame 1" }
+      ],
+      sections: [
+        {
+          title: "Frame Paths",
+          rows: [
+            { label: "frame 1", value: "rgb/0001.jpg" },
+            { label: "frame 2", value: "rgb/0002.jpg" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ schema: "budo.media_frames.v0.8", frames: [{ rgb_path: "rgb/0001.jpg" }] }, null, 2)
+    },
+    {
+      id: "figure-views",
+      kind: "figure-views",
+      title: "Figure Views",
+      artifact: "budo.article_figure_3d_views.v0.1.json",
+      summary: "Saved 3D view manifest adapter",
+      metrics: [
+        { label: "views", value: 1 },
+        { label: "point clouds", value: 1 },
+        { label: "mesh refs", value: 1 }
+      ],
+      details: [
+        { label: "schema", value: "budo.article_figure_3d_views.v0.1" },
+        { label: "first", value: "overview" }
+      ],
+      sections: [
+        {
+          title: "View References",
+          rows: [
+            { label: "view 1", value: "points.ply" },
+            { label: "mesh", value: "collision_mesh.obj" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ schema: "budo.article_figure_3d_views.v0.1", views: [{ point_cloud_path: "points.ply" }] }, null, 2)
+    }
+  ],
+  packageIssues: []
+};
+
+const verifiedExportPayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "verified_export_compat",
+  sourcePath: "/tmp/world-studio/verified_export_compat",
+  loadedVia: "electron-picker",
+  sourceKind: "budo.local_folder",
+  packageKind: "verified-semantic-export",
+  primaryArtifact: "verified_export/manifest.json",
+  companionArtifacts: ["verified_export/manifest.json"],
+  authorityStatus: "human_verified_semantic_labels",
+  verifiedExport: {
+    relativePath: "verified_export/manifest.json",
+    text: JSON.stringify({
+      schema: "budo.verified_export.v1",
+      status: "verified",
+      boundary: "human-reviewed semantic export",
+      component_count: 4,
+      files: { labels: "labels.json", points: "semantic_points.ply" },
+      hashes: { labels: "sha256:labels", points: "sha256:points" }
+    })
+  },
+  packageInsights: [
+    {
+      id: "verified-export",
+      kind: "verified-export",
+      title: "Verified Export",
+      artifact: "verified_export/manifest.json",
+      summary: "human-reviewed semantic export",
+      status: "verified",
+      metrics: [
+        { label: "components", value: 4 },
+        { label: "files", value: 2 },
+        { label: "hashes", value: 2 }
+      ],
+      details: [
+        { label: "schema", value: "budo.verified_export.v1" },
+        { label: "status", value: "verified" }
+      ],
+      sections: [
+        {
+          title: "Authority",
+          rows: [
+            { label: "status", value: "verified" },
+            { label: "boundary", value: "human-reviewed semantic export" },
+            { label: "components", value: 4 }
+          ]
+        },
+        {
+          title: "Files",
+          rows: [
+            { label: "labels", value: "labels.json" },
+            { label: "points", value: "semantic_points.ply" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify({ status: "verified", files: { labels: "labels.json" } }, null, 2)
+    }
+  ],
+  packageIssues: []
 };
 
 const adapterDrilldownPayload: LocalWorldPackagePayload = {
@@ -326,6 +487,13 @@ const invalidPackagePayload: LocalWorldPackagePayload = {
     }
   ]
 };
+
+const compatibilityPackageChoices: PackageFixtureChoice[] = [
+  { label: "World Studio layout", payload: localPackagePayload },
+  { label: "Generic JSON layout", payload: genericManifestPayload },
+  { label: "Budo-compatible layout", payload: budoCompatiblePayload },
+  { label: "Verified export layout", payload: verifiedExportPayload }
+];
 
 test("loads loft_04 and switches all six modes", async ({ page }) => {
   const errors: string[] = [];
@@ -485,9 +653,102 @@ test("shows package validation issues for unsupported local packages", async ({ 
   await expect(issues).toContainText("Unsupported package layout");
 });
 
+test("selects compatibility package layouts through the visible UI test bridge", async ({ page }) => {
+  await installSelectablePackageBridge(page, compatibilityPackageChoices);
+  await page.goto("/");
+
+  const bridge = page.getByTestId("package-fixture-bridge");
+  await expect(bridge).toBeVisible();
+  await expect(bridge).toContainText("World Studio layout");
+  await expect(bridge).toContainText("Generic JSON layout");
+  await expect(bridge).toContainText("Budo-compatible layout");
+  await expect(bridge).toContainText("Verified export layout");
+
+  for (const [index, choice] of compatibilityPackageChoices.entries()) {
+    if (index > 0) {
+      await page.reload();
+      await expect(page.locator(".ws-logo-name", { hasText: "World Studio" })).toBeVisible();
+    }
+
+    await bridge.getByRole("button", { name: choice.label }).click();
+    await page.getByRole("button", { name: "Open Local" }).click();
+
+    await expect(page.getByText(choice.payload.packageKind).first()).toBeVisible();
+    await expect(page.getByText(choice.payload.authorityStatus, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(choice.payload.primaryArtifact).first()).toBeVisible();
+
+    const subtitle = page.locator(".ws-logo-sub");
+    await expect(subtitle).toContainText(choice.payload.name);
+    if (choice.payload.packageIssues?.length) {
+      await expect(page.locator(".ws-issue-panel")).toContainText(choice.payload.packageIssues[0].title);
+    }
+  }
+});
+
 async function expectCanvasScreenshot(page: Page) {
   const canvas = page.locator("[data-testid='world-canvas']");
   await expect(canvas).toBeVisible();
   const screenshot = await canvas.screenshot();
   expect(screenshot.byteLength).toBeGreaterThan(10_000);
+}
+
+async function installSelectablePackageBridge(page: Page, choices: PackageFixtureChoice[]) {
+  await page.addInitScript((fixtureChoices: PackageFixtureChoice[]) => {
+    let selectedIndex = 0;
+    const bridgeWindow = window as Window & {
+      worldStudioDesktop?: {
+        pickFolder: () => Promise<string>;
+        openLocalPackage: () => Promise<LocalWorldPackagePayload>;
+      };
+    };
+
+    bridgeWindow.worldStudioDesktop = {
+      pickFolder: async () => fixtureChoices[selectedIndex].payload.sourcePath,
+      openLocalPackage: async () => fixtureChoices[selectedIndex].payload
+    };
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const bridge = document.createElement("div");
+      bridge.dataset.testid = "package-fixture-bridge";
+      bridge.setAttribute("aria-label", "Package fixture bridge");
+      Object.assign(bridge.style, {
+        position: "fixed",
+        right: "12px",
+        bottom: "12px",
+        zIndex: "999999",
+        display: "flex",
+        gap: "6px",
+        padding: "8px",
+        border: "1px solid rgba(255,255,255,0.25)",
+        background: "rgba(8, 6, 4, 0.94)",
+        color: "#f5efe6",
+        font: "12px ui-monospace, SFMono-Regular, Menlo, monospace"
+      });
+
+      fixtureChoices.forEach((choice, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = choice.label;
+        button.setAttribute("aria-pressed", index === selectedIndex ? "true" : "false");
+        Object.assign(button.style, {
+          border: "1px solid rgba(255,255,255,0.22)",
+          background: index === selectedIndex ? "#d9764a" : "rgba(255,255,255,0.08)",
+          color: index === selectedIndex ? "#120c08" : "#f5efe6",
+          padding: "6px 8px",
+          cursor: "pointer"
+        });
+        button.addEventListener("click", () => {
+          selectedIndex = index;
+          for (const child of bridge.querySelectorAll("button")) {
+            child.setAttribute("aria-pressed", child === button ? "true" : "false");
+            child.style.background = child === button ? "#d9764a" : "rgba(255,255,255,0.08)";
+            child.style.color = child === button ? "#120c08" : "#f5efe6";
+          }
+        });
+        bridge.append(button);
+      });
+
+      document.body.append(bridge);
+    });
+  }, choices);
 }
