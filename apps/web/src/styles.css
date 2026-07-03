@@ -69,6 +69,12 @@ body {
   margin-top: 12px;
 }
 
+.ws-right-col {
+  max-height: 660px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .ws-insight-list {
   display: flex;
   flex-direction: column;
@@ -202,6 +208,166 @@ body {
 
 .ws-class-row {
   cursor: pointer;
+}
+
+.ws-placement-state {
+  align-items: center;
+  background: color-mix(in srgb, var(--acc), transparent 92%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-mut);
+  display: flex;
+  font-family: var(--mono);
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
+.ws-placement-state span {
+  color: var(--ink);
+  font-size: var(--fs-head);
+  text-transform: uppercase;
+}
+
+.ws-placement-state b {
+  color: var(--ink-faint);
+  font-size: var(--fs-head);
+  font-weight: 500;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-placement-state.valid {
+  border-color: #67c06f;
+}
+
+.ws-placement-state.clear {
+  border-color: #67c06f;
+}
+
+.ws-placement-state.blocked {
+  border-color: #d9764a;
+}
+
+.ws-placement-state.outside_bounds {
+  border-color: #d9764a;
+}
+
+.ws-placement-state.pending {
+  border-color: #c9a93f;
+}
+
+.ws-placement-state.unavailable {
+  border-color: #8d8172;
+}
+
+.ws-placement-state.miss {
+  border-color: #d9764a;
+}
+
+.ws-placement-state.idle {
+  border-color: #8d8172;
+}
+
+.ws-physics-panel {
+  max-height: 260px;
+}
+
+.ws-simulation-panel {
+  max-height: 260px;
+}
+
+.ws-prop-panel {
+  max-height: 430px;
+}
+
+.ws-prop-panel .ws-panel-body {
+  max-height: 356px;
+  overflow: auto;
+}
+
+.ws-prop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 126px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ws-prop-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  border: 1px solid var(--line);
+  border-left: 2px solid #c9a93f;
+  border-radius: 6px;
+  color: var(--ink-mut);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--mono);
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.ws-prop-row span,
+.ws-prop-row b {
+  font-size: var(--fs-head);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-prop-row b {
+  color: var(--ink-faint);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.ws-prop-row.grounded {
+  border-left-color: #67c06f;
+}
+
+.ws-prop-row.airborne {
+  border-left-color: #c9a93f;
+}
+
+.ws-prop-row.sleeping {
+  border-left-color: #8d8172;
+}
+
+.ws-prop-row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acc), transparent 86%);
+  border-color: color-mix(in srgb, var(--acc), white 18%);
+}
+
+.ws-prop-inspector {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+}
+
+.ws-prop-actions .ws-btn {
+  flex: 1 1 auto;
+}
+
+.ws-prop-nudge {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ws-prop-nudge .ws-btn {
+  min-width: 0;
+  padding-inline: 6px;
 }
 
 .ws-bottom-right .ws-mode-card {

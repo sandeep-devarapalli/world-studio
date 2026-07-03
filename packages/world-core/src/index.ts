@@ -68,6 +68,97 @@ export interface AgentState {
   heading: number;
 }
 
+export type SpawnPlacementStatus = "valid" | "blocked" | "miss" | "pending" | "unavailable";
+
+export interface SpawnPlacementResult {
+  status: SpawnPlacementStatus;
+  x?: number;
+  y?: number;
+  z?: number;
+  footprintRadius: number;
+  message: string;
+  source: "rapier-collision-world" | "ground-plane" | "renderer";
+}
+
+export type AgentMoveStatus = "clear" | "blocked" | "outside_bounds" | "pending" | "unavailable";
+
+export interface AgentMoveResult {
+  status: AgentMoveStatus;
+  from: AgentState;
+  target: AgentState;
+  resolved: AgentState;
+  footprintRadius: number;
+  message: string;
+  source: "rapier-collision-world" | "renderer";
+}
+
+export type PhysicsDebugStatus = "idle" | "loading" | "ready" | "failed" | "unavailable";
+
+export interface PhysicsDebugInfo {
+  status: PhysicsDebugStatus;
+  obstacleTriangles: number;
+  colliders: number;
+  dynamicBodies?: number;
+  fixedTimestep?: number;
+  simulationStep?: number;
+  lastStepMs?: number;
+  props?: SimulatedPropState[];
+  footprintRadius?: number;
+  source: "rapier-collision-world" | "renderer";
+}
+
+export type SimulatedPropShape = "box";
+
+export type SimulatedPropPreset = "crate" | "tall-crate";
+
+export type PropContactState = "airborne" | "grounded" | "sleeping";
+
+export interface SimulatedPropState {
+  id: string;
+  label: string;
+  shape: SimulatedPropShape;
+  preset: SimulatedPropPreset;
+  contactState: PropContactState;
+  footprintRadius: number;
+  height: number;
+  x: number;
+  y: number;
+  z: number;
+  sleeping: boolean;
+}
+
+export interface SimulationCommand {
+  id: number;
+  action: "reset" | "step" | "spawn-prop" | "delete-prop" | "duplicate-prop" | "reset-prop" | "nudge-prop" | "move-prop";
+  steps?: number;
+  preset?: SimulatedPropPreset;
+  targetPropId?: string;
+  position?: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  delta?: {
+    x: number;
+    y?: number;
+    z: number;
+  };
+}
+
+export type RendererBackendStatus = "idle" | "loading" | "ready" | "failed" | "unavailable";
+
+export type SplatBackend = "spark" | "points-fallback" | "unavailable";
+
+export interface RendererDebugInfo {
+  activeSplatBackend: SplatBackend;
+  sparkStatus: RendererBackendStatus;
+  sparkRenderable: boolean;
+  sparkSplatCount: number;
+  pointCount: number;
+  gaussianUrl?: string;
+  message: string;
+}
+
 export interface SensorRigChannel {
   id: string;
   label: string;
@@ -96,12 +187,23 @@ export interface RenderOptions {
   isolatedClass?: number;
   agent?: AgentState;
   trajectory?: Array<[number, number]>;
+  spawnPlacement?: SpawnPlacementResult | null;
+  agentMove?: AgentMoveResult | null;
+  physicsDebug?: boolean;
+  simulationVisible?: boolean;
+  simulationCommand?: SimulationCommand | null;
+  selectedPropId?: string;
   grid: boolean;
 }
 
 export interface RenderAdapter {
   render(canvas: HTMLCanvasElement, options: RenderOptions): void;
   collectInRadius(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number, radius: number): number[];
+  querySpawnPlacement?(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number, footprintRadius: number): SpawnPlacementResult;
+  queryAgentMove?(from: AgentState, target: AgentState, footprintRadius: number): AgentMoveResult;
+  queryPropAt?(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number): SimulatedPropState | null;
+  getPhysicsDebugInfo?(): PhysicsDebugInfo;
+  getRendererDebugInfo?(): RendererDebugInfo;
   capture(canvas: HTMLCanvasElement): string;
   dispose?(): void;
 }
