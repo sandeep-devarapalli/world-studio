@@ -99,10 +99,25 @@ export interface RenderOptions {
   grid: boolean;
 }
 
+export type SparkLoadState = "unavailable" | "idle" | "loading" | "ready" | "failed";
+
+export type SplatRenderPath = "spark-gaussian" | "point-fallback";
+
+export interface RendererDiagnostics {
+  splatRenderPath: SplatRenderPath;
+  sparkState: SparkLoadState;
+  sparkRenderable: boolean;
+  hasGaussianSource: boolean;
+  gaussianSplatCount?: number;
+  sparkFailureReason?: string;
+}
+
 export interface RenderAdapter {
   render(canvas: HTMLCanvasElement, options: RenderOptions): void;
   collectInRadius(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number, radius: number): number[];
+  collectInRect?(canvas: HTMLCanvasElement, options: RenderOptions, x0: number, y0: number, x1: number, y1: number): number[];
   capture(canvas: HTMLCanvasElement): string;
+  getDiagnostics?(): RendererDiagnostics;
   dispose?(): void;
 }
 

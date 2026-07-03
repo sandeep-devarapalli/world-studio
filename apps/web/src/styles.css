@@ -282,6 +282,18 @@ body {
   margin-left: auto;
 }
 
+.ws-canvas.edit-tool {
+  cursor: crosshair;
+}
+
+.ws-select-rect {
+  position: absolute;
+  border: 1.5px dashed var(--acc);
+  background: color-mix(in oklab, var(--acc) 10%, transparent);
+  pointer-events: none;
+  z-index: 5;
+}
+
 .ws-slider-row input[type="range"] {
   flex: 1;
   accent-color: var(--acc);
