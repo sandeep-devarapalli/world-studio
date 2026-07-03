@@ -621,6 +621,15 @@ test("spawns Pilot props through canvas placement", async ({ page }) => {
   await expect(page.getByTestId("pilot-prop-count")).toContainText("3", { timeout: 8_000 });
   await propPanel.getByRole("button", { name: "Reset Props" }).click();
   await expect(page.getByTestId("pilot-prop-count")).toContainText("3");
+
+  await page.getByRole("button", { name: "Episode" }).click();
+  const episodeEvents = page.getByTestId("episode-event-list");
+  await expect(episodeEvents).toBeVisible();
+  await expect(episodeEvents).toContainText("prop spawn");
+  await expect(episodeEvents).toContainText("prop move");
+  await expect(episodeEvents).toContainText("prop duplicate");
+  await expect(episodeEvents).toContainText("prop delete");
+  await expect(episodeEvents).toContainText("physics reset");
 });
 
 test("steps deterministic Rapier prop physics in Simulate", async ({ page }) => {

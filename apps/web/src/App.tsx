@@ -111,6 +111,32 @@ interface HistoryItem {
   indices: number[];
 }
 
+type EpisodeLane = "agent" | "object" | "capture";
+
+type EpisodeEventKind =
+  | "agent-drive"
+  | "agent-reset"
+  | "agent-spawn"
+  | "prop-spawn"
+  | "prop-select"
+  | "prop-move"
+  | "prop-duplicate"
+  | "prop-delete"
+  | "prop-reset"
+  | "simulation-step"
+  | "simulation-reset";
+
+interface EpisodeEvent {
+  id: string;
+  frame: number;
+  lane: EpisodeLane;
+  kind: EpisodeEventKind;
+  label: string;
+  targetId?: string;
+  pose?: { x: number; y?: number; z: number; heading?: number };
+  status?: string;
+}
+
 interface PointerInteraction {
   kind: "orbit" | "brush" | "prop-drag";
   x: number;
@@ -147,6 +173,7 @@ export function App() {
   const interactionRef = useRef<PointerInteraction | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const simulationCommandSeq = useRef(0);
+  const episodeFrameRef = useRef(0);
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
@@ -184,6 +211,7 @@ export function App() {
   const [sensors, setSensors] = useState(initialSensors);
   const [playhead, setPlayhead] = useState(0.28);
   const [playing, setPlaying] = useState(false);
+  const [episodeEvents, setEpisodeEvents] = useState<EpisodeEvent[]>([]);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const accent = accents[accentName];
   const selectedProp = useMemo(() => {
@@ -336,6 +364,8 @@ export function App() {
     setDraggingPropId(null);
     setSimulationCommand(null);
     simulationCommandSeq.current = 0;
+    episodeFrameRef.current = 0;
+    setEpisodeEvents([]);
     setSelected(new Set());
     setDeleted(new Set());
     setHistory([]);
@@ -512,10 +542,23 @@ export function App() {
 
   const clearSelected = () => setSelected(new Set());
 
+  const recordEpisodeEvent = useCallback((event: Omit<EpisodeEvent, "id" | "frame">) => {
+    episodeFrameRef.current += 1;
+    const frame = episodeFrameRef.current;
+    setEpisodeEvents((current) => [{ ...event, id: `event-${frame}`, frame }, ...current].slice(0, 80));
+  }, []);
+
   const resetAgent = () => {
     setAgent(spawn);
     setTrajectory([[spawn.x, spawn.z]]);
     setAgentMove(null);
+    recordEpisodeEvent({
+      lane: "agent",
+      kind: "agent-reset",
+      label: "agent reset",
+      pose: { x: spawn.x, z: spawn.z, heading: spawn.heading },
+      status: "spawn"
+    });
   };
 
   const issueSimulationCommand = (
@@ -531,6 +574,7 @@ export function App() {
     setSimulationCommand({ id, action, steps, preset, position, targetPropId, delta });
     if (action === "spawn-prop" || action === "duplicate-prop") setSelectedPropId(`pilot-${id}`);
     if (action === "delete-prop" && selectedPropId === targetPropId) setSelectedPropId(null);
+    recordEpisodeEvent(simulationCommandToEpisode(action, steps, preset, position, targetPropId, delta));
   };
 
   const driveAgent = (key: string) => {
@@ -543,6 +587,13 @@ export function App() {
       if (key === "a" || key === "d") {
         setAgentMove(createAgentMoveStatus("clear", current, target, target, "turn clear"));
         setTrajectory((points) => [...points.slice(-42), [target.x, target.z]]);
+        recordEpisodeEvent({
+          lane: "agent",
+          kind: "agent-drive",
+          label: key === "a" ? "agent turn left" : "agent turn right",
+          pose: { x: target.x, z: target.z, heading: target.heading },
+          status: "clear"
+        });
         return target;
       }
       if (key === "w" || key === "s") {
@@ -560,6 +611,13 @@ export function App() {
       if (result.status === "clear") {
         setTrajectory((points) => [...points.slice(-42), [result.resolved.x, result.resolved.z]]);
       }
+      recordEpisodeEvent({
+        lane: "agent",
+        kind: "agent-drive",
+        label: key === "w" ? "agent drive forward" : "agent drive reverse",
+        pose: { x: result.resolved.x, z: result.resolved.z, heading: result.resolved.heading },
+        status: result.status
+      });
       return result.resolved;
     });
   };
@@ -586,10 +644,23 @@ export function App() {
   const selectPropAt = (event: React.PointerEvent<HTMLCanvasElement>): boolean => {
     const hit = propAt(event);
     if (!hit) return false;
-    setPilotTool("prop");
-    setSelectedPropId(hit.id);
-    setSpawnPlacement(null);
+    selectProp(hit.id, "canvas");
     return true;
+  };
+
+  const selectProp = (propId: string, source: "canvas" | "list" = "list") => {
+    setPilotTool("prop");
+    setSelectedPropId(propId);
+    setSpawnPlacement(null);
+    if (selectedPropId !== propId) {
+      recordEpisodeEvent({
+        lane: "object",
+        kind: "prop-select",
+        label: `prop select · ${source}`,
+        targetId: propId,
+        status: "active"
+      });
+    }
   };
 
   const placeSpawnAt = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -608,6 +679,13 @@ export function App() {
     setAgent(nextSpawn);
     setTrajectory([[nextSpawn.x, nextSpawn.z]]);
     setAgentMove(null);
+    recordEpisodeEvent({
+      lane: "agent",
+      kind: "agent-spawn",
+      label: "agent spawn set",
+      pose: { x: nextSpawn.x, z: nextSpawn.z, heading: nextSpawn.heading },
+      status: "valid"
+    });
   };
 
   const moveSelectedPropTo = (propId: string | undefined, placement: SpawnPlacementResult | null) => {
@@ -635,8 +713,7 @@ export function App() {
       if (mode === "pilot") {
         const hit = propAt(event);
         if (hit) {
-          setPilotTool("prop");
-          setSelectedPropId(hit.id);
+          selectProp(hit.id, "canvas");
           setDraggingPropId(hit.id);
           queryPlacementAt(event, hit.footprintRadius);
           interactionRef.current = {
@@ -874,15 +951,34 @@ export function App() {
     }
 
     if (mode === "episode") {
+      const lanes: EpisodeLane[] = ["agent", "object", "capture"];
       return (
-        <WSPanel title="Tracks" meta={`${Math.round(playhead * 180)}f`}>
+        <WSPanel title="Tracks" meta={`${episodeEvents.length} events`}>
           <div className="ws-row-stack">
-            {["agent", "object", "capture"].map((lane) => (
+            {lanes.map((lane) => (
               <div className="ws-kv" key={lane}>
                 <span>{lane}</span>
-                <b>{lane === "agent" ? "move · turn · stop" : lane === "object" ? "spawn · collide" : "rgb · depth · seg"}</b>
+                <b>
+                  {episodeEvents.filter((event) => event.lane === lane).length} events
+                </b>
               </div>
             ))}
+            <div className="ws-episode-list" data-testid="episode-event-list">
+              {episodeEvents.length ? (
+                episodeEvents.slice(0, 10).map((event) => (
+                  <div className={`ws-episode-row ${event.lane}`} key={event.id}>
+                    <span className="ws-episode-frame">{String(event.frame).padStart(3, "0")}</span>
+                    <span className="ws-episode-label">{event.label}</span>
+                    <b>{event.status ?? event.lane}</b>
+                  </div>
+                ))
+              ) : (
+                <div className="ws-kv">
+                  <span>events</span>
+                  <b>none</b>
+                </div>
+              )}
+            </div>
             <div className="ws-btn-row">
               <WSButton accent onClick={() => setPlaying((value) => !value)}>
                 {playing ? "Pause" : "Play"}
@@ -987,7 +1083,7 @@ export function App() {
             draggingPropId={draggingPropId}
             onToolChange={setPilotTool}
             onPresetChange={setSelectedPropPreset}
-            onSelectProp={setSelectedPropId}
+            onSelectProp={(id) => selectProp(id, "list")}
             onReset={() => issueSimulationCommand("reset")}
             onDuplicateSelected={(propId) => issueSimulationCommand("duplicate-prop", 1, undefined, undefined, propId)}
             onResetSelected={(propId) => issueSimulationCommand("reset-prop", 1, undefined, undefined, propId)}
@@ -1207,6 +1303,86 @@ function createAgentMoveStatus(
     footprintRadius: agentFootprintRadius,
     message,
     source: "renderer"
+  };
+}
+
+function simulationCommandToEpisode(
+  action: SimulationCommand["action"],
+  steps = 1,
+  preset?: SimulatedPropPreset,
+  position?: SimulationCommand["position"],
+  targetPropId?: string,
+  delta?: SimulationCommand["delta"]
+): Omit<EpisodeEvent, "id" | "frame"> {
+  if (action === "spawn-prop") {
+    return {
+      lane: "object",
+      kind: "prop-spawn",
+      label: `prop spawn · ${preset ?? "crate"}`,
+      pose: position,
+      status: "queued"
+    };
+  }
+  if (action === "duplicate-prop") {
+    return {
+      lane: "object",
+      kind: "prop-duplicate",
+      label: "prop duplicate",
+      targetId: targetPropId,
+      status: "queued"
+    };
+  }
+  if (action === "delete-prop") {
+    return {
+      lane: "object",
+      kind: "prop-delete",
+      label: "prop delete",
+      targetId: targetPropId,
+      status: "queued"
+    };
+  }
+  if (action === "reset-prop") {
+    return {
+      lane: "object",
+      kind: "prop-reset",
+      label: "prop reset",
+      targetId: targetPropId,
+      status: "spawn"
+    };
+  }
+  if (action === "move-prop") {
+    return {
+      lane: "object",
+      kind: "prop-move",
+      label: "prop move",
+      targetId: targetPropId,
+      pose: position,
+      status: "valid"
+    };
+  }
+  if (action === "nudge-prop") {
+    const offset = delta ? `${delta.x.toFixed(2)} · ${(delta.z ?? 0).toFixed(2)}` : "offset";
+    return {
+      lane: "object",
+      kind: "prop-move",
+      label: `prop nudge · ${offset}`,
+      targetId: targetPropId,
+      status: "queued"
+    };
+  }
+  if (action === "step") {
+    return {
+      lane: "object",
+      kind: "simulation-step",
+      label: `physics step · ${steps}`,
+      status: "deterministic"
+    };
+  }
+  return {
+    lane: "object",
+    kind: "simulation-reset",
+    label: "physics reset",
+    status: "ready"
   };
 }
 

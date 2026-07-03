@@ -370,6 +370,65 @@ body {
   padding-inline: 6px;
 }
 
+.ws-episode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 238px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ws-episode-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), transparent 10%);
+  border: 1px solid var(--line);
+  border-left: 2px solid #8d8172;
+  border-radius: 6px;
+  color: var(--ink-mut);
+  display: grid;
+  font-family: var(--mono);
+  gap: 8px;
+  grid-template-columns: 42px minmax(0, 1fr) 86px;
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.ws-episode-row.agent {
+  border-left-color: #4fc3d9;
+}
+
+.ws-episode-row.object {
+  border-left-color: #d9764a;
+}
+
+.ws-episode-row.capture {
+  border-left-color: #67c06f;
+}
+
+.ws-episode-row span,
+.ws-episode-row b {
+  font-size: var(--fs-head);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-episode-frame {
+  color: var(--ink-faint);
+}
+
+.ws-episode-label {
+  color: var(--ink);
+}
+
+.ws-episode-row b {
+  color: var(--ink-faint);
+  font-weight: 500;
+  text-align: right;
+  text-transform: uppercase;
+}
+
 .ws-bottom-right .ws-mode-card {
   width: 392px;
 }
