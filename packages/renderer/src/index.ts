@@ -105,6 +105,34 @@ export class ThreeWorldRenderer implements RenderAdapter {
     return out;
   }
 
+  collectInRect(canvas: HTMLCanvasElement, options: RenderOptions, x0: number, y0: number, x1: number, y1: number): number[] {
+    this.ensureThree(canvas);
+    if (!this.camera) return [];
+    this.updateCamera(canvas, options);
+
+    const rect = canvas.getBoundingClientRect();
+    const left = Math.min(x0, x1);
+    const right = Math.max(x0, x1);
+    const top = Math.min(y0, y1);
+    const bottom = Math.max(y0, y1);
+    const sx0 = ((left - rect.left) / rect.width) * 2 - 1;
+    const sx1 = ((right - rect.left) / rect.width) * 2 - 1;
+    const sy0 = -(((bottom - rect.top) / rect.height) * 2 - 1);
+    const sy1 = -(((top - rect.top) / rect.height) * 2 - 1);
+    const out: number[] = [];
+
+    for (let index = 0; index < this.points.length; index++) {
+      const point = this.points[index];
+      if (!point || options.deleted.has(index)) continue;
+      const projected = new THREE.Vector3(point.x, point.y, point.z).project(this.camera);
+      if (projected.z <= 1 && projected.x >= sx0 && projected.x <= sx1 && projected.y >= sy0 && projected.y <= sy1) {
+        out.push(index);
+      }
+    }
+
+    return out;
+  }
+
   capture(canvas: HTMLCanvasElement): string {
     return canvas.toDataURL("image/png");
   }

@@ -153,9 +153,11 @@ const initialSensors: SensorRigChannel[] = [
   { id: "imu", label: "IMU", kind: "imu", enabled: true, spec: "200hz" }
 ];
 
+const brushRadius = 42;
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const interactionRef = useRef<{ kind: "orbit" | "brush"; x: number; y: number } | null>(null);
+  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect"; x: number; y: number } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
@@ -192,6 +194,8 @@ export function App() {
   const [lastAction, setLastAction] = useState("idle");
   const [treeFilter, setTreeFilter] = useState("");
   const filterRef = useRef<HTMLInputElement | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [selectRect, setSelectRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const accent = accents[accentName];
   const totalSteps = Math.max(trajectory.length - 1, 1);
   const episodeStep = Math.round(playhead * totalSteps);
@@ -428,11 +432,20 @@ export function App() {
     resetTransientState(worldSession);
   }, []);
 
+  const toStage = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return { x: 0, y: 0 };
+      return { x: (clientX - rect.left) / scale, y: (clientY - rect.top) / scale };
+    },
+    [scale]
+  );
+
   const paintAt = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!renderer || !canvas) return;
-      const indices = renderer.collectInRadius(canvas, options, event.clientX, event.clientY, 42);
+      const indices = renderer.collectInRadius(canvas, options, event.clientX, event.clientY, brushRadius * scale);
       if (!indices.length) return;
       setSelected((current) => {
         const next = new Set(current);
@@ -441,7 +454,7 @@ export function App() {
       });
       for (const index of indices) brushStrokeRef.current.add(index);
     },
-    [options, renderer]
+    [options, renderer, scale]
   );
 
   const deleteSelected = useCallback(() => {
@@ -518,16 +531,28 @@ export function App() {
       interactionRef.current = { kind: "brush", x: event.clientX, y: event.clientY };
       brushStrokeRef.current = new Set();
       paintAt(event);
+    } else if (mode === "edit" && renderer && tool === "rect") {
+      interactionRef.current = { kind: "rect", x: event.clientX, y: event.clientY };
+      const start = toStage(event.clientX, event.clientY);
+      setSelectRect({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
     } else {
       interactionRef.current = { kind: "orbit", x: event.clientX, y: event.clientY };
     }
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (mode === "edit" && tool === "brush") {
+      setCursor(toStage(event.clientX, event.clientY));
+    }
     const interaction = interactionRef.current;
     if (!interaction) return;
     if (interaction.kind === "brush") {
       paintAt(event);
+      return;
+    }
+    if (interaction.kind === "rect") {
+      const point = toStage(event.clientX, event.clientY);
+      setSelectRect((current) => (current ? { ...current, x1: point.x, y1: point.y } : current));
       return;
     }
     const dx = event.clientX - interaction.x;
@@ -540,11 +565,29 @@ export function App() {
     }));
   };
 
-  const onPointerUp = () => {
-    if (interactionRef.current?.kind === "brush" && brushStrokeRef.current.size) {
+  const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const interaction = interactionRef.current;
+    if (interaction?.kind === "brush" && brushStrokeRef.current.size) {
       const indices = [...brushStrokeRef.current];
       const entry: HistoryItem = { id: crypto.randomUUID(), type: "select", count: indices.length, indices };
       setHistory((current) => [entry, ...current].slice(0, 10));
+    }
+    if (interaction?.kind === "rect") {
+      const canvas = canvasRef.current;
+      const indices =
+        canvas && renderer?.collectInRect
+          ? renderer.collectInRect(canvas, options, interaction.x, interaction.y, event.clientX, event.clientY)
+          : [];
+      if (indices.length) {
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const index of indices) next.add(index);
+          return next;
+        });
+        const entry: HistoryItem = { id: crypto.randomUUID(), type: "select", count: indices.length, indices };
+        setHistory((current) => [entry, ...current].slice(0, 10));
+      }
+      setSelectRect(null);
     }
     interactionRef.current = null;
     brushStrokeRef.current = new Set();
@@ -569,14 +612,34 @@ export function App() {
         <main className={rootClass} style={{ "--acc": accent } as React.CSSProperties}>
           <canvas
             ref={canvasRef}
-            className={mode === "simulate" ? "ws-canvas dual-right" : "ws-canvas"}
+            className={`ws-canvas ${mode === "simulate" ? "dual-right" : ""} ${
+              mode === "edit" && (tool === "brush" || tool === "rect") ? "edit-tool" : ""
+            }`.trim()}
             data-testid="world-canvas"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onPointerLeave={() => setCursor(null)}
             onWheel={onWheel}
           />
+          {mode === "edit" && tool === "brush" && cursor ? (
+            <div
+              className="ws-brush-ring"
+              style={{ left: cursor.x, top: cursor.y, width: brushRadius * 2, height: brushRadius * 2 }}
+            />
+          ) : null}
+          {mode === "edit" && selectRect ? (
+            <div
+              className="ws-select-rect"
+              style={{
+                left: Math.min(selectRect.x0, selectRect.x1),
+                top: Math.min(selectRect.y0, selectRect.y1),
+                width: Math.abs(selectRect.x1 - selectRect.x0),
+                height: Math.abs(selectRect.y1 - selectRect.y0)
+              }}
+            />
+          ) : null}
           <div className="ws-overlay">
             {mode === "simulate" ? (
               <>
