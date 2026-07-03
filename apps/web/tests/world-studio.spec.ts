@@ -539,6 +539,11 @@ test("exercises edit delete undo and pilot keys", async ({ page }) => {
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
+  const statusbar = page.locator(".ws-statusbar");
+
+  await page.getByRole("button", { name: "splat" }).click();
+  await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
+  await expect(statusbar).not.toContainText("point fallback");
 
   for (const mode of ["splat", "points", "mesh", "semantic", "depth"]) {
     await page.getByRole("button", { name: mode }).click();
@@ -681,6 +686,68 @@ test("selects compatibility package layouts through the visible UI test bridge",
     await expect(subtitle).toContainText(choice.payload.name);
     if (choice.payload.packageIssues?.length) {
       await expect(page.locator(".ws-issue-panel")).toContainText(choice.payload.packageIssues[0].title);
+    }
+  }
+});
+
+test("selects with the rect tool, deletes, and undoes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "rect select" }).click();
+
+  const canvas = page.locator("[data-testid='world-canvas']");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("canvas missing");
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.65);
+  await page.mouse.up();
+
+  const statusbar = page.locator(".ws-statusbar");
+  await expect(statusbar).not.toContainText("0 selected");
+  await expect(statusbar).toContainText("0 hidden");
+
+  await page.keyboard.press("Delete");
+  await expect(statusbar).toContainText("0 selected");
+  await expect(statusbar).not.toContainText("0 hidden");
+
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Z" : "Control+Z");
+  await expect(statusbar).toContainText("0 hidden");
+});
+
+test("keeps the stage centered and chrome visible across window resizes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1000, height: 700 },
+    { width: 640, height: 480 },
+    { width: 2200, height: 1200 }
+  ]) {
+    await page.setViewportSize(viewport);
+
+    const expectedWidth = Math.min(viewport.width / 1920, viewport.height / 1080) * 1920;
+    await expect
+      .poll(async () => {
+        const box = await page.locator(".ws-stage").boundingBox();
+        return box ? Math.abs(box.width - expectedWidth) : Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThan(2);
+
+    const stage = await page.locator(".ws-stage").boundingBox();
+    if (!stage) throw new Error("stage missing");
+    expect(Math.abs(stage.x + stage.width / 2 - viewport.width / 2)).toBeLessThan(2);
+    expect(Math.abs(stage.y + stage.height / 2 - viewport.height / 2)).toBeLessThan(2);
+
+    for (const selector of [".ws-wordmark", ".ws-mode-switch", ".ws-statusbar"]) {
+      const box = await page.locator(selector).first().boundingBox();
+      if (!box) throw new Error(`${selector} missing`);
+      expect(box.x).toBeGreaterThanOrEqual(-1);
+      expect(box.y).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
     }
   }
 });
