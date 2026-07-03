@@ -685,6 +685,42 @@ test("selects compatibility package layouts through the visible UI test bridge",
   }
 });
 
+test("keeps the stage centered and chrome visible across window resizes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1000, height: 700 },
+    { width: 640, height: 480 },
+    { width: 2200, height: 1200 }
+  ]) {
+    await page.setViewportSize(viewport);
+
+    const expectedWidth = Math.min(viewport.width / 1920, viewport.height / 1080) * 1920;
+    await expect
+      .poll(async () => {
+        const box = await page.locator(".ws-stage").boundingBox();
+        return box ? Math.abs(box.width - expectedWidth) : Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThan(2);
+
+    const stage = await page.locator(".ws-stage").boundingBox();
+    if (!stage) throw new Error("stage missing");
+    expect(Math.abs(stage.x + stage.width / 2 - viewport.width / 2)).toBeLessThan(2);
+    expect(Math.abs(stage.y + stage.height / 2 - viewport.height / 2)).toBeLessThan(2);
+
+    for (const selector of [".ws-wordmark", ".ws-mode-switch", ".ws-statusbar"]) {
+      const box = await page.locator(selector).first().boundingBox();
+      if (!box) throw new Error(`${selector} missing`);
+      expect(box.x).toBeGreaterThanOrEqual(-1);
+      expect(box.y).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+    }
+  }
+});
+
 async function expectCanvasScreenshot(page: Page) {
   const canvas = page.locator("[data-testid='world-canvas']");
   await expect(canvas).toBeVisible();

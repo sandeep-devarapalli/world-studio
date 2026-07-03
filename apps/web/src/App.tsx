@@ -712,7 +712,7 @@ export function App() {
                 <WSPanel title="Episode" meta={activeMode.tag} className="ws-episode-card">
                   <div className="ws-mode-title-row">
                     <div className="ws-mode-title">Episode</div>
-                    <WSChip accent>{playing ? "playing" : "paused"}</WSChip>
+                    <WSChip accent={playing}>{playing ? "playing" : "paused"}</WSChip>
                   </div>
                   <div className="ws-kv">
                     <span>steps</span>
@@ -1471,7 +1471,7 @@ function ModeCard({
     <div className="ws-row-stack">
       <div className="ws-mode-title-row">
         <div className="ws-mode-title">{title}</div>
-        <WSChip accent>{session ? "live" : "blank"}</WSChip>
+        <WSChip accent={Boolean(session)}>{session ? "live" : "blank"}</WSChip>
       </div>
       {renderMode === "depth" ? <WSRamp from={0} to={0.978} label="magma" /> : null}
       <div className="ws-kv">
