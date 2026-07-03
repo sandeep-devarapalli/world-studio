@@ -68,6 +68,15 @@ export interface AgentState {
   heading: number;
 }
 
+export interface PhysicsDiagnostics {
+  backend: "rapier3d-compat" | "unavailable";
+  stepRateHz: number;
+  bodyCount: number;
+  colliderCount: number;
+  contactCount: number;
+  grounded: boolean;
+}
+
 export interface SensorRigChannel {
   id: string;
   label: string;
