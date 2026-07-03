@@ -17,7 +17,7 @@ async function createWindow() {
     titleBarStyle: "hiddenInset",
     backgroundColor: "#080604",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
@@ -28,7 +28,7 @@ async function createWindow() {
   if (rendererUrl) {
     await win.loadURL(rendererUrl);
   } else {
-    await win.loadFile(path.resolve(__dirname, "../../../web/dist/index.html"));
+    await win.loadFile(path.resolve(__dirname, "../../web/dist/index.html"));
   }
 }
 

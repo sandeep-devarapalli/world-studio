@@ -9,6 +9,7 @@
     "dev": "pnpm --filter @world-studio/web dev",
     "desktop:setup": "pnpm --filter @world-studio/desktop run setup",
     "desktop:dev": "pnpm --filter @world-studio/desktop dev",
+    "desktop:package": "pnpm build && pnpm --filter @world-studio/desktop run package",
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:ui": "playwright test",
