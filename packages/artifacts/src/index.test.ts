@@ -6,6 +6,7 @@ import {
   parseObjMesh,
   parseObjMeshSummary,
   parsePointCloudPly,
+  prepareGaussianPlyForSpark,
   validateBudoMediaFramesManifest,
   validateVerifiedSemanticExportManifest,
   type LoftSceneManifest
@@ -29,6 +30,40 @@ describe("World Studio artifact loaders", () => {
     expect(parsed.points.length).toBe(16_060);
     expect(parsed.bounds.min[1]).toBeLessThanOrEqual(0);
     expect(parsed.bounds.max[1]).toBeGreaterThan(2);
+  });
+
+  it("normalizes ASCII Gaussian PLYs for Spark", async () => {
+    const gaussians = await readFile(fixture("gaussians.ply"));
+    const prepared = prepareGaussianPlyForSpark(gaussians);
+
+    expect(prepared.converted).toBe(true);
+    expect(prepared.sourceFormat).toBe("ascii");
+    expect(prepared.vertexCount).toBe(16_060);
+
+    const header = new TextDecoder().decode(prepared.bytes.slice(0, prepared.headerLength));
+    expect(header).toContain("format binary_little_endian 1.0");
+    expect(header).toContain("element vertex 16060");
+
+    const sourceLines = new TextDecoder().decode(gaussians).split(/\r?\n/);
+    const firstDataLine = sourceLines[sourceLines.indexOf("end_header") + 1]?.trim().split(/\s+/) ?? [];
+    const firstX = new DataView(prepared.bytes.buffer, prepared.bytes.byteOffset + prepared.headerLength).getFloat32(0, true);
+    expect(firstX).toBeCloseTo(Number(firstDataLine[0]), 5);
+  });
+
+  it("keeps binary Gaussian PLYs unchanged for Spark", async () => {
+    const gaussians = await readFile(fixture("gaussians.ply"));
+    const asciiPrepared = prepareGaussianPlyForSpark(gaussians);
+    const binaryPrepared = prepareGaussianPlyForSpark(asciiPrepared.bytes);
+
+    expect(binaryPrepared.converted).toBe(false);
+    expect(binaryPrepared.sourceFormat).toBe("binary_little_endian");
+    expect(binaryPrepared.bytes).toBe(asciiPrepared.bytes);
+  });
+
+  it("rejects ordinary point-cloud PLYs for Spark Gaussian loading", async () => {
+    const points = await readFile(fixture("points.ply"));
+
+    expect(() => prepareGaussianPlyForSpark(points)).toThrow("Expected Gaussian PLY");
   });
 
   it("summarizes the loft collision OBJ", async () => {
