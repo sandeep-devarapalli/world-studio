@@ -1,4 +1,4 @@
-import type { ParsedObjMesh, ParsedPointCloud, PointRecord } from "@world-studio/artifacts";
+import { prepareGaussianPlyForSpark, type ParsedObjMesh, type ParsedPointCloud, type PointRecord } from "@world-studio/artifacts";
 import type { RendererDiagnostics, RenderAdapter, RenderOptions, SparkLoadState, WorldClass } from "@world-studio/world-core";
 import * as THREE from "three";
 
@@ -23,16 +23,6 @@ const fallbackClassColors = [
 ];
 
 const hiddenPoint = 1_000_000;
-const plyHeaderEnd = "end_header";
-const asciiPlyFormat = /^format\s+ascii\s+1\.0$/m;
-const binaryLittleEndianPlyFormat = "format binary_little_endian 1.0";
-
-type PlyScalarType = "char" | "uchar" | "short" | "ushort" | "int" | "uint" | "float" | "double";
-
-interface PlyScalarProperty {
-  type: PlyScalarType;
-  name: string;
-}
 
 export class ThreeWorldRenderer implements RenderAdapter {
   private readonly points: PointRecord[];
@@ -508,162 +498,11 @@ export function createSparkRendererAdapter(input: ThreeRendererInput): ThreeWorl
 async function sparkCompatiblePlyUrl(url: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Unable to load Gaussian PLY: ${response.status}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const headerLength = findPlyHeaderLength(bytes);
-  if (headerLength < 0) throw new Error("PLY header is missing end_header");
-
-  const headerText = new TextDecoder().decode(bytes.slice(0, headerLength));
-  if (!asciiPlyFormat.test(headerText)) return url;
-
-  const { properties, vertexCount } = parseAsciiPlySchema(headerText);
-  const body = new TextDecoder().decode(bytes.slice(headerLength)).trim();
-  const lines = body.length ? body.split(/\r?\n/) : [];
-  if (lines.length < vertexCount) {
-    throw new Error(`ASCII Gaussian PLY has ${lines.length} rows for ${vertexCount} vertices`);
-  }
-
-  const binaryHeader = headerText.replace(asciiPlyFormat, binaryLittleEndianPlyFormat);
-  const headerBytes = new TextEncoder().encode(binaryHeader);
-  const stride = properties.reduce((sum, property) => sum + plyScalarSize(property.type), 0);
-  const output = new ArrayBuffer(headerBytes.length + vertexCount * stride);
-  const outputBytes = new Uint8Array(output);
-  outputBytes.set(headerBytes, 0);
-  const view = new DataView(output);
-  let offset = headerBytes.length;
-
-  for (let rowIndex = 0; rowIndex < vertexCount; rowIndex++) {
-    const cols = lines[rowIndex]?.trim().split(/\s+/) ?? [];
-    if (cols.length < properties.length) {
-      throw new Error(`ASCII Gaussian PLY row ${rowIndex + 1} has ${cols.length} columns`);
-    }
-    for (let propertyIndex = 0; propertyIndex < properties.length; propertyIndex++) {
-      offset = writePlyScalar(view, offset, properties[propertyIndex], cols[propertyIndex]);
-    }
-  }
-
-  return URL.createObjectURL(new Blob([output], { type: "application/octet-stream" }));
-}
-
-function findPlyHeaderLength(bytes: Uint8Array): number {
-  for (let index = 0; index <= bytes.length - plyHeaderEnd.length; index++) {
-    let matched = true;
-    for (let needleIndex = 0; needleIndex < plyHeaderEnd.length; needleIndex++) {
-      if (bytes[index + needleIndex] !== plyHeaderEnd.charCodeAt(needleIndex)) {
-        matched = false;
-        break;
-      }
-    }
-    if (!matched) continue;
-
-    const after = index + plyHeaderEnd.length;
-    if (bytes[after] === 13 && bytes[after + 1] === 10) return after + 2;
-    if (bytes[after] === 10) return after + 1;
-    return after;
-  }
-  return -1;
-}
-
-function parseAsciiPlySchema(headerText: string): { properties: PlyScalarProperty[]; vertexCount: number } {
-  let vertexCount = 0;
-  let inVertex = false;
-  const properties: PlyScalarProperty[] = [];
-
-  for (const line of headerText.split(/\r?\n/)) {
-    const parts = line.trim().split(/\s+/);
-    if (parts[0] === "element") {
-      if (inVertex && Number(parts[2] ?? 0) > 0) {
-        throw new Error("ASCII Gaussian PLY conversion only supports vertex elements");
-      }
-      inVertex = parts[1] === "vertex";
-      if (inVertex) vertexCount = Number(parts[2] ?? 0);
-    } else if (inVertex && parts[0] === "property") {
-      if (parts[1] === "list") throw new Error("ASCII Gaussian PLY conversion does not support list properties");
-      properties.push({ type: normalizePlyScalarType(parts[1]), name: parts[2] ?? "" });
-    }
-  }
-
-  if (!vertexCount || properties.length === 0) throw new Error("ASCII Gaussian PLY has no vertex schema");
-  return { properties, vertexCount };
-}
-
-function normalizePlyScalarType(type: string | undefined): PlyScalarType {
-  switch (type) {
-    case "char":
-    case "int8":
-      return "char";
-    case "uchar":
-    case "uint8":
-      return "uchar";
-    case "short":
-    case "int16":
-      return "short";
-    case "ushort":
-    case "uint16":
-      return "ushort";
-    case "int":
-    case "int32":
-      return "int";
-    case "uint":
-    case "uint32":
-      return "uint";
-    case "float":
-    case "float32":
-      return "float";
-    case "double":
-    case "float64":
-      return "double";
-    default:
-      throw new Error(`Unsupported PLY scalar type: ${type ?? "missing"}`);
-  }
-}
-
-function plyScalarSize(type: PlyScalarType): number {
-  switch (type) {
-    case "char":
-    case "uchar":
-      return 1;
-    case "short":
-    case "ushort":
-      return 2;
-    case "int":
-    case "uint":
-    case "float":
-      return 4;
-    case "double":
-      return 8;
-  }
-}
-
-function writePlyScalar(view: DataView, offset: number, property: PlyScalarProperty, rawValue: string | undefined): number {
-  const value = Number(rawValue);
-  if (!Number.isFinite(value)) throw new Error(`PLY property ${property.name} is not finite`);
-
-  switch (property.type) {
-    case "char":
-      view.setInt8(offset, value);
-      return offset + 1;
-    case "uchar":
-      view.setUint8(offset, value);
-      return offset + 1;
-    case "short":
-      view.setInt16(offset, value, true);
-      return offset + 2;
-    case "ushort":
-      view.setUint16(offset, value, true);
-      return offset + 2;
-    case "int":
-      view.setInt32(offset, value, true);
-      return offset + 4;
-    case "uint":
-      view.setUint32(offset, value, true);
-      return offset + 4;
-    case "float":
-      view.setFloat32(offset, value, true);
-      return offset + 4;
-    case "double":
-      view.setFloat64(offset, value, true);
-      return offset + 8;
-  }
+  const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer());
+  if (!prepared.converted) return url;
+  const blobBytes = new ArrayBuffer(prepared.bytes.byteLength);
+  new Uint8Array(blobBytes).set(prepared.bytes);
+  return URL.createObjectURL(new Blob([blobBytes], { type: "application/octet-stream" }));
 }
 
 function createAgentGroup(): THREE.Group {
