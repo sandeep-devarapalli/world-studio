@@ -141,6 +141,15 @@ export interface LocalPackageInsight {
   previewText?: string;
 }
 
+export interface LocalPackageIssue {
+  id: string;
+  severity: "error" | "warning";
+  code: "file_too_large" | "malformed_json" | "missing_primary_artifact" | "unsupported_layout";
+  title: string;
+  message: string;
+  artifact?: string;
+}
+
 export interface LocalWorldPackagePayload {
   kind: "world-studio.local-package";
   name: string;
@@ -160,6 +169,7 @@ export interface LocalWorldPackagePayload {
   verifiedExport?: LocalWorldPackageTextFile;
   jsonManifests?: LocalWorldPackageTextFile[];
   packageInsights?: LocalPackageInsight[];
+  packageIssues?: LocalPackageIssue[];
 }
 
 export interface BudoMediaFrame {
