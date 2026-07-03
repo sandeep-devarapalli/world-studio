@@ -48,6 +48,15 @@ importers:
       '@dimforge/rapier3d-compat':
         specifier: 0.19.3
         version: 0.19.3
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.2.7
+        version: 5.2.7
+      '@fontsource/source-serif-4':
+        specifier: ^5.2.9
+        version: 5.2.9
+      '@fontsource/spline-sans':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@sparkjsdev/spark':
         specifier: 2.1.0
         version: 2.1.0(three@0.185.1)
@@ -163,6 +172,15 @@ packages:
 
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
+
+  '@fontsource/ibm-plex-mono@5.2.7':
+    resolution: {integrity: sha512-MKAb8qV+CaiMQn2B0dIi1OV3565NYzp3WN5b4oT6LTkk+F0jR6j0ZN+5BKJiIhffDC3rtBULsYZE65+0018z9w==}
+
+  '@fontsource/source-serif-4@5.2.9':
+    resolution: {integrity: sha512-er/Pym9emsEVJNf947umJ4kXarXfsiN6CN7kTYinefKRaHLwiquiiHOZvKvxWgkV8JMCf3pV3g0NcsPFpVCH9w==}
+
+  '@fontsource/spline-sans@5.2.8':
+    resolution: {integrity: sha512-dHItya1hKFWw1Y+p0L9rIclfQnF6BU24YN9CXcIwoQ9jdVRFlwWQdSW5mEge6aeRWtENV3+c9t0l0fr/TuDmhQ==}
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -833,6 +851,12 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
+
+  '@fontsource/ibm-plex-mono@5.2.7': {}
+
+  '@fontsource/source-serif-4@5.2.9': {}
+
+  '@fontsource/spline-sans@5.2.8': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 

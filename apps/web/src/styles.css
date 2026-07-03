@@ -17,25 +17,37 @@ body {
 .ws-stage-shell {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
   overflow: hidden;
   background: #080604;
 }
 
 .ws-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 1920px;
   height: 1080px;
-  transform-origin: center center;
+}
+
+.ws-drag-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  -webkit-app-region: drag;
+  pointer-events: none;
 }
 
 .ws-render-row {
   position: absolute;
-  top: 78px;
+  top: 96px;
   left: 50%;
-  display: flex;
-  gap: 8px;
   transform: translateX(-50%);
+}
+
+.ws-mode-switch .ws-head {
+  margin: 0 10px 0 8px;
 }
 
 .ws-empty-state {
@@ -204,10 +216,85 @@ body {
   cursor: pointer;
 }
 
+.ws-left {
+  max-height: 800px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ws-right-col {
+  max-height: 690px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 .ws-bottom-right .ws-mode-card {
   width: 392px;
 }
 
 .ws-canvas {
   touch-action: none;
+}
+
+.ws-canvas.dual-right {
+  left: 50%;
+  width: 50%;
+}
+
+.ws-dual-left {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ws-view-tag.metric {
+  left: calc(50% + 22px);
+}
+
+.ws-dual-left .ws-canvas,
+.ws-strip-cell .ws-canvas,
+.ws-pip .ws-canvas,
+.ws-preview-card .ws-canvas {
+  cursor: default;
+}
+
+.ws-search input {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  flex: 1;
+  font: inherit;
+  font-size: calc(var(--fs) - 1px);
+  min-width: 0;
+  outline: none;
+}
+
+.ws-search input::placeholder {
+  color: var(--ink-faint);
+}
+
+.ws-tracks-right {
+  margin-left: auto;
+}
+
+.ws-canvas.edit-tool {
+  cursor: crosshair;
+}
+
+.ws-select-rect {
+  position: absolute;
+  border: 1.5px dashed var(--acc);
+  background: color-mix(in oklab, var(--acc) 10%, transparent);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ws-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--acc);
 }
