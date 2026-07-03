@@ -108,6 +108,8 @@ export interface RendererDiagnostics {
   sparkState: SparkLoadState;
   sparkRenderable: boolean;
   hasGaussianSource: boolean;
+  gaussianSourceFormat?: string;
+  gaussianPreparedForSpark?: boolean;
   gaussianSplatCount?: number;
   sparkFailureReason?: string;
 }

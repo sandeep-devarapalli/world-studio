@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readLocalPackage } from "./package-reader.js";
 
 const tempRoots: string[] = [];
+const loftFixtureRoot = () => fileURLToPath(new URL("../../../apps/web/public/fixtures/loft_04", import.meta.url));
 
 async function makePackage(name: string) {
   const root = await mkdtemp(join(tmpdir(), `world-studio-${name}-`));
@@ -145,6 +147,20 @@ end_header
     expect(payload.packageInsights.map((insight) => insight.kind)).toEqual(
       expect.arrayContaining(["asset-set", "scene-manifest"])
     );
+    expect(payload.packageIssues).toEqual([]);
+  });
+
+  it("reads the bundled loft fixture through the real local package reader", async () => {
+    const payload = await readLocalPackage(loftFixtureRoot());
+
+    expect(payload.packageKind).toBe("world-studio-local-folder");
+    expect(payload.sourceKind).toBe("world-studio.local_folder");
+    expect(payload.primaryArtifact).toBe("gaussians.ply");
+    expect(payload.sceneJson).toMatchObject({ dataset: "loft_04", version: "v3" });
+    expect(payload.pointsPly?.relativePath).toBe("points.ply");
+    expect(payload.gaussianPly?.relativePath).toBe("gaussians.ply");
+    expect(payload.gaussianPly?.headerText).toContain("format ascii 1.0");
+    expect(payload.objMesh?.relativePath).toBe("collision_mesh.obj");
     expect(payload.packageIssues).toEqual([]);
   });
 
