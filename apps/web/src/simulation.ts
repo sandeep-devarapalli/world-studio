@@ -4,16 +4,29 @@ import type { AgentState, PhysicsDiagnostics } from "@world-studio/world-core";
 
 const stepRateHz = 60;
 const stepDt = 1 / stepRateHz;
-const agentRadius = 0.18;
-const agentHalfHeight = 0.34;
-const driveSpeed = 7.2;
-const turnStep = 0.16;
+export type AgentBodyPresetId = "scout" | "locobot" | "cargo";
+
+export interface AgentBodyPreset {
+  id: AgentBodyPresetId;
+  label: string;
+  radius: number;
+  halfHeight: number;
+  speed: number;
+  turnStep: number;
+}
+
+export const agentBodyPresets: AgentBodyPreset[] = [
+  { id: "scout", label: "Scout", radius: 0.14, halfHeight: 0.28, speed: 8.4, turnStep: 0.18 },
+  { id: "locobot", label: "LoCoBot", radius: 0.18, halfHeight: 0.34, speed: 7.2, turnStep: 0.16 },
+  { id: "cargo", label: "Cargo", radius: 0.28, halfHeight: 0.44, speed: 4.8, turnStep: 0.12 }
+];
 
 let rapierInit: Promise<void> | null = null;
 
 export interface SimulationInput {
   mesh?: ParsedObjMesh;
   agent: AgentState;
+  body: AgentBodyPreset;
 }
 
 export interface DriveCommand {
@@ -31,12 +44,14 @@ export class RapierSimulation {
   private readonly world: World;
   private readonly agentBody: RigidBody;
   private readonly agentCollider: Collider;
+  private readonly body: AgentBodyPreset;
 
-  private constructor(world: World, agentBody: RigidBody, agentCollider: Collider, agent: AgentState) {
+  private constructor(world: World, agentBody: RigidBody, agentCollider: Collider, agent: AgentState, body: AgentBodyPreset) {
     this.world = world;
     this.agentBody = agentBody;
     this.agentCollider = agentCollider;
     this.heading = agent.heading;
+    this.body = body;
   }
 
   static async create(input: SimulationInput): Promise<RapierSimulation> {
@@ -47,22 +62,22 @@ export class RapierSimulation {
     createStaticColliders(world, input.mesh);
     const agentBody = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(input.agent.x, agentHalfHeight + agentRadius, input.agent.z)
+        .setTranslation(input.agent.x, bodyGroundOffset(input.body), input.agent.z)
         .lockRotations()
         .setLinearDamping(8)
         .setAngularDamping(8)
         .setCcdEnabled(true)
         .setCanSleep(false)
     );
-    const agentCollider = world.createCollider(RAPIER.ColliderDesc.capsule(agentHalfHeight, agentRadius).setFriction(0.9), agentBody);
-    const simulation = new RapierSimulation(world, agentBody, agentCollider, input.agent);
+    const agentCollider = world.createCollider(RAPIER.ColliderDesc.capsule(input.body.halfHeight, input.body.radius).setFriction(0.9), agentBody);
+    const simulation = new RapierSimulation(world, agentBody, agentCollider, input.agent, input.body);
     simulation.step({ move: 0, turn: 0 });
     return simulation;
   }
 
   reset(agent: AgentState): SimulationStep {
     this.heading = agent.heading;
-    this.agentBody.setTranslation({ x: agent.x, y: agentHalfHeight + agentRadius, z: agent.z }, true);
+    this.agentBody.setTranslation({ x: agent.x, y: bodyGroundOffset(this.body), z: agent.z }, true);
     this.agentBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.agentBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.world.step();
@@ -70,11 +85,11 @@ export class RapierSimulation {
   }
 
   step(command: DriveCommand): SimulationStep {
-    this.heading += command.turn * turnStep;
+    this.heading += command.turn * this.body.turnStep;
     const velocity = {
-      x: Math.cos(this.heading) * driveSpeed * command.move,
+      x: Math.cos(this.heading) * this.body.speed * command.move,
       y: this.agentBody.linvel().y,
-      z: Math.sin(this.heading) * driveSpeed * command.move
+      z: Math.sin(this.heading) * this.body.speed * command.move
     };
 
     this.agentBody.setLinvel(velocity, true);
@@ -115,7 +130,7 @@ export class RapierSimulation {
   }
 
   private grounded(): boolean {
-    if (this.agentBody.translation().y <= agentHalfHeight + agentRadius + 0.04) return true;
+    if (this.agentBody.translation().y <= bodyGroundOffset(this.body) + 0.04) return true;
     return this.contactCount() > 0;
   }
 }
@@ -132,6 +147,10 @@ export const unavailablePhysicsDiagnostics = (): PhysicsDiagnostics => ({
 function initRapier(): Promise<void> {
   rapierInit ??= RAPIER.init();
   return rapierInit;
+}
+
+function bodyGroundOffset(body: AgentBodyPreset): number {
+  return body.halfHeight + body.radius;
 }
 
 function createStaticColliders(world: World, mesh?: ParsedObjMesh): number {
