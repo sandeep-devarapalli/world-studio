@@ -539,6 +539,11 @@ test("exercises edit delete undo and pilot keys", async ({ page }) => {
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
+  const statusbar = page.locator(".ws-statusbar");
+
+  await page.getByRole("button", { name: "splat" }).click();
+  await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
+  await expect(statusbar).not.toContainText("point fallback");
 
   for (const mode of ["splat", "points", "mesh", "semantic", "depth"]) {
     await page.getByRole("button", { name: mode }).click();

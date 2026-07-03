@@ -18,6 +18,7 @@ import type {
   LocalPackageInsight,
   LocalPackageIssue,
   LocalWorldPackagePayload,
+  RendererDiagnostics,
   RenderAdapter,
   RenderMode,
   RenderOptions,
@@ -171,6 +172,7 @@ export function App() {
   const [packageIssues, setPackageIssues] = useState<LocalPackageIssue[]>([]);
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
+  const [rendererDiagnostics, setRendererDiagnostics] = useState<RendererDiagnostics | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [camera, setCamera] = useState(initialCamera);
   const [density, setDensity] = useState(0.9);
@@ -384,6 +386,7 @@ export function App() {
       const worldSession = createManifestOnlySession(input);
       setSession(worldSession);
       setRenderer(null);
+      setRendererDiagnostics(null);
       setWorldPoints([]);
       setCaptureFrames(input.captureFrames ?? []);
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
@@ -417,7 +420,15 @@ export function App() {
     };
 
     setSession(worldSession);
-    setRenderer(new ThreeWorldRenderer({ pointCloud, classes: worldSession.classes, mesh, gaussianUrl: input.gaussianUrl }));
+    const nextRenderer = new ThreeWorldRenderer({
+      pointCloud,
+      classes: worldSession.classes,
+      mesh,
+      gaussianUrl: input.gaussianUrl,
+      onDiagnosticsChange: setRendererDiagnostics
+    });
+    setRenderer(nextRenderer);
+    setRendererDiagnostics(nextRenderer.getDiagnostics());
     setWorldPoints(pointCloud.points);
     setCaptureFrames(input.captureFrames ?? []);
     setAssetSummary({
@@ -865,7 +876,7 @@ export function App() {
                 ? { label: `step ${stepCount}`, accent: true }
                 : mode === "episode"
                   ? { label: `step ${episodeStep} / ${totalSteps}`, accent: true }
-                  : { label: "three.js · spark path", accent: true }
+                  : { label: rendererStatusLabel(renderMode, rendererDiagnostics), accent: true }
             ]}
           />
         </main>
@@ -1222,6 +1233,21 @@ function createManifestOnlySession(input: LoadedWorldInput): WorldSession {
       authorityStatus: input.authorityStatus
     }
   };
+}
+
+function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagnostics | null): string {
+  if (renderMode === "points") return "three.js · ordinary PLY";
+  if (renderMode === "mesh") return "three.js · OBJ mesh";
+  if (renderMode === "semantic") return "three.js · semantic points";
+  if (renderMode === "depth") return "three.js · depth points";
+
+  if (!diagnostics?.hasGaussianSource) return "splat fallback · no gaussian";
+  if (diagnostics.sparkState === "idle" || diagnostics.sparkState === "loading") return "spark loading · point fallback";
+  if (diagnostics.splatRenderPath === "spark-gaussian") {
+    return `spark gaussian · ${diagnostics.gaussianSplatCount ?? "ready"} splats`;
+  }
+  if (diagnostics.sparkState === "failed") return `splat fallback · ${diagnostics.sparkFailureReason ?? "spark failed"}`;
+  return "splat fallback · not renderable";
 }
 
 function createPointCloudSession(input: LoadedWorldInput, pointCount: number, classes: WorldClass[]): WorldSession {
