@@ -237,6 +237,51 @@ body {
   touch-action: none;
 }
 
+.ws-canvas.dual-right {
+  left: 50%;
+  width: 50%;
+}
+
+.ws-dual-left {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ws-view-tag.metric {
+  left: calc(50% + 22px);
+}
+
+.ws-dual-left .ws-canvas,
+.ws-strip-cell .ws-canvas,
+.ws-pip .ws-canvas,
+.ws-preview-card .ws-canvas {
+  cursor: default;
+}
+
+.ws-search input {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  flex: 1;
+  font: inherit;
+  font-size: calc(var(--fs) - 1px);
+  min-width: 0;
+  outline: none;
+}
+
+.ws-search input::placeholder {
+  color: var(--ink-faint);
+}
+
+.ws-tracks-right {
+  margin-left: auto;
+}
+
 .ws-slider-row input[type="range"] {
   flex: 1;
   accent-color: var(--acc);

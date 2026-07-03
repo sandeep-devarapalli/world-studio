@@ -8,8 +8,9 @@ import {
   type LoftSceneManifest,
   type PointRecord
 } from "@world-studio/artifacts";
-import { accents, WSButton, WSChip, WSControlsBar, WSIcon, WSKey, WSPanel, WSPill, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
+import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel, WSPill, WSRamp, WSSliderRow, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
+import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
 import type {
   AgentState,
   AuthorityStatus,
@@ -72,6 +73,23 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
   ]
 };
 
+const stripCells: Array<{ mode: FeedMode; label: string }> = [
+  { mode: "rgb", label: "RGB" },
+  { mode: "depth", label: "DEPTH" },
+  { mode: "semantic", label: "SEG" },
+  { mode: "points", label: "LIDAR" }
+];
+
+const simFeedPose: FeedPose = { x: 1.6, y: 1.35, z: 2.0, heading: -2.2, pitch: -0.23 };
+
+const sensorIcons: Record<SensorRigChannel["kind"], WSIconName> = {
+  rgb: "camera",
+  depth: "camera",
+  segmentation: "layers",
+  lidar: "lidar",
+  imu: "imu"
+};
+
 const editTools: Array<{ id: string; icon: WSIconName; title: string }> = [
   { id: "orbit", icon: "orbit", title: "orbit" },
   { id: "brush", icon: "brush", title: "brush select" },
@@ -88,9 +106,15 @@ interface AssetSummary {
   pointCount: number;
 }
 
+interface CaptureFrame {
+  name: string;
+  path: string;
+}
+
 interface LoadedWorldInput {
   name: string;
   scene?: LoftSceneManifest;
+  captureFrames?: CaptureFrame[];
   pointsText?: string;
   gaussianHeaderText?: string;
   gaussianUrl?: string;
@@ -161,7 +185,24 @@ export function App() {
   const [playing, setPlaying] = useState(false);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
+  const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
+  const [captureFrames, setCaptureFrames] = useState<CaptureFrame[]>([]);
+  const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
+  const [stepCount, setStepCount] = useState(0);
+  const [lastAction, setLastAction] = useState("idle");
+  const [treeFilter, setTreeFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement | null>(null);
   const accent = accents[accentName];
+  const totalSteps = Math.max(trajectory.length - 1, 1);
+  const episodeStep = Math.round(playhead * totalSteps);
+  const replayAgent = useMemo(() => interpolateTrajectory(trajectory, playhead), [trajectory, playhead]);
+  const agentEye: FeedPose = {
+    x: agent.x - Math.cos(agent.heading) * 0.35,
+    y: 0.62,
+    z: agent.z - Math.sin(agent.heading) * 0.35,
+    heading: agent.heading,
+    pitch: -0.06
+  };
 
   const options: RenderOptions = useMemo(
     () => ({
@@ -174,11 +215,11 @@ export function App() {
       deleted,
       showDeleted,
       isolatedClass,
-      agent: mode === "pilot" || mode === "episode" ? agent : undefined,
+      agent: mode === "pilot" ? agent : mode === "episode" ? replayAgent : undefined,
       trajectory: mode === "pilot" || mode === "episode" ? trajectory : undefined,
       grid: true
     }),
-    [accent, agent, camera, deleted, density, exposure, isolatedClass, mode, renderMode, selected, showDeleted, trajectory]
+    [accent, agent, camera, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, trajectory]
   );
   const activePackageInsight = useMemo(
     () => packageInsights.find((insight) => insight.id === selectedInsightId) ?? packageInsights[0] ?? null,
@@ -217,9 +258,19 @@ export function App() {
 
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       setPressed((current) => new Set(current).add(event.key.toLowerCase()));
+      if (event.key === "/" && mode === "view") {
+        event.preventDefault();
+        filterRef.current?.focus();
+        return;
+      }
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
+      if (mode === "episode" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        const delta = (event.key === "ArrowRight" ? 1 : -1) / Math.max(trajectory.length - 1, 1);
+        setPlayhead((value) => Math.min(1, Math.max(0, value + delta)));
+      }
       if (event.key.toLowerCase() === "r" && mode === "pilot") resetAgent();
       if (event.key === "Delete" && mode === "edit") deleteSelected();
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") undoLast();
@@ -240,7 +291,7 @@ export function App() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [mode, selected, history]);
+  }, [mode, selected, history, trajectory]);
 
   const resetTransientState = useCallback((worldSession: WorldSession) => {
     const spawn = worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
@@ -249,6 +300,8 @@ export function App() {
     setSelected(new Set());
     setDeleted(new Set());
     setHistory([]);
+    setStepCount(0);
+    setLastAction("idle");
   }, []);
 
   const loadFixture = useCallback(async () => {
@@ -313,7 +366,8 @@ export function App() {
       companionArtifacts: payload.companionArtifacts,
       authorityStatus: payload.authorityStatus,
       packageInsights: payload.packageInsights,
-      packageIssues: payload.packageIssues
+      packageIssues: payload.packageIssues,
+      captureFrames: parseCaptureFrames(payload)
     });
   }, []);
 
@@ -326,6 +380,8 @@ export function App() {
       const worldSession = createManifestOnlySession(input);
       setSession(worldSession);
       setRenderer(null);
+      setWorldPoints([]);
+      setCaptureFrames(input.captureFrames ?? []);
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
@@ -358,6 +414,8 @@ export function App() {
 
     setSession(worldSession);
     setRenderer(new ThreeWorldRenderer({ pointCloud, classes: worldSession.classes, mesh, gaussianUrl: input.gaussianUrl }));
+    setWorldPoints(pointCloud.points);
+    setCaptureFrames(input.captureFrames ?? []);
     setAssetSummary({
       gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded",
       objFaces: meshSummary.faces,
@@ -426,9 +484,15 @@ export function App() {
     const spawn = session?.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
     setAgent(spawn);
     setTrajectory([[spawn.x, spawn.z]]);
+    setStepCount(0);
+    setLastAction("idle");
   };
 
   const driveAgent = (key: string) => {
+    setStepCount((count) => count + 1);
+    setLastAction(
+      key === "w" ? "MoveAhead(0.12)" : key === "s" ? "MoveBack(0.12)" : key === "a" ? "Rotate(-9°)" : "Rotate(+9°)"
+    );
     setAgent((current) => {
       const step = 0.12;
       const turn = 0.16;
@@ -505,7 +569,7 @@ export function App() {
         <main className={rootClass} style={{ "--acc": accent } as React.CSSProperties}>
           <canvas
             ref={canvasRef}
-            className="ws-canvas"
+            className={mode === "simulate" ? "ws-canvas dual-right" : "ws-canvas"}
             data-testid="world-canvas"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -514,6 +578,22 @@ export function App() {
             onWheel={onWheel}
           />
           <div className="ws-overlay">
+            {mode === "simulate" ? (
+              <>
+                <div className="ws-dual-left">
+                  <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
+                  <div className="ws-view-tag">
+                    <span className="ws-head">Sensor feed</span>
+                    <WSChip>{captureFrames.length ? `${captureFrames.length} frames` : "cam_front · synthetic"}</WSChip>
+                  </div>
+                </div>
+                <div className="ws-dual-split" />
+                <div className="ws-view-tag metric">
+                  <span className="ws-head">Metric view</span>
+                  <WSChip>{session ? `aligned · ${session.pointCount} pts` : "no world"}</WSChip>
+                </div>
+              </>
+            ) : null}
             <div className="ws-top-left">
               <WSWordmark context={session ? `${session.name} · ${session.version ?? "loaded"}` : "no world loaded"} />
               {mode === "edit" ? <ToolRail tool={tool} onSelect={setTool} /> : null}
@@ -530,31 +610,167 @@ export function App() {
               </WSPanel>
             </div>
 
-            <div className="ws-render-row">
-              <WSPanel className="ws-mode-switch">
-                <span className="ws-head">Render</span>
-                {renderModes.map((entry) => (
-                  <WSPill key={entry} className="sm" active={entry === renderMode} onClick={() => setRenderMode(entry)}>
-                    {entry}
-                  </WSPill>
-                ))}
-              </WSPanel>
-            </div>
+            {mode === "view" || mode === "edit" ? (
+              <div className="ws-render-row">
+                <WSPanel className="ws-mode-switch">
+                  <span className="ws-head">Render</span>
+                  {renderModes.map((entry) => (
+                    <WSPill key={entry} className="sm" active={entry === renderMode} onClick={() => setRenderMode(entry)}>
+                      {entry}
+                    </WSPill>
+                  ))}
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode === "pilot" ? (
+              <div className="ws-render-row">
+                <div className="ws-strip">
+                  {stripCells.map((cell) => (
+                    <div key={cell.label} className={`ws-strip-cell ${cell.label === "RGB" ? "on" : ""}`}>
+                      <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode={cell.mode} pose={agentEye} cw={400} ch={240} />
+                      <span className="ws-strip-lab">{cell.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <aside className="ws-left">{renderLeftPanel()}</aside>
             <aside className="ws-right-col">{renderRightPanel()}</aside>
 
-            <div className="ws-bottom-right">
-              <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
-                <ModeCard mode={mode} session={session} assetSummary={assetSummary} playhead={playhead} />
-              </WSPanel>
-            </div>
+            {mode === "pilot" ? (
+              <>
+                <div className="ws-bottom-right ws-pip">
+                  <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={agentEye} cw={880} ch={536} />
+                  <span className="ws-pip-lab">
+                    <WSDot pulse /> agent eye · cam_front
+                  </span>
+                </div>
+                <div className="ws-bottom-left">
+                  <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
+                    <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
+                  </WSPanel>
+                </div>
+              </>
+            ) : null}
 
-            <div className="ws-bottom-center">
-              <div className="ws-bottom-stack">
-                <WSControlsBar controls={controls[mode]} />
+            {mode === "sensors" ? (
+              <div className="ws-bottom-left ws-previews">
+                {[
+                  { mode: "rgb" as FeedMode, label: "cam_front · RGB" },
+                  { mode: "depth" as FeedMode, label: "cam_front · DEPTH" }
+                ].map((cell) => (
+                  <div key={cell.label} className="ws-preview-card">
+                    <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode={cell.mode} pose={simFeedPose} cw={600} ch={376} />
+                    <span className="ws-strip-lab">{cell.label}</span>
+                  </div>
+                ))}
               </div>
-            </div>
+            ) : null}
+
+            {mode === "simulate" ? (
+              <div className="ws-bottom-tray">
+                <WSPanel title="Session" className="ws-card">
+                  <div className="ws-kv">
+                    <span>dataset</span>
+                    <b>{session?.name ?? "none"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>points</span>
+                    <b>{session?.pointCount ?? 0}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>loaded</span>
+                    <b>{session ? new Date(session.provenance.loadedAt).toLocaleTimeString() : "—"}</b>
+                  </div>
+                </WSPanel>
+                <WSPanel title="Agent state" className="ws-card">
+                  <div className="ws-kv">
+                    <span>pose</span>
+                    <b>
+                      x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)} · θ {Math.round(((agent.heading * 180) / Math.PI) % 360)}°
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>action</span>
+                    <b>{lastAction}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>steps</span>
+                    <b>{stepCount}</b>
+                  </div>
+                </WSPanel>
+                <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
+                  <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode === "episode" ? (
+              <div className="ws-top-right">
+                <WSPanel title="Episode" meta={activeMode.tag} className="ws-episode-card">
+                  <div className="ws-mode-title-row">
+                    <div className="ws-mode-title">Episode</div>
+                    <WSChip accent>{playing ? "playing" : "paused"}</WSChip>
+                  </div>
+                  <div className="ws-kv">
+                    <span>steps</span>
+                    <b>
+                      {episodeStep} / {totalSteps}
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>captures</span>
+                    <b>{sensors.filter((sensor) => sensor.enabled).map((sensor) => sensor.label).join(" · ") || "none"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>source</span>
+                    <b>{trajectory.length > 1 ? "pilot drive" : "no recording"}</b>
+                  </div>
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode !== "pilot" && mode !== "simulate" && mode !== "episode" ? (
+              <div className="ws-bottom-right">
+                <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
+                  <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode === "episode" ? (
+              <div className="ws-bottom-full">
+                <TracksPanel
+                  step={episodeStep}
+                  total={totalSteps}
+                  playing={playing}
+                  hasTrajectory={trajectory.length > 1}
+                  capturing={sensors.some((sensor) => sensor.enabled)}
+                  onToggle={() => setPlaying((value) => !value)}
+                  onRewind={() => {
+                    setPlayhead(0);
+                    setPlaying(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="ws-bottom-center">
+                <div className="ws-bottom-stack">
+                  {(mode === "view" || mode === "simulate") && captureFrames.length ? (
+                    <TimelineCapsule
+                      frame={Math.round(playhead * captureFrames.length)}
+                      total={captureFrames.length}
+                      playing={playing}
+                      onToggle={() => setPlaying((value) => !value)}
+                      onRewind={() => setPlayhead(0)}
+                    />
+                  ) : null}
+                  <WSControlsBar controls={controls[mode]} />
+                </div>
+              </div>
+            )}
 
             {!session ? (
               <div className="ws-empty-state">
@@ -582,7 +798,11 @@ export function App() {
               { label: session ? `${session.name} · ${session.provenance.authorityStatus}` : "startup blank" },
               { label: `${renderMode} · ${Math.round(density * 100)}% density` },
               { label: `${selected.size} selected · ${deleted.size} hidden` },
-              { label: "three.js · spark path", accent: true }
+              mode === "pilot"
+                ? { label: `step ${stepCount}`, accent: true }
+                : mode === "episode"
+                  ? { label: `step ${episodeStep} / ${totalSteps}`, accent: true }
+                  : { label: "three.js · spark path", accent: true }
             ]}
           />
         </main>
@@ -633,59 +853,130 @@ export function App() {
       );
     }
 
-    if (mode === "sensors") {
+    if (mode === "simulate") {
       return (
-        <WSPanel title="Rig Channels" meta={`${sensors.filter((sensor) => sensor.enabled).length} on`}>
-          <div className="ws-sensor-list">
-            {sensors.map((sensor) => (
-              <div
-                key={sensor.id}
-                className={`ws-sensor-row ${sensor.enabled ? "active" : "dim"}`}
-                onClick={() =>
-                  setSensors((items) => items.map((item) => (item.id === sensor.id ? { ...item, enabled: !item.enabled } : item)))
-                }
-              >
-                <div className="ws-sensor-name">
-                  <span>{sensor.label}</span>
-                  <span className="ws-sensor-spec">{sensor.spec}</span>
+        <WSPanel title="Frames" meta={captureFrames.length ? `${captureFrames.length} captured` : "none"} pad={false}>
+          <div className="ws-frame-list">
+            {captureFrames.length ? (
+              captureFrames.slice(0, 7).map((frame) => (
+                <div key={frame.name} className="ws-frame-row">
+                  <span className="ws-frame-thumb" />
+                  <span className="ws-row-name">{frame.name}</span>
+                  <WSChip>ok</WSChip>
                 </div>
-                <WSSwitch on={sensor.enabled} />
+              ))
+            ) : (
+              <div className="ws-frame-row dim">
+                <span className="ws-frame-thumb" />
+                <span className="ws-row-name">no capture frames in package</span>
               </div>
-            ))}
+            )}
           </div>
         </WSPanel>
       );
     }
 
-    if (mode === "episode") {
+    if (mode === "pilot") {
       return (
-        <WSPanel title="Tracks" meta={`${Math.round(playhead * 180)}f`}>
-          <div className="ws-row-stack">
-            {["agent", "object", "capture"].map((lane) => (
-              <div className="ws-kv" key={lane}>
-                <span>{lane}</span>
-                <b>{lane === "agent" ? "move · turn · stop" : lane === "object" ? "spawn · collide" : "rgb · depth · seg"}</b>
-              </div>
-            ))}
-            <div className="ws-btn-row">
-              <WSButton accent onClick={() => setPlaying((value) => !value)}>
-                {playing ? "Pause" : "Play"}
-              </WSButton>
-            </div>
+        <WSPanel title="Agent — locobot_01" className="ws-agent-pad">
+          <div className="ws-pad">
+            <span />
+            <WSKey active={pressed.has("w")}>W</WSKey>
+            <span />
+            <WSKey active={pressed.has("a")}>A</WSKey>
+            <WSKey active={pressed.has("s")}>S</WSKey>
+            <WSKey active={pressed.has("d")}>D</WSKey>
+          </div>
+          <div className="ws-kv">
+            <span>pose</span>
+            <b>
+              x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)}
+            </b>
+          </div>
+          <div className="ws-kv">
+            <span>MoveAhead</span>
+            <b>0.12 m</b>
+          </div>
+          <div className="ws-kv">
+            <span>Rotate</span>
+            <b>9°</b>
+          </div>
+          <div className="ws-btn-row">
+            <WSButton onClick={resetAgent}>Reset</WSButton>
           </div>
         </WSPanel>
       );
     }
 
+    if (mode === "sensors" || mode === "episode") return null;
+
+    const filteredClasses = (session?.classes ?? []).filter((entry) =>
+      entry.name.toLowerCase().includes(treeFilter.toLowerCase())
+    );
     return (
-      <WSPanel title="World Tree" meta={session ? `${session.classes.length} classes` : "empty"}>
+      <WSPanel pad={false} className="ws-tree">
+        <div className="ws-search">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5" />
+            <path d="M13.5 13.5L18 18" />
+          </svg>
+          <input
+            ref={filterRef}
+            value={treeFilter}
+            onChange={(event) => setTreeFilter(event.target.value)}
+            placeholder="Filter world…"
+            aria-label="Filter world"
+          />
+          <WSKey>/</WSKey>
+        </div>
         <div className="ws-tree-body">
-          <div className={`ws-layer-row ${session ? "active" : "dim"}`}>
-            <span className="ws-row-ic">◉</span>
-            <span className="ws-row-name">{session ? `${session.name} · ${session.version ?? "v"}` : "no loaded world"}</span>
-            <WSChip>{session?.pointCount ?? 0}</WSChip>
+          <div className="ws-group-head">
+            <WSIcon name="chevD" size={11} />
+            <span className="ws-head">Environment</span>
+            <span className="ws-head-right">{session ? `${session.name} · ${session.version ?? "local"}` : "empty"}</span>
           </div>
-          {session?.classes.map((entry) => (
+          {session ? (
+            <>
+              <div className={`ws-layer-row ${renderMode === "splat" ? "active" : ""}`} onClick={() => setRenderMode("splat")}>
+                <span className="ws-row-ic">
+                  <WSIcon name="layers" size={15} />
+                </span>
+                <span className="ws-row-name">Gaussian field</span>
+                <WSChip>{assetSummary?.gaussianKind ?? "unloaded"}</WSChip>
+              </div>
+              <div className={`ws-layer-row ${renderMode === "points" ? "active" : ""}`} onClick={() => setRenderMode("points")}>
+                <span className="ws-row-ic">
+                  <WSIcon name="layers" size={15} />
+                </span>
+                <span className="ws-row-name">Point cloud</span>
+                <WSChip>{session.pointCount}</WSChip>
+              </div>
+              <div className={`ws-layer-row ${renderMode === "mesh" ? "active" : ""}`} onClick={() => setRenderMode("mesh")}>
+                <span className="ws-row-ic">
+                  <WSIcon name="spawn" size={15} />
+                </span>
+                <span className="ws-row-name">Collision mesh</span>
+                <WSChip>{assetSummary ? `${assetSummary.objFaces} tri` : "unloaded"}</WSChip>
+              </div>
+            </>
+          ) : (
+            <div className="ws-layer-row dim">
+              <span className="ws-row-ic">◉</span>
+              <span className="ws-row-name">no loaded world</span>
+              <WSChip>0</WSChip>
+            </div>
+          )}
+          <div className="ws-group-head">
+            <WSIcon name="chev" size={11} />
+            <span className="ws-head">Sensors</span>
+            <span className="ws-head-right">rig_a · {sensors.length} ch</span>
+          </div>
+          <div className="ws-group-head">
+            <WSIcon name="chevD" size={11} />
+            <span className="ws-head">Classes</span>
+            <span className="ws-head-right">{filteredClasses.length}</span>
+          </div>
+          {filteredClasses.map((entry) => (
             <div
               className={`ws-class-row ${isolatedClass === entry.label ? "active" : ""}`}
               key={entry.label}
@@ -696,6 +987,16 @@ export function App() {
               <span className="ws-head-right">{entry.points ?? 0}</span>
             </div>
           ))}
+        </div>
+        <div className="ws-tree-foot">
+          <span className="ws-key-group">
+            <WSKey>I</WSKey>
+            <span className="ws-foot-label">isolate</span>
+          </span>
+          <span className="ws-key-group">
+            <WSKey>/</WSKey>
+            <span className="ws-foot-label">filter</span>
+          </span>
         </div>
       </WSPanel>
     );
@@ -723,27 +1024,75 @@ export function App() {
       );
     }
 
-    if (mode === "pilot") {
+    if (mode === "sensors") {
+      const selectedSensor = sensors.find((sensor) => sensor.id === selectedSensorId) ?? sensors[0];
       return (
-        <WSPanel title="Agent" meta="keyboard">
-          <div className="ws-pad">
-            <WSKey active={pressed.has("w")}>W</WSKey>
-            <WSKey active={pressed.has("a")}>A</WSKey>
-            <WSKey active={pressed.has("s")}>S</WSKey>
-            <WSKey active={pressed.has("d")}>D</WSKey>
-          </div>
-          <div className="ws-kv">
-            <span>pose</span>
-            <b>
-              {agent.x.toFixed(2)} · {agent.z.toFixed(2)}
-            </b>
-          </div>
-          <div className="ws-btn-row">
-            <WSButton onClick={resetAgent}>Reset</WSButton>
-          </div>
-        </WSPanel>
+        <>
+          <WSPanel
+            title="Rig — rig_a"
+            meta={`${sensors.length} channels · ${sensors.filter((sensor) => sensor.enabled).length} active`}
+            pad={false}
+            className="ws-sensor-list"
+          >
+            {sensors.map((sensor) => (
+              <div
+                key={sensor.id}
+                className={`ws-sensor-row ${sensor.id === selectedSensorId ? "active" : ""} ${sensor.enabled ? "" : "dim"}`.trim()}
+                onClick={() => setSelectedSensorId(sensor.id)}
+              >
+                <span className="ws-row-ic">
+                  <WSIcon name={sensorIcons[sensor.kind]} size={15} />
+                </span>
+                <span className="ws-sensor-name">
+                  <span className="ws-row-name">{sensor.label}</span>
+                  <span className="ws-sensor-spec">{sensor.spec}</span>
+                </span>
+                <span
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSensors((items) =>
+                      items.map((item) => (item.id === sensor.id ? { ...item, enabled: !item.enabled } : item))
+                    );
+                  }}
+                >
+                  <WSSwitch on={sensor.enabled} />
+                </span>
+              </div>
+            ))}
+            <div className="ws-tree-foot">
+              <span className="ws-key-group">
+                <WSKey>G</WSKey>
+                <span className="ws-foot-label">grab / place</span>
+              </span>
+              <span className="ws-key-group">
+                <WSKey>N</WSKey>
+                <span className="ws-foot-label">add sensor</span>
+              </span>
+            </div>
+          </WSPanel>
+          {selectedSensor ? (
+            <WSPanel title={`${selectedSensor.label} — channel`} className="ws-intrinsics">
+              <div className="ws-kv">
+                <span>kind</span>
+                <b>{selectedSensor.kind}</b>
+              </div>
+              <div className="ws-kv">
+                <span>spec</span>
+                <b>{selectedSensor.spec}</b>
+              </div>
+              <div className="ws-kv">
+                <span>state</span>
+                <b>{selectedSensor.enabled ? "streaming" : "off"}</b>
+              </div>
+              <WSSliderRow label="Noise σ" value="0.000" pct={0} />
+              <WSSliderRow label="Blur" value="off" pct={0} />
+            </WSPanel>
+          ) : null}
+        </>
       );
     }
+
+    if (mode !== "view") return null;
 
     return (
       <div className="ws-row-stack">
@@ -914,6 +1263,38 @@ function sceneClassToWorldClass(entry: LoftSceneManifest["classes"][number]): Wo
   };
 }
 
+function interpolateTrajectory(trajectory: Array<[number, number]>, t: number): AgentState {
+  const first = trajectory[0];
+  if (!first || trajectory.length < 2) {
+    return { x: first?.[0] ?? 0, z: first?.[1] ?? 0, heading: 0 };
+  }
+  const fi = Math.min(trajectory.length - 1.001, Math.max(0, t) * (trajectory.length - 1));
+  const index = Math.floor(fi);
+  const u = fi - index;
+  const a = trajectory[index] ?? first;
+  const b = trajectory[index + 1] ?? a;
+  return {
+    x: a[0] + (b[0] - a[0]) * u,
+    z: a[1] + (b[1] - a[1]) * u,
+    heading: Math.atan2(b[1] - a[1], b[0] - a[0])
+  };
+}
+
+function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
+  const text = payload.budoMediaFrames?.text;
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as { frames?: Array<{ display_name?: string; rgb_path?: string }> };
+    if (!Array.isArray(parsed.frames)) return [];
+    return parsed.frames.map((frame, index) => ({
+      name: frame.display_name ?? `frame ${index + 1}`,
+      path: frame.rgb_path ?? ""
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function compactPath(value: string): string {
   if (value.length <= 42) return value;
   return `...${value.slice(-39)}`;
@@ -1074,11 +1455,13 @@ function PackageInsightDetail({ insight }: { insight: LocalPackageInsight | null
 
 function ModeCard({
   mode,
+  renderMode,
   session,
   assetSummary,
   playhead
 }: {
   mode: StudioMode;
+  renderMode: RenderMode;
   session: WorldSession | null;
   assetSummary: AssetSummary | null;
   playhead: number;
@@ -1090,6 +1473,7 @@ function ModeCard({
         <div className="ws-mode-title">{title}</div>
         <WSChip accent>{session ? "live" : "blank"}</WSChip>
       </div>
+      {renderMode === "depth" ? <WSRamp from={0} to={0.978} label="magma" /> : null}
       <div className="ws-kv">
         <span>points</span>
         <b>{assetSummary?.pointCount ?? session?.pointCount ?? 0}</b>
