@@ -544,6 +544,28 @@ test("shows Rapier physics diagnostics and steps the pilot agent", async ({ page
   await expect(page.locator(".ws-statusbar")).toContainText(/step [1-9]/);
 });
 
+test("changes spawn, body preset, and collision debug overlay", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Pilot" }).click();
+
+  const pilotPanel = page.locator(".ws-agent-pad");
+  await page.getByRole("button", { name: "Cargo body" }).click();
+  await expect(pilotPanel).toContainText("Agent — Cargo");
+
+  await page.getByRole("button", { name: "Spawn at Origin" }).click();
+  await expect(pilotPanel).toContainText("x 0.00 · z 0.00");
+
+  await page.keyboard.press("w");
+  await expect(page.locator(".ws-statusbar")).toContainText(/step [1-9]/);
+  await page.getByRole("button", { name: "Reset to Spawn" }).click();
+  await expect(page.locator(".ws-statusbar")).toContainText("step 0");
+
+  await page.getByRole("button", { name: "collision off" }).click();
+  await expect(pilotPanel).toContainText("collision on");
+  await expectCanvasScreenshot(page);
+});
+
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();

@@ -104,7 +104,10 @@ export interface RenderOptions {
   showDeleted: boolean;
   isolatedClass?: number;
   agent?: AgentState;
+  spawn?: AgentState;
   trajectory?: Array<[number, number]>;
+  debugCollision: boolean;
+  agentBodyRadius?: number;
   grid: boolean;
 }
 

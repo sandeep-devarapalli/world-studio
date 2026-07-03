@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseObjMesh } from "@world-studio/artifacts";
-import { RapierSimulation } from "./simulation";
+import { RapierSimulation, agentBodyPresets } from "./simulation";
 
 describe("RapierSimulation", () => {
   it("builds static colliders from OBJ bounds and steps the agent", async () => {
@@ -10,7 +10,8 @@ v 1 0 -1
 v 1 0 1
 v -1 0 1
 f 1 2 3 4`);
-    const simulation = await RapierSimulation.create({ mesh, agent: { x: 0, z: 0, heading: 0 } });
+    const body = agentBodyPresets.find((preset) => preset.id === "locobot") ?? agentBodyPresets[0];
+    const simulation = await RapierSimulation.create({ mesh, agent: { x: 0, z: 0, heading: 0 }, body });
 
     expect(simulation.diagnostics()).toMatchObject({
       backend: "rapier3d-compat",

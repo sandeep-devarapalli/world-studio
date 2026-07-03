@@ -38,9 +38,11 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private pointPositions: Float32Array;
   private pointColors: Float32Array;
   private meshGroup?: THREE.Group;
+  private collisionDebugGroup?: THREE.Group;
   private grid?: THREE.GridHelper;
   private frustums?: THREE.LineSegments;
   private agentGroup?: THREE.Group;
+  private spawnGroup?: THREE.Group;
   private trajectoryLine?: THREE.Line;
   private sparkState: SparkLoadState = "idle";
   private sparkRenderer?: THREE.Object3D & { dispose?: () => void };
@@ -82,6 +84,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.syncAgent(options);
     this.syncTrajectory(options);
     this.syncWorldGuides(options);
+    this.syncDebugGuides(options);
 
     this.webgl.render(this.scene, this.camera);
   }
@@ -167,9 +170,11 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.camera = undefined;
     this.pointCloud = undefined;
     this.meshGroup = undefined;
+    this.collisionDebugGroup = undefined;
     this.grid = undefined;
     this.frustums = undefined;
     this.agentGroup = undefined;
+    this.spawnGroup = undefined;
     this.trajectoryLine = undefined;
     this.sparkRenderer = undefined;
     this.sparkMesh = undefined;
@@ -206,8 +211,14 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.meshGroup = this.createMeshGroup();
     this.scene.add(this.meshGroup);
 
+    this.collisionDebugGroup = createCollisionDebugGroup(this.mesh);
+    this.scene.add(this.collisionDebugGroup);
+
     this.agentGroup = createAgentGroup();
     this.scene.add(this.agentGroup);
+
+    this.spawnGroup = createSpawnGroup();
+    this.scene.add(this.spawnGroup);
 
     this.trajectoryLine = new THREE.Line(
       new THREE.BufferGeometry(),
@@ -481,6 +492,17 @@ export class ThreeWorldRenderer implements RenderAdapter {
     if (this.frustums) this.frustums.visible = options.grid;
   }
 
+  private syncDebugGuides(options: RenderOptions): void {
+    if (this.collisionDebugGroup) this.collisionDebugGroup.visible = options.debugCollision;
+    if (!this.spawnGroup) return;
+    this.spawnGroup.visible = options.debugCollision && Boolean(options.spawn);
+    if (!options.spawn) return;
+    this.spawnGroup.position.set(options.spawn.x, 0.03, options.spawn.z);
+    this.spawnGroup.rotation.y = Math.PI / 2 - options.spawn.heading;
+    const radius = Math.max(0.12, options.agentBodyRadius ?? 0.18);
+    this.spawnGroup.scale.setScalar(radius / 0.18);
+  }
+
   private requestFrame(): void {
     if (this.frameRequested || !this.lastCanvas || !this.lastOptions) return;
     this.frameRequested = true;
@@ -538,6 +560,91 @@ function createAgentGroup(): THREE.Group {
   heading.position.y = 0.08;
   group.add(heading);
   return group;
+}
+
+function createSpawnGroup(): THREE.Group {
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.18, 0.01, 8, 40),
+    new THREE.MeshBasicMaterial({ color: "#f2dfc7", transparent: true, opacity: 0.78 })
+  );
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+
+  const heading = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.02, 0), new THREE.Vector3(0, 0.02, 0.42)]),
+    new THREE.LineBasicMaterial({ color: "#f2dfc7", transparent: true, opacity: 0.82 })
+  );
+  group.add(heading);
+
+  const cross = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.22, 0.02, 0),
+      new THREE.Vector3(0.22, 0.02, 0),
+      new THREE.Vector3(0, 0.02, -0.22),
+      new THREE.Vector3(0, 0.02, 0.22)
+    ]),
+    new THREE.LineBasicMaterial({ color: "#f2dfc7", transparent: true, opacity: 0.56 })
+  );
+  group.add(cross);
+  return group;
+}
+
+function createCollisionDebugGroup(mesh?: ParsedObjMesh): THREE.Group {
+  const group = new THREE.Group();
+  if (!mesh?.triangles.length) return group;
+
+  for (const box of meshBoundsByGroup(mesh)) {
+    const geometry = new THREE.BoxGeometry(Math.max(box.hx * 2, 0.1), Math.max(box.hy * 2, 0.1), Math.max(box.hz * 2, 0.1));
+    const edges = new THREE.EdgesGeometry(geometry);
+    const line = new THREE.LineSegments(
+      edges,
+      new THREE.LineBasicMaterial({ color: "#6dd3ff", transparent: true, opacity: 0.72 })
+    );
+    line.position.set(box.cx, box.cy, box.cz);
+    group.add(line);
+  }
+
+  return group;
+}
+
+function meshBoundsByGroup(mesh: ParsedObjMesh) {
+  const groups = new Map<string, { min: [number, number, number]; max: [number, number, number] }>();
+
+  for (const triangle of mesh.triangles) {
+    const key = triangle.group || "default";
+    const bounds =
+      groups.get(key) ??
+      {
+        min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY] as [number, number, number],
+        max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY] as [number, number, number]
+      };
+
+    for (const vertexIndex of [triangle.a, triangle.b, triangle.c]) {
+      const vertex = mesh.vertices[vertexIndex];
+      if (!vertex) continue;
+      bounds.min = [Math.min(bounds.min[0], vertex[0]), Math.min(bounds.min[1], vertex[1]), Math.min(bounds.min[2], vertex[2])];
+      bounds.max = [Math.max(bounds.max[0], vertex[0]), Math.max(bounds.max[1], vertex[1]), Math.max(bounds.max[2], vertex[2])];
+    }
+
+    groups.set(key, bounds);
+  }
+
+  return [...groups.values()]
+    .filter((bounds) => bounds.min.every(Number.isFinite) && bounds.max.every(Number.isFinite))
+    .map((bounds) => {
+      const hx = (bounds.max[0] - bounds.min[0]) / 2;
+      const hy = (bounds.max[1] - bounds.min[1]) / 2;
+      const hz = (bounds.max[2] - bounds.min[2]) / 2;
+      return {
+        cx: bounds.min[0] + hx,
+        cy: bounds.min[1] + hy,
+        cz: bounds.min[2] + hz,
+        hx,
+        hy,
+        hz
+      };
+    });
 }
 
 function createFrustums(): THREE.LineSegments {

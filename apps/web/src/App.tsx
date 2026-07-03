@@ -12,7 +12,7 @@ import {
 import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel, WSPill, WSRamp, WSSliderRow, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
-import { RapierSimulation, unavailablePhysicsDiagnostics, type DriveCommand } from "./simulation";
+import { RapierSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
 import type {
   AgentState,
   AuthorityStatus,
@@ -158,6 +158,13 @@ const initialSensors: SensorRigChannel[] = [
 ];
 
 const brushRadius = 42;
+const defaultSpawn: AgentState = { x: 1.5, z: -0.5, heading: 4.4 };
+
+interface SpawnChoice {
+  id: string;
+  label: string;
+  agent: AgentState;
+}
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -165,6 +172,7 @@ export function App() {
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const simulationRef = useRef<RapierSimulation | null>(null);
   const simulationTokenRef = useRef(0);
+  const collisionMeshRef = useRef<ParsedObjMesh | undefined>(undefined);
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
@@ -187,8 +195,11 @@ export function App() {
   const [showDeleted, setShowDeleted] = useState(true);
   const [isolatedClass, setIsolatedClass] = useState<number | undefined>(undefined);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [agent, setAgent] = useState<AgentState>({ x: 1.5, z: -0.5, heading: 4.4 });
-  const [trajectory, setTrajectory] = useState<Array<[number, number]>>([[1.5, -0.5]]);
+  const [agent, setAgent] = useState<AgentState>(defaultSpawn);
+  const [spawn, setSpawn] = useState<AgentState>(defaultSpawn);
+  const [bodyPresetId, setBodyPresetId] = useState<AgentBodyPresetId>("locobot");
+  const [debugCollision, setDebugCollision] = useState(false);
+  const [trajectory, setTrajectory] = useState<Array<[number, number]>>([[defaultSpawn.x, defaultSpawn.z]]);
   const [physicsDiagnostics, setPhysicsDiagnostics] = useState<PhysicsDiagnostics>(unavailablePhysicsDiagnostics());
   const [sensors, setSensors] = useState(initialSensors);
   const [playhead, setPlayhead] = useState(0.28);
@@ -208,6 +219,11 @@ export function App() {
   const totalSteps = Math.max(trajectory.length - 1, 1);
   const episodeStep = Math.round(playhead * totalSteps);
   const replayAgent = useMemo(() => interpolateTrajectory(trajectory, playhead), [trajectory, playhead]);
+  const bodyPreset = useMemo(
+    () => agentBodyPresets.find((preset) => preset.id === bodyPresetId) ?? agentBodyPresets[1],
+    [bodyPresetId]
+  );
+  const spawnChoices = useMemo(() => buildSpawnChoices(session), [session]);
   const agentEye: FeedPose = {
     x: agent.x - Math.cos(agent.heading) * 0.35,
     y: 0.62,
@@ -228,10 +244,13 @@ export function App() {
       showDeleted,
       isolatedClass,
       agent: mode === "simulate" || mode === "pilot" ? agent : mode === "episode" ? replayAgent : undefined,
+      spawn,
       trajectory: mode === "simulate" || mode === "pilot" || mode === "episode" ? trajectory : undefined,
+      debugCollision,
+      agentBodyRadius: bodyPreset?.radius,
       grid: true
     }),
-    [accent, agent, camera, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, trajectory]
+    [accent, agent, bodyPreset?.radius, camera, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => packageInsights.find((insight) => insight.id === selectedInsightId) ?? packageInsights[0] ?? null,
@@ -307,22 +326,21 @@ export function App() {
     };
   }, [mode, selected, history, trajectory]);
 
-  const initializeSimulation = useCallback((worldSession: WorldSession, mesh?: ParsedObjMesh) => {
-    const spawn = worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
+  const initializeSimulation = useCallback((worldSession: WorldSession, mesh: ParsedObjMesh | undefined, nextSpawn: AgentState, body: AgentBodyPreset) => {
     const token = simulationTokenRef.current + 1;
     simulationTokenRef.current = token;
     simulationRef.current?.dispose();
     simulationRef.current = null;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
 
-    void RapierSimulation.create({ mesh, agent: spawn })
+    void RapierSimulation.create({ mesh, agent: nextSpawn, body })
       .then((simulation) => {
         if (simulationTokenRef.current !== token) {
           simulation.dispose();
           return;
         }
         simulationRef.current = simulation;
-        const step = simulation.reset(spawn);
+        const step = simulation.reset(nextSpawn);
         setAgent(step.agent);
         setPhysicsDiagnostics(step.diagnostics);
       })
@@ -334,9 +352,10 @@ export function App() {
   }, []);
 
   const resetTransientState = useCallback((worldSession: WorldSession) => {
-    const spawn = worldSession.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
-    setAgent(spawn);
-    setTrajectory([[spawn.x, spawn.z]]);
+    const nextSpawn = worldSession.agentSpawn ?? defaultSpawn;
+    setAgent(nextSpawn);
+    setSpawn(nextSpawn);
+    setTrajectory([[nextSpawn.x, nextSpawn.z]]);
     setSelected(new Set());
     setDeleted(new Set());
     setHistory([]);
@@ -344,6 +363,19 @@ export function App() {
     setLastAction("idle");
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
   }, []);
+
+  const restartSimulationAt = useCallback(
+    (nextSpawn: AgentState, body: AgentBodyPreset, action: string) => {
+      setSpawn(nextSpawn);
+      setAgent(nextSpawn);
+      setTrajectory([[nextSpawn.x, nextSpawn.z]]);
+      setStepCount(0);
+      setLastAction(action);
+      setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
+      if (session) initializeSimulation(session, collisionMeshRef.current, nextSpawn, body);
+    },
+    [initializeSimulation, session]
+  );
 
   const loadFixture = useCallback(async () => {
     const base = "/fixtures/loft_04";
@@ -417,6 +449,7 @@ export function App() {
 
     if (!input.pointsText) {
       const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
+      collisionMeshRef.current = mesh;
       const nextInsights = input.packageInsights ?? [];
       const nextIssues = input.packageIssues ?? [];
       const worldSession = createManifestOnlySession(input);
@@ -430,7 +463,7 @@ export function App() {
       setPackageIssues(nextIssues);
       setSelectedInsightId(nextInsights[0]?.id ?? null);
       resetTransientState(worldSession);
-      initializeSimulation(worldSession, mesh);
+      initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
       return;
     }
 
@@ -438,6 +471,7 @@ export function App() {
     const nextIssues = input.packageIssues ?? [];
     const pointCloud = parsePointCloudPly(input.pointsText);
     const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
+    collisionMeshRef.current = mesh;
     const meshSummary = input.objText ? parseObjMeshSummary(input.objText) : { faces: 0, groups: [] };
     const created = input.scene ? createLoftWorldSession(input.scene, input.loadedVia) : createPointCloudSession(input, pointCloud.points.length, classesFromPointCloud(pointCloud.points));
     const worldSession: WorldSession = {
@@ -478,8 +512,8 @@ export function App() {
     setPackageIssues(nextIssues);
     setSelectedInsightId(nextInsights[0]?.id ?? null);
     resetTransientState(worldSession);
-    initializeSimulation(worldSession, mesh);
-  }, [initializeSimulation, resetTransientState]);
+    initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
+  }, [bodyPreset, initializeSimulation, resetTransientState]);
 
   const toStage = useCallback(
     (clientX: number, clientY: number) => {
@@ -543,14 +577,23 @@ export function App() {
   const clearSelected = () => setSelected(new Set());
 
   const resetAgent = () => {
-    const spawn = session?.agentSpawn ?? { x: 1.5, z: -0.5, heading: 4.4 };
-    const step = simulationRef.current?.reset(spawn);
-    const nextAgent = step?.agent ?? spawn;
-    setAgent(nextAgent);
-    setPhysicsDiagnostics(step?.diagnostics ?? unavailablePhysicsDiagnostics());
-    setTrajectory([[nextAgent.x, nextAgent.z]]);
-    setStepCount(0);
-    setLastAction("idle");
+    restartSimulationAt(spawn, bodyPreset, "ResetToSpawn");
+  };
+
+  const selectSpawn = (choice: SpawnChoice) => {
+    restartSimulationAt(choice.agent, bodyPreset, `Spawn(${choice.label})`);
+  };
+
+  const setSpawnHere = () => {
+    const nextSpawn = { ...agent };
+    setSpawn(nextSpawn);
+    setLastAction("SetSpawnHere");
+  };
+
+  const selectBodyPreset = (id: AgentBodyPresetId) => {
+    const nextBody = agentBodyPresets.find((preset) => preset.id === id) ?? bodyPreset;
+    setBodyPresetId(nextBody.id);
+    restartSimulationAt(spawn, nextBody, `Body(${nextBody.label})`);
   };
 
   const stepPhysics = (command: DriveCommand, action: string) => {
@@ -833,6 +876,16 @@ export function App() {
                     <b>{physicsDiagnostics.backend}</b>
                   </div>
                   <div className="ws-kv">
+                    <span>body</span>
+                    <b>{bodyPreset?.label ?? "unknown"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>spawn</span>
+                    <b>
+                      x {spawn.x.toFixed(2)} · z {spawn.z.toFixed(2)}
+                    </b>
+                  </div>
+                  <div className="ws-kv">
                     <span>rate</span>
                     <b>{physicsDiagnostics.stepRateHz}hz</b>
                   </div>
@@ -847,6 +900,12 @@ export function App() {
                     <b>
                       {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
                     </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>debug</span>
+                    <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
+                      {debugCollision ? "collision on" : "collision off"}
+                    </button>
                   </div>
                 </WSPanel>
                 <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
@@ -1028,7 +1087,7 @@ export function App() {
 
     if (mode === "pilot") {
       return (
-        <WSPanel title="Agent — locobot_01" className="ws-agent-pad">
+        <WSPanel title={`Agent — ${bodyPreset?.label ?? "body"}`} className="ws-agent-pad">
           <div className="ws-pad">
             <span />
             <WSKey active={pressed.has("w")}>W</WSKey>
@@ -1048,10 +1107,48 @@ export function App() {
             <b>{physicsDiagnostics.backend}</b>
           </div>
           <div className="ws-kv">
+            <span>spawn</span>
+            <b>
+              x {spawn.x.toFixed(2)} · z {spawn.z.toFixed(2)}
+            </b>
+          </div>
+          <div className="ws-kv">
             <span>contacts</span>
             <b>
               {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
             </b>
+          </div>
+          <div className="ws-kv">
+            <span>debug</span>
+            <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
+              {debugCollision ? "collision on" : "collision off"}
+            </button>
+          </div>
+          <div className="ws-btn-row">
+            {agentBodyPresets.map((preset) => (
+              <WSButton
+                accent={preset.id === bodyPresetId}
+                aria-label={`${preset.label} body`}
+                key={preset.id}
+                onClick={() => selectBodyPreset(preset.id)}
+              >
+                {preset.label}
+              </WSButton>
+            ))}
+          </div>
+          <div className="ws-spawn-grid">
+            {spawnChoices.map((choice) => (
+              <button
+                aria-label={`Spawn at ${choice.label}`}
+                className={`ws-spawn-item ${samePose(choice.agent, spawn) ? "on" : ""}`.trim()}
+                key={choice.id}
+                onClick={() => selectSpawn(choice)}
+                type="button"
+              >
+                <WSIcon name="spawn" size={17} />
+                <span>{choice.label}</span>
+              </button>
+            ))}
           </div>
           <div className="ws-kv">
             <span>MoveAhead</span>
@@ -1062,7 +1159,8 @@ export function App() {
             <b>9°</b>
           </div>
           <div className="ws-btn-row">
-            <WSButton onClick={resetAgent}>Reset</WSButton>
+            <WSButton onClick={resetAgent}>Reset to Spawn</WSButton>
+            <WSButton onClick={setSpawnHere}>Set Spawn Here</WSButton>
           </div>
         </WSPanel>
       );
@@ -1723,6 +1821,20 @@ function driveActionLabel(key: string): string {
   if (key === "s") return "MoveBack(0.12)";
   if (key === "a") return "Rotate(-9deg)";
   return "Rotate(+9deg)";
+}
+
+function buildSpawnChoices(session: WorldSession | null): SpawnChoice[] {
+  const scene = session?.agentSpawn ?? defaultSpawn;
+  return [
+    { id: "scene", label: "Scene", agent: scene },
+    { id: "origin", label: "Origin", agent: { x: 0, z: 0, heading: 0 } },
+    { id: "window", label: "Window", agent: { x: -1.8, z: 1.3, heading: -0.65 } },
+    { id: "shelf", label: "Shelf", agent: { x: 2.0, z: 1.4, heading: 2.8 } }
+  ];
+}
+
+function samePose(a: AgentState, b: AgentState): boolean {
+  return Math.abs(a.x - b.x) < 0.001 && Math.abs(a.z - b.z) < 0.001 && Math.abs(a.heading - b.heading) < 0.001;
 }
 
 function nextAccent(current: keyof typeof accents): keyof typeof accents {
