@@ -6,28 +6,26 @@ import {
   parseObjMeshSummary,
   parsePointCloudPly,
   type LoftSceneManifest,
+  type ParsedObjMesh,
   type PointRecord
 } from "@world-studio/artifacts";
-import { accents, WSButton, WSChip, WSControlsBar, WSKey, WSPanel, WSPill, WSStatusBar, WSSwitch, WSWordmark } from "@world-studio/design-system";
+import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel, WSPill, WSRamp, WSSliderRow, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
+import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
+import { RapierSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
 import type {
-  AgentMoveResult,
   AgentState,
   AuthorityStatus,
   CameraState,
   LocalPackageInsight,
   LocalPackageIssue,
   LocalWorldPackagePayload,
-  PhysicsDebugInfo,
+  PhysicsDiagnostics,
+  RendererDiagnostics,
   RenderAdapter,
-  RendererDebugInfo,
   RenderMode,
   RenderOptions,
   SensorRigChannel,
-  SimulationCommand,
-  SimulatedPropPreset,
-  SimulatedPropState,
-  SpawnPlacementResult,
   StudioMode,
   WorldClass,
   WorldSession
@@ -46,20 +44,20 @@ const renderModes: RenderMode[] = ["splat", "points", "mesh", "semantic", "depth
 
 const fallbackClassColors = ["#5b6f8a", "#3d4a5c", "#b04a8f", "#d9764a", "#c9a93f", "#e8e26a", "#4fae62", "#8f6fd9", "#4fc3d9"];
 
-const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = {
+const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName; label: string }>> = {
   view: [
     { keyName: "L", label: "load" },
-    { keyName: "drag", label: "orbit" },
-    { keyName: "wheel", label: "zoom" }
+    { glyph: "mouseL", label: "orbit" },
+    { glyph: "wheel", label: "zoom" }
   ],
   edit: [
-    { keyName: "drag", label: "brush" },
+    { glyph: "mouseL", label: "brush" },
     { keyName: "⌘Z", label: "undo" },
     { keyName: "Del", label: "delete" }
   ],
   simulate: [
     { keyName: "F", label: "frames" },
-    { keyName: "drag", label: "inspect" },
+    { glyph: "mouseL", label: "inspect" },
     { keyName: "S", label: "sync" }
   ],
   pilot: [
@@ -70,7 +68,7 @@ const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = 
   sensors: [
     { keyName: "G", label: "place" },
     { keyName: "/", label: "filter" },
-    { keyName: "drag", label: "orbit" }
+    { glyph: "mouseL", label: "orbit" }
   ],
   episode: [
     { keyName: "Space", label: "play" },
@@ -79,6 +77,32 @@ const controls: Record<StudioMode, Array<{ keyName: string; label: string }>> = 
   ]
 };
 
+const stripCells: Array<{ mode: FeedMode; label: string }> = [
+  { mode: "rgb", label: "RGB" },
+  { mode: "depth", label: "DEPTH" },
+  { mode: "semantic", label: "SEG" },
+  { mode: "points", label: "LIDAR" }
+];
+
+const simFeedPose: FeedPose = { x: 1.6, y: 1.35, z: 2.0, heading: -2.2, pitch: -0.23 };
+
+const sensorIcons: Record<SensorRigChannel["kind"], WSIconName> = {
+  rgb: "camera",
+  depth: "camera",
+  segmentation: "layers",
+  lidar: "lidar",
+  imu: "imu"
+};
+
+const editTools: Array<{ id: string; icon: WSIconName; title: string }> = [
+  { id: "orbit", icon: "orbit", title: "orbit" },
+  { id: "brush", icon: "brush", title: "brush select" },
+  { id: "rect", icon: "rect", title: "rect select" },
+  { id: "crop", icon: "crop", title: "crop box" },
+  { id: "move", icon: "move", title: "transform" },
+  { id: "ruler", icon: "ruler", title: "measure" }
+];
+
 interface AssetSummary {
   gaussianKind: string;
   objFaces: number;
@@ -86,9 +110,15 @@ interface AssetSummary {
   pointCount: number;
 }
 
+interface CaptureFrame {
+  name: string;
+  path: string;
+}
+
 interface LoadedWorldInput {
   name: string;
   scene?: LoftSceneManifest;
+  captureFrames?: CaptureFrame[];
   pointsText?: string;
   gaussianHeaderText?: string;
   gaussianUrl?: string;
@@ -111,43 +141,6 @@ interface HistoryItem {
   indices: number[];
 }
 
-type EpisodeLane = "agent" | "object" | "capture";
-
-type EpisodeEventKind =
-  | "agent-drive"
-  | "agent-reset"
-  | "agent-spawn"
-  | "prop-spawn"
-  | "prop-select"
-  | "prop-move"
-  | "prop-duplicate"
-  | "prop-delete"
-  | "prop-reset"
-  | "simulation-step"
-  | "simulation-reset";
-
-interface EpisodeEvent {
-  id: string;
-  frame: number;
-  lane: EpisodeLane;
-  kind: EpisodeEventKind;
-  label: string;
-  targetId?: string;
-  pose?: { x: number; y?: number; z: number; heading?: number };
-  status?: string;
-}
-
-interface PointerInteraction {
-  kind: "orbit" | "brush" | "prop-drag";
-  x: number;
-  y: number;
-  startX: number;
-  startY: number;
-  moved: boolean;
-  propId?: string;
-  footprintRadius?: number;
-}
-
 const initialCamera: CameraState = {
   yaw: 0.62,
   pitch: 0.42,
@@ -155,10 +148,6 @@ const initialCamera: CameraState = {
   target: [0, 0.7, -0.2],
   fov: 50
 };
-
-const initialAgentSpawn: AgentState = { x: 1.5, z: -0.5, heading: 4.4 };
-const agentFootprintRadius = 0.36;
-const propPresets: SimulatedPropPreset[] = ["crate", "tall-crate"];
 
 const initialSensors: SensorRigChannel[] = [
   { id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72° · 1920x1080" },
@@ -168,25 +157,65 @@ const initialSensors: SensorRigChannel[] = [
   { id: "imu", label: "IMU", kind: "imu", enabled: true, spec: "200hz" }
 ];
 
+const brushRadius = 42;
+const defaultSpawn: AgentState = { x: 1.5, z: -0.5, heading: 4.4 };
+
+interface SpawnChoice {
+  id: string;
+  label: string;
+  agent: AgentState;
+}
+
+type SimulatedPropPreset = "crate" | "tall-crate";
+type EpisodeLane = "agent" | "object" | "capture";
+
+interface SimulatedPropState {
+  id: string;
+  label: string;
+  preset: SimulatedPropPreset;
+  contactState: "grounded" | "airborne" | "sleeping";
+  x: number;
+  y: number;
+  z: number;
+  footprintRadius: number;
+}
+
+interface EpisodeEvent {
+  id: string;
+  frame: number;
+  lane: EpisodeLane;
+  label: string;
+  targetId?: string;
+  status?: string;
+}
+
+const defaultProps: SimulatedPropState[] = [
+  { id: "prop-crate-a", label: "crate_a", preset: "crate", contactState: "grounded", x: -0.8, y: 0.18, z: 0.4, footprintRadius: 0.3 },
+  { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
+];
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const interactionRef = useRef<PointerInteraction | null>(null);
+  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect"; x: number; y: number } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
-  const simulationCommandSeq = useRef(0);
+  const simulationRef = useRef<RapierSimulation | null>(null);
+  const simulationTokenRef = useRef(0);
+  const propSeqRef = useRef(defaultProps.length);
   const episodeFrameRef = useRef(0);
+  const collisionMeshRef = useRef<ParsedObjMesh | undefined>(undefined);
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
   const [accentName, setAccentName] = useStoredState<keyof typeof accents>("ws-app-accent", "ember");
   const [dense, setDense] = useStoredState("ws-app-density", false);
   const [docked, setDocked] = useStoredState("ws-app-docked", false);
-  const [physicsDebug, setPhysicsDebug] = useStoredState("ws-app-physics-debug", false);
   const [session, setSession] = useState<WorldSession | null>(null);
   const [assetSummary, setAssetSummary] = useState<AssetSummary | null>(null);
   const [packageInsights, setPackageInsights] = useState<LocalPackageInsight[]>([]);
   const [packageIssues, setPackageIssues] = useState<LocalPackageIssue[]>([]);
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
   const [renderer, setRenderer] = useState<RenderAdapter | null>(null);
+  const [rendererDiagnostics, setRendererDiagnostics] = useState<RendererDiagnostics | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [camera, setCamera] = useState(initialCamera);
   const [density, setDensity] = useState(0.9);
@@ -196,29 +225,50 @@ export function App() {
   const [showDeleted, setShowDeleted] = useState(true);
   const [isolatedClass, setIsolatedClass] = useState<number | undefined>(undefined);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [spawn, setSpawn] = useState<AgentState>(initialAgentSpawn);
-  const [agent, setAgent] = useState<AgentState>(initialAgentSpawn);
-  const [trajectory, setTrajectory] = useState<Array<[number, number]>>([[initialAgentSpawn.x, initialAgentSpawn.z]]);
-  const [spawnPlacement, setSpawnPlacement] = useState<SpawnPlacementResult | null>(null);
-  const [agentMove, setAgentMove] = useState<AgentMoveResult | null>(null);
-  const [physicsInfo, setPhysicsInfo] = useState<PhysicsDebugInfo | null>(null);
-  const [rendererInfo, setRendererInfo] = useState<RendererDebugInfo | null>(null);
-  const [simulationCommand, setSimulationCommand] = useState<SimulationCommand | null>(null);
-  const [selectedPropId, setSelectedPropId] = useState<string | null>(null);
-  const [draggingPropId, setDraggingPropId] = useState<string | null>(null);
-  const [pilotTool, setPilotTool] = useState<"agent" | "prop">("agent");
-  const [selectedPropPreset, setSelectedPropPreset] = useState<SimulatedPropPreset>("crate");
+  const [agent, setAgent] = useState<AgentState>(defaultSpawn);
+  const [spawn, setSpawn] = useState<AgentState>(defaultSpawn);
+  const [bodyPresetId, setBodyPresetId] = useState<AgentBodyPresetId>("locobot");
+  const [debugCollision, setDebugCollision] = useState(false);
+  const [trajectory, setTrajectory] = useState<Array<[number, number]>>([[defaultSpawn.x, defaultSpawn.z]]);
+  const [physicsDiagnostics, setPhysicsDiagnostics] = useState<PhysicsDiagnostics>(unavailablePhysicsDiagnostics());
   const [sensors, setSensors] = useState(initialSensors);
   const [playhead, setPlayhead] = useState(0.28);
   const [playing, setPlaying] = useState(false);
+  const [props, setProps] = useState<SimulatedPropState[]>(defaultProps);
+  const [selectedPropId, setSelectedPropId] = useState<string | null>(null);
+  const [selectedPropPreset, setSelectedPropPreset] = useState<SimulatedPropPreset>("crate");
   const [episodeEvents, setEpisodeEvents] = useState<EpisodeEvent[]>([]);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
+  const [tool, setTool] = useState("brush");
+  const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
+  const [captureFrames, setCaptureFrames] = useState<CaptureFrame[]>([]);
+  const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
+  const [stepCount, setStepCount] = useState(0);
+  const [lastAction, setLastAction] = useState("idle");
+  const [treeFilter, setTreeFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [selectRect, setSelectRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const accent = accents[accentName];
-  const selectedProp = useMemo(() => {
-    const props = physicsInfo?.props ?? [];
-    return props.find((prop) => prop.id === selectedPropId) ?? props[0] ?? null;
-  }, [physicsInfo, selectedPropId]);
-  const selectedPropIdForRender = selectedProp?.id;
+  const totalSteps = Math.max(trajectory.length - 1, 1);
+  const episodeStep = Math.round(playhead * totalSteps);
+  const replayAgent = useMemo(() => interpolateTrajectory(trajectory, playhead), [trajectory, playhead]);
+  const bodyPreset = useMemo(
+    () => agentBodyPresets.find((preset) => preset.id === bodyPresetId) ?? agentBodyPresets[1],
+    [bodyPresetId]
+  );
+  const spawnChoices = useMemo(() => buildSpawnChoices(session), [session]);
+  const selectedProp = useMemo(
+    () => props.find((prop) => prop.id === selectedPropId) ?? props[0] ?? null,
+    [props, selectedPropId]
+  );
+  const agentEye: FeedPose = {
+    x: agent.x - Math.cos(agent.heading) * 0.35,
+    y: 0.62,
+    z: agent.z - Math.sin(agent.heading) * 0.35,
+    heading: agent.heading,
+    pitch: -0.06
+  };
 
   const options: RenderOptions = useMemo(
     () => ({
@@ -231,35 +281,14 @@ export function App() {
       deleted,
       showDeleted,
       isolatedClass,
-      agent: mode === "pilot" || mode === "episode" ? agent : undefined,
-      trajectory: mode === "pilot" || mode === "episode" ? trajectory : undefined,
-      spawnPlacement: mode === "pilot" ? spawnPlacement : null,
-      agentMove: mode === "pilot" ? agentMove : null,
-      physicsDebug: (mode === "pilot" || mode === "simulate") && physicsDebug,
-      simulationVisible: mode === "pilot" || mode === "simulate",
-      simulationCommand: mode === "pilot" || mode === "simulate" ? simulationCommand : null,
-      selectedPropId: mode === "pilot" || mode === "simulate" ? selectedPropIdForRender : undefined,
+      agent: mode === "simulate" || mode === "pilot" ? agent : mode === "episode" ? replayAgent : undefined,
+      spawn,
+      trajectory: mode === "simulate" || mode === "pilot" || mode === "episode" ? trajectory : undefined,
+      debugCollision,
+      agentBodyRadius: bodyPreset?.radius,
       grid: true
     }),
-    [
-      accent,
-      agent,
-      agentMove,
-      camera,
-      deleted,
-      density,
-      exposure,
-      isolatedClass,
-      mode,
-      physicsDebug,
-      renderMode,
-      selected,
-      selectedPropIdForRender,
-      showDeleted,
-      simulationCommand,
-      spawnPlacement,
-      trajectory
-    ]
+    [accent, agent, bodyPreset?.radius, camera, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => packageInsights.find((insight) => insight.id === selectedInsightId) ?? packageInsights[0] ?? null,
@@ -287,6 +316,7 @@ export function App() {
   }, [renderer, options, scale]);
 
   useEffect(() => () => renderer?.dispose?.(), [renderer]);
+  useEffect(() => () => simulationRef.current?.dispose(), []);
 
   useEffect(() => {
     if (!playing) return;
@@ -297,40 +327,21 @@ export function App() {
   }, [playing]);
 
   useEffect(() => {
-    if (mode !== "pilot") {
-      setSpawnPlacement(null);
-      setAgentMove(null);
-      setDraggingPropId(null);
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    if (!renderer?.getPhysicsDebugInfo || (mode !== "pilot" && mode !== "simulate")) {
-      setPhysicsInfo(null);
-      return;
-    }
-    const update = () => setPhysicsInfo(renderer.getPhysicsDebugInfo?.() ?? null);
-    update();
-    const id = window.setInterval(update, 250);
-    return () => window.clearInterval(id);
-  }, [agentMove, mode, physicsDebug, renderer, spawnPlacement]);
-
-  useEffect(() => {
-    if (!renderer?.getRendererDebugInfo) {
-      setRendererInfo(null);
-      return;
-    }
-    const update = () => setRendererInfo(renderer.getRendererDebugInfo?.() ?? null);
-    update();
-    const id = window.setInterval(update, 250);
-    return () => window.clearInterval(id);
-  }, [renderMode, renderer]);
-
-  useEffect(() => {
     const down = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       setPressed((current) => new Set(current).add(event.key.toLowerCase()));
+      if (event.key === "/" && mode === "view") {
+        event.preventDefault();
+        filterRef.current?.focus();
+        return;
+      }
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
+      if (event.key.toLowerCase() === "s" && mode === "simulate") stepPhysics({ move: 0, turn: 0 }, "PhysicsStep(1/60s)");
+      if (mode === "episode" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        const delta = (event.key === "ArrowRight" ? 1 : -1) / Math.max(trajectory.length - 1, 1);
+        setPlayhead((value) => Math.min(1, Math.max(0, value + delta)));
+      }
       if (event.key.toLowerCase() === "r" && mode === "pilot") resetAgent();
       if (event.key === "Delete" && mode === "edit") deleteSelected();
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") undoLast();
@@ -351,25 +362,63 @@ export function App() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [mode, selected, history, spawn, renderer]);
+  }, [mode, selected, history, trajectory]);
+
+  const initializeSimulation = useCallback((worldSession: WorldSession, mesh: ParsedObjMesh | undefined, nextSpawn: AgentState, body: AgentBodyPreset) => {
+    const token = simulationTokenRef.current + 1;
+    simulationTokenRef.current = token;
+    simulationRef.current?.dispose();
+    simulationRef.current = null;
+    setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
+
+    void RapierSimulation.create({ mesh, agent: nextSpawn, body })
+      .then((simulation) => {
+        if (simulationTokenRef.current !== token) {
+          simulation.dispose();
+          return;
+        }
+        simulationRef.current = simulation;
+        const step = simulation.reset(nextSpawn);
+        setAgent(step.agent);
+        setPhysicsDiagnostics(step.diagnostics);
+      })
+      .catch(() => {
+        if (simulationTokenRef.current === token) {
+          setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
+        }
+      });
+  }, []);
 
   const resetTransientState = useCallback((worldSession: WorldSession) => {
-    const nextSpawn = worldSession.agentSpawn ?? initialAgentSpawn;
-    setSpawn(nextSpawn);
+    const nextSpawn = worldSession.agentSpawn ?? defaultSpawn;
     setAgent(nextSpawn);
+    setSpawn(nextSpawn);
     setTrajectory([[nextSpawn.x, nextSpawn.z]]);
-    setSpawnPlacement(null);
-    setAgentMove(null);
-    setSelectedPropId(null);
-    setDraggingPropId(null);
-    setSimulationCommand(null);
-    simulationCommandSeq.current = 0;
-    episodeFrameRef.current = 0;
-    setEpisodeEvents([]);
     setSelected(new Set());
     setDeleted(new Set());
     setHistory([]);
+    setStepCount(0);
+    setLastAction("idle");
+    setProps(defaultProps);
+    setSelectedPropId(null);
+    setEpisodeEvents([]);
+    propSeqRef.current = defaultProps.length;
+    episodeFrameRef.current = 0;
+    setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
   }, []);
+
+  const restartSimulationAt = useCallback(
+    (nextSpawn: AgentState, body: AgentBodyPreset, action: string) => {
+      setSpawn(nextSpawn);
+      setAgent(nextSpawn);
+      setTrajectory([[nextSpawn.x, nextSpawn.z]]);
+      setStepCount(0);
+      setLastAction(action);
+      setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
+      if (session) initializeSimulation(session, collisionMeshRef.current, nextSpawn, body);
+    },
+    [initializeSimulation, session]
+  );
 
   const loadFixture = useCallback(async () => {
     const base = "/fixtures/loft_04";
@@ -433,7 +482,8 @@ export function App() {
       companionArtifacts: payload.companionArtifacts,
       authorityStatus: payload.authorityStatus,
       packageInsights: payload.packageInsights,
-      packageIssues: payload.packageIssues
+      packageIssues: payload.packageIssues,
+      captureFrames: parseCaptureFrames(payload)
     });
   }, []);
 
@@ -441,16 +491,22 @@ export function App() {
     setLoadError(null);
 
     if (!input.pointsText) {
+      const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
+      collisionMeshRef.current = mesh;
       const nextInsights = input.packageInsights ?? [];
       const nextIssues = input.packageIssues ?? [];
       const worldSession = createManifestOnlySession(input);
       setSession(worldSession);
       setRenderer(null);
+      setRendererDiagnostics(null);
+      setWorldPoints([]);
+      setCaptureFrames(input.captureFrames ?? []);
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
       setSelectedInsightId(nextInsights[0]?.id ?? null);
       resetTransientState(worldSession);
+      initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
       return;
     }
 
@@ -458,6 +514,7 @@ export function App() {
     const nextIssues = input.packageIssues ?? [];
     const pointCloud = parsePointCloudPly(input.pointsText);
     const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
+    collisionMeshRef.current = mesh;
     const meshSummary = input.objText ? parseObjMeshSummary(input.objText) : { faces: 0, groups: [] };
     const created = input.scene ? createLoftWorldSession(input.scene, input.loadedVia) : createPointCloudSession(input, pointCloud.points.length, classesFromPointCloud(pointCloud.points));
     const worldSession: WorldSession = {
@@ -477,7 +534,17 @@ export function App() {
     };
 
     setSession(worldSession);
-    setRenderer(new ThreeWorldRenderer({ pointCloud, classes: worldSession.classes, mesh, gaussianUrl: input.gaussianUrl }));
+    const nextRenderer = new ThreeWorldRenderer({
+      pointCloud,
+      classes: worldSession.classes,
+      mesh,
+      gaussianUrl: input.gaussianUrl,
+      onDiagnosticsChange: setRendererDiagnostics
+    });
+    setRenderer(nextRenderer);
+    setRendererDiagnostics(nextRenderer.getDiagnostics());
+    setWorldPoints(pointCloud.points);
+    setCaptureFrames(input.captureFrames ?? []);
     setAssetSummary({
       gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded",
       objFaces: meshSummary.faces,
@@ -488,13 +555,23 @@ export function App() {
     setPackageIssues(nextIssues);
     setSelectedInsightId(nextInsights[0]?.id ?? null);
     resetTransientState(worldSession);
-  }, []);
+    initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
+  }, [bodyPreset, initializeSimulation, resetTransientState]);
+
+  const toStage = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return { x: 0, y: 0 };
+      return { x: (clientX - rect.left) / scale, y: (clientY - rect.top) / scale };
+    },
+    [scale]
+  );
 
   const paintAt = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!renderer || !canvas) return;
-      const indices = renderer.collectInRadius(canvas, options, event.clientX, event.clientY, 42);
+      const indices = renderer.collectInRadius(canvas, options, event.clientX, event.clientY, brushRadius * scale);
       if (!indices.length) return;
       setSelected((current) => {
         const next = new Set(current);
@@ -503,7 +580,7 @@ export function App() {
       });
       for (const index of indices) brushStrokeRef.current.add(index);
     },
-    [options, renderer]
+    [options, renderer, scale]
   );
 
   const deleteSelected = useCallback(() => {
@@ -549,211 +626,173 @@ export function App() {
   }, []);
 
   const resetAgent = () => {
-    setAgent(spawn);
-    setTrajectory([[spawn.x, spawn.z]]);
-    setAgentMove(null);
-    recordEpisodeEvent({
-      lane: "agent",
-      kind: "agent-reset",
-      label: "agent reset",
-      pose: { x: spawn.x, z: spawn.z, heading: spawn.heading },
-      status: "spawn"
-    });
+    restartSimulationAt(spawn, bodyPreset, "ResetToSpawn");
+    recordEpisodeEvent({ lane: "agent", label: "agent reset", status: "spawn" });
   };
 
-  const issueSimulationCommand = (
-    action: SimulationCommand["action"],
-    steps = 1,
-    preset?: SimulatedPropPreset,
-    position?: SimulationCommand["position"],
-    targetPropId?: string,
-    delta?: SimulationCommand["delta"]
-  ) => {
-    const id = simulationCommandSeq.current + 1;
-    simulationCommandSeq.current = id;
-    setSimulationCommand({ id, action, steps, preset, position, targetPropId, delta });
-    if (action === "spawn-prop" || action === "duplicate-prop") setSelectedPropId(`pilot-${id}`);
-    if (action === "delete-prop" && selectedPropId === targetPropId) setSelectedPropId(null);
-    recordEpisodeEvent(simulationCommandToEpisode(action, steps, preset, position, targetPropId, delta));
+  const selectSpawn = (choice: SpawnChoice) => {
+    restartSimulationAt(choice.agent, bodyPreset, `Spawn(${choice.label})`);
+    recordEpisodeEvent({ lane: "agent", label: `agent spawn · ${choice.label}`, status: "valid" });
+  };
+
+  const setSpawnHere = () => {
+    const nextSpawn = { ...agent };
+    setSpawn(nextSpawn);
+    setLastAction("SetSpawnHere");
+    recordEpisodeEvent({ lane: "agent", label: "agent spawn set", status: "valid" });
+  };
+
+  const selectBodyPreset = (id: AgentBodyPresetId) => {
+    const nextBody = agentBodyPresets.find((preset) => preset.id === id) ?? bodyPreset;
+    setBodyPresetId(nextBody.id);
+    restartSimulationAt(spawn, nextBody, `Body(${nextBody.label})`);
+    recordEpisodeEvent({ lane: "agent", label: `agent body · ${nextBody.label}`, status: "ready" });
+  };
+
+  const stepPhysics = (command: DriveCommand, action: string) => {
+    setStepCount((count) => count + 1);
+    setLastAction(action);
+    const step = simulationRef.current?.step(command);
+    if (step) {
+      setAgent(step.agent);
+      setPhysicsDiagnostics(step.diagnostics);
+      setTrajectory((points) => [...points.slice(-42), [step.agent.x, step.agent.z]]);
+      recordEpisodeEvent({ lane: "agent", label: action, status: step.diagnostics.grounded ? "grounded" : "airborne" });
+      return true;
+    }
+    return false;
   };
 
   const driveAgent = (key: string) => {
+    if (stepPhysics(driveCommandForKey(key), driveActionLabel(key))) return;
+
     setAgent((current) => {
       const step = 0.12;
       const turn = 0.16;
-      let target = { ...current };
-      if (key === "a") target = { ...target, heading: target.heading - turn };
-      if (key === "d") target = { ...target, heading: target.heading + turn };
-      if (key === "a" || key === "d") {
-        setAgentMove(createAgentMoveStatus("clear", current, target, target, "turn clear"));
-        setTrajectory((points) => [...points.slice(-42), [target.x, target.z]]);
-        recordEpisodeEvent({
-          lane: "agent",
-          kind: "agent-drive",
-          label: key === "a" ? "agent turn left" : "agent turn right",
-          pose: { x: target.x, z: target.z, heading: target.heading },
-          status: "clear"
-        });
-        return target;
-      }
+      let next = { ...current };
+      if (key === "a") next = { ...next, heading: next.heading - turn };
+      if (key === "d") next = { ...next, heading: next.heading + turn };
       if (key === "w" || key === "s") {
         const dir = key === "w" ? 1 : -1;
-        target = {
-          ...target,
-          x: target.x + Math.cos(target.heading) * step * dir,
-          z: target.z + Math.sin(target.heading) * step * dir
+        next = {
+          ...next,
+          x: next.x + Math.cos(next.heading) * step * dir,
+          z: next.z + Math.sin(next.heading) * step * dir
         };
       }
-      const result =
-        renderer?.queryAgentMove?.(current, target, agentFootprintRadius) ??
-        createAgentMoveStatus("unavailable", current, target, current, "movement query unavailable");
-      setAgentMove(result);
-      if (result.status === "clear") {
-        setTrajectory((points) => [...points.slice(-42), [result.resolved.x, result.resolved.z]]);
-      }
-      recordEpisodeEvent({
-        lane: "agent",
-        kind: "agent-drive",
-        label: key === "w" ? "agent drive forward" : "agent drive reverse",
-        pose: { x: result.resolved.x, z: result.resolved.z, heading: result.resolved.heading },
-        status: result.status
-      });
-      return result.resolved;
+      setTrajectory((points) => [...points.slice(-42), [next.x, next.z]]);
+      recordEpisodeEvent({ lane: "agent", label: driveActionLabel(key), status: "fallback" });
+      return next;
     });
   };
 
-  const queryPlacementAt = (event: React.PointerEvent<HTMLCanvasElement>, footprintRadius: number): SpawnPlacementResult | null => {
-    const canvas = canvasRef.current;
-    if (!canvas || !renderer?.querySpawnPlacement) return null;
-    const placement = renderer.querySpawnPlacement(canvas, options, event.clientX, event.clientY, footprintRadius);
-    setSpawnPlacement(placement);
-    return placement;
+  const resetProps = () => {
+    setProps(defaultProps);
+    setSelectedPropId(null);
+    propSeqRef.current = defaultProps.length;
+    recordEpisodeEvent({ lane: "object", label: "prop reset all", status: "ready" });
   };
 
-  const updateSpawnPlacement = (event: React.PointerEvent<HTMLCanvasElement>): SpawnPlacementResult | null => {
-    const footprintRadius = pilotTool === "prop" ? propPresetFootprint(selectedPropPreset) : agentFootprintRadius;
-    return queryPlacementAt(event, footprintRadius);
+  const spawnProp = (preset: SimulatedPropPreset) => {
+    const nextIndex = propSeqRef.current + 1;
+    propSeqRef.current = nextIndex;
+    const nextProp: SimulatedPropState = {
+      id: `prop-${nextIndex}`,
+      label: `${preset}_${nextIndex}`,
+      preset,
+      contactState: "grounded",
+      x: agent.x + Math.cos(agent.heading) * 0.48,
+      y: preset === "tall-crate" ? 0.42 : 0.18,
+      z: agent.z + Math.sin(agent.heading) * 0.48,
+      footprintRadius: preset === "tall-crate" ? 0.26 : 0.3
+    };
+    setProps((current) => [...current, nextProp]);
+    setSelectedPropId(nextProp.id);
+    setSelectedPropPreset(preset);
+    recordEpisodeEvent({ lane: "object", label: `prop spawn · ${preset}`, targetId: nextProp.id, status: "grounded" });
   };
 
-  const propAt = (event: React.PointerEvent<HTMLCanvasElement>): SimulatedPropState | null => {
-    const canvas = canvasRef.current;
-    if (mode !== "pilot" || !canvas || !renderer?.queryPropAt) return null;
-    return renderer.queryPropAt(canvas, options, event.clientX, event.clientY);
+  const selectProp = (id: string) => {
+    setSelectedPropId(id);
+    recordEpisodeEvent({ lane: "object", label: "prop select", targetId: id, status: "active" });
   };
 
-  const selectPropAt = (event: React.PointerEvent<HTMLCanvasElement>): boolean => {
-    const hit = propAt(event);
-    if (!hit) return false;
-    selectProp(hit.id, "canvas");
-    return true;
+  const duplicateSelectedProp = () => {
+    if (!selectedProp) return;
+    const nextIndex = propSeqRef.current + 1;
+    propSeqRef.current = nextIndex;
+    const duplicate = {
+      ...selectedProp,
+      id: `prop-${nextIndex}`,
+      label: `${selectedProp.preset}_${nextIndex}`,
+      x: selectedProp.x + 0.18,
+      z: selectedProp.z + 0.18
+    };
+    setProps((current) => [...current, duplicate]);
+    setSelectedPropId(duplicate.id);
+    recordEpisodeEvent({ lane: "object", label: "prop duplicate", targetId: selectedProp.id, status: "grounded" });
   };
 
-  const selectProp = (propId: string, source: "canvas" | "list" = "list") => {
-    setPilotTool("prop");
-    setSelectedPropId(propId);
-    setSpawnPlacement(null);
-    if (selectedPropId !== propId) {
-      recordEpisodeEvent({
-        lane: "object",
-        kind: "prop-select",
-        label: `prop select · ${source}`,
-        targetId: propId,
-        status: "active"
-      });
-    }
-  };
-
-  const placeSpawnAt = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const placement = updateSpawnPlacement(event);
-    if (placement?.status !== "valid" || placement.x === undefined || placement.z === undefined) return;
-    if (pilotTool === "prop") {
-      issueSimulationCommand("spawn-prop", 1, selectedPropPreset, {
-        x: placement.x,
-        y: placement.y ?? 0,
-        z: placement.z
-      });
-      return;
-    }
-    const nextSpawn = { x: placement.x, z: placement.z, heading: agent.heading };
-    setSpawn(nextSpawn);
-    setAgent(nextSpawn);
-    setTrajectory([[nextSpawn.x, nextSpawn.z]]);
-    setAgentMove(null);
-    recordEpisodeEvent({
-      lane: "agent",
-      kind: "agent-spawn",
-      label: "agent spawn set",
-      pose: { x: nextSpawn.x, z: nextSpawn.z, heading: nextSpawn.heading },
-      status: "valid"
-    });
-  };
-
-  const moveSelectedPropTo = (propId: string | undefined, placement: SpawnPlacementResult | null) => {
-    if (!propId || placement?.status !== "valid" || placement.x === undefined || placement.y === undefined || placement.z === undefined) return;
-    issueSimulationCommand(
-      "move-prop",
-      1,
-      undefined,
-      {
-        x: placement.x,
-        y: placement.y,
-        z: placement.z
-      },
-      propId
+  const resetSelectedProp = () => {
+    if (!selectedProp) return;
+    setProps((current) =>
+      current.map((prop) =>
+        prop.id === selectedProp.id
+          ? { ...prop, x: selectedProp.preset === "tall-crate" ? 0.9 : -0.8, z: selectedProp.preset === "tall-crate" ? 0.9 : 0.4, contactState: "grounded" }
+          : prop
+      )
     );
+    recordEpisodeEvent({ lane: "object", label: "prop reset", targetId: selectedProp.id, status: "grounded" });
+  };
+
+  const deleteSelectedProp = () => {
+    if (!selectedProp) return;
+    setProps((current) => current.filter((prop) => prop.id !== selectedProp.id));
+    setSelectedPropId(null);
+    recordEpisodeEvent({ lane: "object", label: "prop delete", targetId: selectedProp.id, status: "removed" });
+  };
+
+  const nudgeSelectedProp = (dx: number, dz: number) => {
+    if (!selectedProp) return;
+    setProps((current) =>
+      current.map((prop) => (prop.id === selectedProp.id ? { ...prop, x: prop.x + dx, z: prop.z + dz, contactState: "grounded" } : prop))
+    );
+    recordEpisodeEvent({ lane: "object", label: "prop nudge", targetId: selectedProp.id, status: "grounded" });
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (mode === "edit" && renderer) {
-      interactionRef.current = { kind: "brush", x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false };
+    if (mode === "edit" && renderer && tool === "brush") {
+      interactionRef.current = { kind: "brush", x: event.clientX, y: event.clientY };
       brushStrokeRef.current = new Set();
       paintAt(event);
+    } else if (mode === "edit" && renderer && tool === "rect") {
+      interactionRef.current = { kind: "rect", x: event.clientX, y: event.clientY };
+      const start = toStage(event.clientX, event.clientY);
+      setSelectRect({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
     } else {
-      if (mode === "pilot") {
-        const hit = propAt(event);
-        if (hit) {
-          selectProp(hit.id, "canvas");
-          setDraggingPropId(hit.id);
-          queryPlacementAt(event, hit.footprintRadius);
-          interactionRef.current = {
-            kind: "prop-drag",
-            propId: hit.id,
-            footprintRadius: hit.footprintRadius,
-            x: event.clientX,
-            y: event.clientY,
-            startX: event.clientX,
-            startY: event.clientY,
-            moved: false
-          };
-          return;
-        }
-        updateSpawnPlacement(event);
-      }
-      interactionRef.current = { kind: "orbit", x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, moved: false };
+      interactionRef.current = { kind: "orbit", x: event.clientX, y: event.clientY };
     }
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const interaction = interactionRef.current;
-    if (!interaction) {
-      if (mode === "pilot") updateSpawnPlacement(event);
-      return;
+    if (mode === "edit" && tool === "brush") {
+      setCursor(toStage(event.clientX, event.clientY));
     }
+    const interaction = interactionRef.current;
+    if (!interaction) return;
     if (interaction.kind === "brush") {
       paintAt(event);
       return;
     }
-    if (interaction.kind === "prop-drag") {
-      const moved = interaction.moved || Math.hypot(event.clientX - interaction.startX, event.clientY - interaction.startY) > 6;
-      interactionRef.current = { ...interaction, x: event.clientX, y: event.clientY, moved };
-      queryPlacementAt(event, interaction.footprintRadius ?? selectedProp?.footprintRadius ?? propPresetFootprint(selectedPropPreset));
+    if (interaction.kind === "rect") {
+      const point = toStage(event.clientX, event.clientY);
+      setSelectRect((current) => (current ? { ...current, x1: point.x, y1: point.y } : current));
       return;
     }
     const dx = event.clientX - interaction.x;
     const dy = event.clientY - interaction.y;
-    const moved = interaction.moved || Math.hypot(event.clientX - interaction.startX, event.clientY - interaction.startY) > 6;
-    interactionRef.current = { ...interaction, x: event.clientX, y: event.clientY, moved };
+    interactionRef.current = { ...interaction, x: event.clientX, y: event.clientY };
     setCamera((current) => ({
       ...current,
       yaw: current.yaw + dx * 0.006,
@@ -763,27 +802,30 @@ export function App() {
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const interaction = interactionRef.current;
-    if (interactionRef.current?.kind === "brush" && brushStrokeRef.current.size) {
+    if (interaction?.kind === "brush" && brushStrokeRef.current.size) {
       const indices = [...brushStrokeRef.current];
       const entry: HistoryItem = { id: crypto.randomUUID(), type: "select", count: indices.length, indices };
       setHistory((current) => [entry, ...current].slice(0, 10));
     }
-    if (interaction?.kind === "orbit" && mode === "pilot" && !interaction.moved) {
-      if (!selectPropAt(event)) placeSpawnAt(event);
-    }
-    if (interaction?.kind === "prop-drag") {
-      const placement = queryPlacementAt(event, interaction.footprintRadius ?? selectedProp?.footprintRadius ?? propPresetFootprint(selectedPropPreset));
-      if (interaction.moved) moveSelectedPropTo(interaction.propId, placement);
-      setDraggingPropId(null);
+    if (interaction?.kind === "rect") {
+      const canvas = canvasRef.current;
+      const indices =
+        canvas && renderer?.collectInRect
+          ? renderer.collectInRect(canvas, options, interaction.x, interaction.y, event.clientX, event.clientY)
+          : [];
+      if (indices.length) {
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const index of indices) next.add(index);
+          return next;
+        });
+        const entry: HistoryItem = { id: crypto.randomUUID(), type: "select", count: indices.length, indices };
+        setHistory((current) => [entry, ...current].slice(0, 10));
+      }
+      setSelectRect(null);
     }
     interactionRef.current = null;
     brushStrokeRef.current = new Set();
-  };
-
-  const onPointerCancel = () => {
-    interactionRef.current = null;
-    brushStrokeRef.current = new Set();
-    setDraggingPropId(null);
   };
 
   const onWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
@@ -795,31 +837,69 @@ export function App() {
   };
 
   const activeMode = modes.find((entry) => entry.id === mode) ?? modes[0];
-  const rootClass = `ws-root ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
+  const rootClass = `ws-root mode-${mode} ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
   const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
 
   return (
     <div className="ws-stage-shell">
-      <div className="ws-stage" style={{ transform: `scale(${scale})` }}>
+      {hasDesktopApi ? <div className="ws-drag-strip" /> : null}
+      <div className="ws-stage" style={{ transform: `translate(-50%, -50%) scale(${scale})` }}>
         <main className={rootClass} style={{ "--acc": accent } as React.CSSProperties}>
           <canvas
             ref={canvasRef}
-            className="ws-canvas"
+            className={`ws-canvas ${mode === "simulate" ? "dual-right" : ""} ${
+              mode === "edit" && (tool === "brush" || tool === "rect") ? "edit-tool" : ""
+            }`.trim()}
             data-testid="world-canvas"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onPointerCancel={onPointerCancel}
+            onPointerCancel={onPointerUp}
+            onPointerLeave={() => setCursor(null)}
             onWheel={onWheel}
           />
+          {mode === "edit" && tool === "brush" && cursor ? (
+            <div
+              className="ws-brush-ring"
+              style={{ left: cursor.x, top: cursor.y, width: brushRadius * 2, height: brushRadius * 2 }}
+            />
+          ) : null}
+          {mode === "edit" && selectRect ? (
+            <div
+              className="ws-select-rect"
+              style={{
+                left: Math.min(selectRect.x0, selectRect.x1),
+                top: Math.min(selectRect.y0, selectRect.y1),
+                width: Math.abs(selectRect.x1 - selectRect.x0),
+                height: Math.abs(selectRect.y1 - selectRect.y0)
+              }}
+            />
+          ) : null}
           <div className="ws-overlay">
+            {mode === "simulate" ? (
+              <>
+                <div className="ws-dual-left">
+                  <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
+                  <div className="ws-view-tag">
+                    <span className="ws-head">Sensor feed</span>
+                    <WSChip>{captureFrames.length ? `${captureFrames.length} frames` : "cam_front · synthetic"}</WSChip>
+                  </div>
+                </div>
+                <div className="ws-dual-split" />
+                <div className="ws-view-tag metric">
+                  <span className="ws-head">Metric view</span>
+                  <WSChip>{session ? `aligned · ${session.pointCount} pts` : "no world"}</WSChip>
+                </div>
+              </>
+            ) : null}
             <div className="ws-top-left">
               <WSWordmark context={session ? `${session.name} · ${session.version ?? "loaded"}` : "no world loaded"} />
-              {mode === "edit" ? <ToolRail /> : null}
+              {mode === "edit" ? <ToolRail tool={tool} onSelect={setTool} /> : null}
             </div>
 
             <div className="ws-top-center">
               <WSPanel className="ws-mode-switch">
+                <span className="ws-head">Mode</span>
                 {modes.map((entry) => (
                   <WSPill key={entry.id} active={entry.id === mode} onClick={() => setMode(entry.id)}>
                     {entry.label}
@@ -828,26 +908,221 @@ export function App() {
               </WSPanel>
             </div>
 
-            <div className="ws-render-row">
-              {renderModes.map((entry) => (
-                <WSPill key={entry} className="sm" active={entry === renderMode} onClick={() => setRenderMode(entry)}>
-                  {entry}
-                </WSPill>
-              ))}
-            </div>
+            {mode === "view" || mode === "edit" ? (
+              <div className="ws-render-row">
+                <WSPanel className="ws-mode-switch">
+                  <span className="ws-head">Render</span>
+                  {renderModes.map((entry) => (
+                    <WSPill key={entry} className="sm" active={entry === renderMode} onClick={() => setRenderMode(entry)}>
+                      {entry}
+                    </WSPill>
+                  ))}
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode === "pilot" ? (
+              <div className="ws-render-row">
+                <div className="ws-strip">
+                  {stripCells.map((cell) => (
+                    <div key={cell.label} className={`ws-strip-cell ${cell.label === "RGB" ? "on" : ""}`}>
+                      <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode={cell.mode} pose={agentEye} cw={400} ch={240} />
+                      <span className="ws-strip-lab">{cell.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <aside className="ws-left">{renderLeftPanel()}</aside>
             <aside className="ws-right-col">{renderRightPanel()}</aside>
 
-            <div className="ws-bottom-right">
-              <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
-                <ModeCard mode={mode} session={session} assetSummary={assetSummary} playhead={playhead} />
-              </WSPanel>
-            </div>
+            {mode === "pilot" ? (
+              <>
+                <div className="ws-bottom-right ws-pip">
+                  <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={agentEye} cw={880} ch={536} />
+                  <span className="ws-pip-lab">
+                    <WSDot pulse /> agent eye · cam_front
+                  </span>
+                </div>
+                <div className="ws-bottom-left">
+                  <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
+                    <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
+                  </WSPanel>
+                </div>
+              </>
+            ) : null}
 
-            <div className="ws-bottom-center">
-              <WSControlsBar controls={controls[mode]} />
-            </div>
+            {mode === "sensors" ? (
+              <div className="ws-bottom-left ws-previews">
+                {[
+                  { mode: "rgb" as FeedMode, label: "cam_front · RGB" },
+                  { mode: "depth" as FeedMode, label: "cam_front · DEPTH" }
+                ].map((cell) => (
+                  <div key={cell.label} className="ws-preview-card">
+                    <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode={cell.mode} pose={simFeedPose} cw={600} ch={376} />
+                    <span className="ws-strip-lab">{cell.label}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {mode === "simulate" ? (
+              <div className="ws-bottom-tray">
+                <WSPanel title="Session" className="ws-card">
+                  <div className="ws-kv">
+                    <span>dataset</span>
+                    <b>{session?.name ?? "none"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>points</span>
+                    <b>{session?.pointCount ?? 0}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>loaded</span>
+                    <b>{session ? new Date(session.provenance.loadedAt).toLocaleTimeString() : "—"}</b>
+                  </div>
+                </WSPanel>
+                <WSPanel title="Agent state" className="ws-card">
+                  <div className="ws-kv">
+                    <span>pose</span>
+                    <b>
+                      x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)} · θ {Math.round(((agent.heading * 180) / Math.PI) % 360)}°
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>action</span>
+                    <b>{lastAction}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>steps</span>
+                    <b>{stepCount}</b>
+                  </div>
+                </WSPanel>
+                <WSPanel title="Physics" className="ws-card">
+                  <div className="ws-kv">
+                    <span>backend</span>
+                    <b>{physicsDiagnostics.backend}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>body</span>
+                    <b>{bodyPreset?.label ?? "unknown"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>spawn</span>
+                    <b>
+                      x {spawn.x.toFixed(2)} · z {spawn.z.toFixed(2)}
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>rate</span>
+                    <b>{physicsDiagnostics.stepRateHz}hz</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>bodies</span>
+                    <b>
+                      {physicsDiagnostics.bodyCount} bodies · {physicsDiagnostics.colliderCount} colliders
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>contacts</span>
+                    <b>
+                      {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>debug</span>
+                    <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
+                      {debugCollision ? "collision on" : "collision off"}
+                    </button>
+                  </div>
+                </WSPanel>
+                <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
+                  <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode === "episode" ? (
+              <div className="ws-top-right">
+                <WSPanel title="Episode" meta={activeMode.tag} className="ws-episode-card">
+                  <div className="ws-mode-title-row">
+                    <div className="ws-mode-title">Episode</div>
+                    <WSChip accent={playing}>{playing ? "playing" : "paused"}</WSChip>
+                  </div>
+                  <div className="ws-kv">
+                    <span>steps</span>
+                    <b>
+                      {episodeStep} / {totalSteps}
+                    </b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>captures</span>
+                    <b>{sensors.filter((sensor) => sensor.enabled).map((sensor) => sensor.label).join(" · ") || "none"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>source</span>
+                    <b>{episodeEvents.length ? "pilot events" : trajectory.length > 1 ? "pilot drive" : "no recording"}</b>
+                  </div>
+                  <div className="ws-episode-list" data-testid="episode-event-list">
+                    {episodeEvents.length ? (
+                      episodeEvents.slice(0, 8).map((event) => (
+                        <div className={`ws-episode-row ${event.lane}`} key={event.id}>
+                          <span className="ws-episode-frame">{String(event.frame).padStart(3, "0")}</span>
+                          <span className="ws-episode-label">{event.label}</span>
+                          <b>{event.status ?? event.lane}</b>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="ws-kv">
+                        <span>events</span>
+                        <b>none</b>
+                      </div>
+                    )}
+                  </div>
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode !== "pilot" && mode !== "simulate" && mode !== "episode" ? (
+              <div className="ws-bottom-right">
+                <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
+                  <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
+                </WSPanel>
+              </div>
+            ) : null}
+
+            {mode === "episode" ? (
+              <div className="ws-bottom-full">
+                <TracksPanel
+                  step={episodeStep}
+                  total={totalSteps}
+                  playing={playing}
+                  hasTrajectory={trajectory.length > 1}
+                  capturing={sensors.some((sensor) => sensor.enabled)}
+                  onToggle={() => setPlaying((value) => !value)}
+                  onRewind={() => {
+                    setPlayhead(0);
+                    setPlaying(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="ws-bottom-center">
+                <div className="ws-bottom-stack">
+                  {(mode === "view" || mode === "simulate") && captureFrames.length ? (
+                    <TimelineCapsule
+                      frame={Math.round(playhead * captureFrames.length)}
+                      total={captureFrames.length}
+                      playing={playing}
+                      onToggle={() => setPlaying((value) => !value)}
+                      onRewind={() => setPlayhead(0)}
+                    />
+                  ) : null}
+                  <WSControlsBar controls={controls[mode]} />
+                </div>
+              </div>
+            )}
 
             {!session ? (
               <div className="ws-empty-state">
@@ -875,7 +1150,13 @@ export function App() {
               { label: session ? `${session.name} · ${session.provenance.authorityStatus}` : "startup blank" },
               { label: `${renderMode} · ${Math.round(density * 100)}% density` },
               { label: `${selected.size} selected · ${deleted.size} hidden` },
-              { label: rendererStatusLabel(renderMode, rendererInfo), accent: rendererInfo?.activeSplatBackend === "spark" }
+              mode === "pilot"
+                ? { label: `physics ${physicsDiagnostics.backend} · step ${stepCount}`, accent: true }
+                : mode === "simulate"
+                  ? { label: `physics ${physicsDiagnostics.backend} · ${physicsDiagnostics.colliderCount} colliders`, accent: true }
+                : mode === "episode"
+                  ? { label: `step ${episodeStep} / ${totalSteps}`, accent: true }
+                  : { label: rendererStatusLabel(renderMode, rendererDiagnostics), accent: true }
             ]}
           />
         </main>
@@ -926,78 +1207,194 @@ export function App() {
       );
     }
 
-    if (mode === "sensors") {
+    if (mode === "simulate") {
       return (
-        <WSPanel title="Rig Channels" meta={`${sensors.filter((sensor) => sensor.enabled).length} on`}>
-          <div className="ws-sensor-list">
-            {sensors.map((sensor) => (
-              <div
-                key={sensor.id}
-                className={`ws-sensor-row ${sensor.enabled ? "active" : "dim"}`}
-                onClick={() =>
-                  setSensors((items) => items.map((item) => (item.id === sensor.id ? { ...item, enabled: !item.enabled } : item)))
-                }
-              >
-                <div className="ws-sensor-name">
-                  <span>{sensor.label}</span>
-                  <span className="ws-sensor-spec">{sensor.spec}</span>
+        <WSPanel title="Frames" meta={captureFrames.length ? `${captureFrames.length} captured` : "none"} pad={false}>
+          <div className="ws-frame-list">
+            {captureFrames.length ? (
+              captureFrames.slice(0, 7).map((frame) => (
+                <div key={frame.name} className="ws-frame-row">
+                  <span className="ws-frame-thumb" />
+                  <span className="ws-row-name">{frame.name}</span>
+                  <WSChip>ok</WSChip>
                 </div>
-                <WSSwitch on={sensor.enabled} />
+              ))
+            ) : (
+              <div className="ws-frame-row dim">
+                <span className="ws-frame-thumb" />
+                <span className="ws-row-name">no capture frames in package</span>
               </div>
-            ))}
+            )}
           </div>
         </WSPanel>
       );
     }
 
-    if (mode === "episode") {
-      const lanes: EpisodeLane[] = ["agent", "object", "capture"];
+    if (mode === "pilot") {
       return (
-        <WSPanel title="Tracks" meta={`${episodeEvents.length} events`}>
-          <div className="ws-row-stack">
-            {lanes.map((lane) => (
-              <div className="ws-kv" key={lane}>
-                <span>{lane}</span>
-                <b>
-                  {episodeEvents.filter((event) => event.lane === lane).length} events
-                </b>
-              </div>
-            ))}
-            <div className="ws-episode-list" data-testid="episode-event-list">
-              {episodeEvents.length ? (
-                episodeEvents.slice(0, 10).map((event) => (
-                  <div className={`ws-episode-row ${event.lane}`} key={event.id}>
-                    <span className="ws-episode-frame">{String(event.frame).padStart(3, "0")}</span>
-                    <span className="ws-episode-label">{event.label}</span>
-                    <b>{event.status ?? event.lane}</b>
-                  </div>
-                ))
-              ) : (
-                <div className="ws-kv">
-                  <span>events</span>
-                  <b>none</b>
-                </div>
-              )}
+        <div className="ws-row-stack">
+          <WSPanel title={`Agent — ${bodyPreset?.label ?? "body"}`} className="ws-agent-pad">
+            <div className="ws-pad">
+              <span />
+              <WSKey active={pressed.has("w")}>W</WSKey>
+              <span />
+              <WSKey active={pressed.has("a")}>A</WSKey>
+              <WSKey active={pressed.has("s")}>S</WSKey>
+              <WSKey active={pressed.has("d")}>D</WSKey>
+            </div>
+            <div className="ws-kv">
+              <span>pose</span>
+              <b>
+                x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>physics</span>
+              <b>{physicsDiagnostics.backend}</b>
+            </div>
+            <div className="ws-kv">
+              <span>spawn</span>
+              <b>
+                x {spawn.x.toFixed(2)} · z {spawn.z.toFixed(2)}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>contacts</span>
+              <b>
+                {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>debug</span>
+              <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
+                {debugCollision ? "collision on" : "collision off"}
+              </button>
             </div>
             <div className="ws-btn-row">
-              <WSButton accent onClick={() => setPlaying((value) => !value)}>
-                {playing ? "Pause" : "Play"}
-              </WSButton>
+              {agentBodyPresets.map((preset) => (
+                <WSButton
+                  accent={preset.id === bodyPresetId}
+                  aria-label={`${preset.label} body`}
+                  key={preset.id}
+                  onClick={() => selectBodyPreset(preset.id)}
+                >
+                  {preset.label}
+                </WSButton>
+              ))}
             </div>
-          </div>
-        </WSPanel>
+            <div className="ws-spawn-grid">
+              {spawnChoices.map((choice) => (
+                <button
+                  aria-label={`Spawn at ${choice.label}`}
+                  className={`ws-spawn-item ${samePose(choice.agent, spawn) ? "on" : ""}`.trim()}
+                  key={choice.id}
+                  onClick={() => selectSpawn(choice)}
+                  type="button"
+                >
+                  <WSIcon name="spawn" size={17} />
+                  <span>{choice.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="ws-kv">
+              <span>MoveAhead</span>
+              <b>0.12 m</b>
+            </div>
+            <div className="ws-kv">
+              <span>Rotate</span>
+              <b>9°</b>
+            </div>
+            <div className="ws-btn-row">
+              <WSButton onClick={resetAgent}>Reset to Spawn</WSButton>
+              <WSButton onClick={setSpawnHere}>Set Spawn Here</WSButton>
+            </div>
+          </WSPanel>
+          <PilotPropPanel
+            props={props}
+            preset={selectedPropPreset}
+            selectedProp={selectedProp}
+            onPresetChange={setSelectedPropPreset}
+            onSpawn={spawnProp}
+            onSelect={selectProp}
+            onDuplicate={duplicateSelectedProp}
+            onResetSelected={resetSelectedProp}
+            onDelete={deleteSelectedProp}
+            onResetAll={resetProps}
+            onNudge={nudgeSelectedProp}
+          />
+        </div>
       );
     }
 
+    if (mode === "sensors" || mode === "episode") return null;
+
+    const filteredClasses = (session?.classes ?? []).filter((entry) =>
+      entry.name.toLowerCase().includes(treeFilter.toLowerCase())
+    );
     return (
-      <WSPanel title="World Tree" meta={session ? `${session.classes.length} classes` : "empty"}>
+      <WSPanel pad={false} className="ws-tree">
+        <div className="ws-search">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5" />
+            <path d="M13.5 13.5L18 18" />
+          </svg>
+          <input
+            ref={filterRef}
+            value={treeFilter}
+            onChange={(event) => setTreeFilter(event.target.value)}
+            placeholder="Filter world…"
+            aria-label="Filter world"
+          />
+          <WSKey>/</WSKey>
+        </div>
         <div className="ws-tree-body">
-          <div className={`ws-layer-row ${session ? "active" : "dim"}`}>
-            <span className="ws-row-ic">◉</span>
-            <span className="ws-row-name">{session ? `${session.name} · ${session.version ?? "v"}` : "no loaded world"}</span>
-            <WSChip>{session?.pointCount ?? 0}</WSChip>
+          <div className="ws-group-head">
+            <WSIcon name="chevD" size={11} />
+            <span className="ws-head">Environment</span>
+            <span className="ws-head-right">{session ? `${session.name} · ${session.version ?? "local"}` : "empty"}</span>
           </div>
-          {session?.classes.map((entry) => (
+          {session ? (
+            <>
+              <div className={`ws-layer-row ${renderMode === "splat" ? "active" : ""}`} onClick={() => setRenderMode("splat")}>
+                <span className="ws-row-ic">
+                  <WSIcon name="layers" size={15} />
+                </span>
+                <span className="ws-row-name">Gaussian field</span>
+                <WSChip>{assetSummary?.gaussianKind ?? "unloaded"}</WSChip>
+              </div>
+              <div className={`ws-layer-row ${renderMode === "points" ? "active" : ""}`} onClick={() => setRenderMode("points")}>
+                <span className="ws-row-ic">
+                  <WSIcon name="layers" size={15} />
+                </span>
+                <span className="ws-row-name">Point cloud</span>
+                <WSChip>{session.pointCount}</WSChip>
+              </div>
+              <div className={`ws-layer-row ${renderMode === "mesh" ? "active" : ""}`} onClick={() => setRenderMode("mesh")}>
+                <span className="ws-row-ic">
+                  <WSIcon name="spawn" size={15} />
+                </span>
+                <span className="ws-row-name">Collision mesh</span>
+                <WSChip>{assetSummary ? `${assetSummary.objFaces} tri` : "unloaded"}</WSChip>
+              </div>
+            </>
+          ) : (
+            <div className="ws-layer-row dim">
+              <span className="ws-row-ic">◉</span>
+              <span className="ws-row-name">no loaded world</span>
+              <WSChip>0</WSChip>
+            </div>
+          )}
+          <div className="ws-group-head">
+            <WSIcon name="chev" size={11} />
+            <span className="ws-head">Sensors</span>
+            <span className="ws-head-right">rig_a · {sensors.length} ch</span>
+          </div>
+          <div className="ws-group-head">
+            <WSIcon name="chevD" size={11} />
+            <span className="ws-head">Classes</span>
+            <span className="ws-head-right">{filteredClasses.length}</span>
+          </div>
+          {filteredClasses.map((entry) => (
             <div
               className={`ws-class-row ${isolatedClass === entry.label ? "active" : ""}`}
               key={entry.label}
@@ -1008,6 +1405,16 @@ export function App() {
               <span className="ws-head-right">{entry.points ?? 0}</span>
             </div>
           ))}
+        </div>
+        <div className="ws-tree-foot">
+          <span className="ws-key-group">
+            <WSKey>I</WSKey>
+            <span className="ws-foot-label">isolate</span>
+          </span>
+          <span className="ws-key-group">
+            <WSKey>/</WSKey>
+            <span className="ws-foot-label">filter</span>
+          </span>
         </div>
       </WSPanel>
     );
@@ -1035,69 +1442,75 @@ export function App() {
       );
     }
 
-    if (mode === "pilot") {
+    if (mode === "sensors") {
+      const selectedSensor = sensors.find((sensor) => sensor.id === selectedSensorId) ?? sensors[0];
       return (
-        <div className="ws-row-stack">
-          <WSPanel title="Agent" meta="keyboard">
-            <div className="ws-pad">
-              <WSKey active={pressed.has("w")}>W</WSKey>
-              <WSKey active={pressed.has("a")}>A</WSKey>
-              <WSKey active={pressed.has("s")}>S</WSKey>
-              <WSKey active={pressed.has("d")}>D</WSKey>
-            </div>
-            <div className="ws-kv">
-              <span>pose</span>
-              <b>
-                {agent.x.toFixed(2)} · {agent.z.toFixed(2)}
-              </b>
-            </div>
-            <div className="ws-kv">
-              <span>spawn</span>
-              <b>
-                {spawn.x.toFixed(2)} · {spawn.z.toFixed(2)}
-              </b>
-            </div>
-            <div className="ws-kv">
-              <span>footprint</span>
-              <b>{agentFootprintRadius.toFixed(2)}m</b>
-            </div>
-            <div className={`ws-placement-state ${spawnPlacement?.status ?? "idle"}`} data-testid="spawn-placement-status">
-              <span>{spawnPlacement?.status ?? "ready"}</span>
-              <b>{spawnPlacement?.message ?? "ground query"}</b>
-            </div>
-            <div className={`ws-placement-state ${agentMove?.status ?? "idle"}`} data-testid="agent-move-status">
-              <span>{agentMove?.status ?? "clear"}</span>
-              <b>{agentMove?.message ?? "movement ready"}</b>
-            </div>
-            <div className="ws-btn-row">
-              <WSButton onClick={resetAgent}>Reset</WSButton>
+        <>
+          <WSPanel
+            title="Rig — rig_a"
+            meta={`${sensors.length} channels · ${sensors.filter((sensor) => sensor.enabled).length} active`}
+            pad={false}
+            className="ws-sensor-list"
+          >
+            {sensors.map((sensor) => (
+              <div
+                key={sensor.id}
+                className={`ws-sensor-row ${sensor.id === selectedSensorId ? "active" : ""} ${sensor.enabled ? "" : "dim"}`.trim()}
+                onClick={() => setSelectedSensorId(sensor.id)}
+              >
+                <span className="ws-row-ic">
+                  <WSIcon name={sensorIcons[sensor.kind]} size={15} />
+                </span>
+                <span className="ws-sensor-name">
+                  <span className="ws-row-name">{sensor.label}</span>
+                  <span className="ws-sensor-spec">{sensor.spec}</span>
+                </span>
+                <span
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSensors((items) =>
+                      items.map((item) => (item.id === sensor.id ? { ...item, enabled: !item.enabled } : item))
+                    );
+                  }}
+                >
+                  <WSSwitch on={sensor.enabled} />
+                </span>
+              </div>
+            ))}
+            <div className="ws-tree-foot">
+              <span className="ws-key-group">
+                <WSKey>G</WSKey>
+                <span className="ws-foot-label">grab / place</span>
+              </span>
+              <span className="ws-key-group">
+                <WSKey>N</WSKey>
+                <span className="ws-foot-label">add sensor</span>
+              </span>
             </div>
           </WSPanel>
-          <PilotPropPanel
-            tool={pilotTool}
-            preset={selectedPropPreset}
-            placement={spawnPlacement}
-            info={physicsInfo}
-            selectedProp={selectedProp}
-            selectedPropId={selectedProp?.id ?? null}
-            draggingPropId={draggingPropId}
-            onToolChange={setPilotTool}
-            onPresetChange={setSelectedPropPreset}
-            onSelectProp={(id) => selectProp(id, "list")}
-            onReset={() => issueSimulationCommand("reset")}
-            onDuplicateSelected={(propId) => issueSimulationCommand("duplicate-prop", 1, undefined, undefined, propId)}
-            onResetSelected={(propId) => issueSimulationCommand("reset-prop", 1, undefined, undefined, propId)}
-            onDeleteSelected={(propId) => issueSimulationCommand("delete-prop", 1, undefined, undefined, propId)}
-            onNudgeSelected={(propId, delta) => issueSimulationCommand("nudge-prop", 1, undefined, undefined, propId, delta)}
-          />
-          <PhysicsDebugPanel
-            enabled={physicsDebug}
-            info={physicsInfo}
-            onToggle={() => setPhysicsDebug((value) => !value)}
-          />
-        </div>
+          {selectedSensor ? (
+            <WSPanel title={`${selectedSensor.label} — channel`} className="ws-intrinsics">
+              <div className="ws-kv">
+                <span>kind</span>
+                <b>{selectedSensor.kind}</b>
+              </div>
+              <div className="ws-kv">
+                <span>spec</span>
+                <b>{selectedSensor.spec}</b>
+              </div>
+              <div className="ws-kv">
+                <span>state</span>
+                <b>{selectedSensor.enabled ? "streaming" : "off"}</b>
+              </div>
+              <WSSliderRow label="Noise σ" value="0.000" pct={0} />
+              <WSSliderRow label="Blur" value="off" pct={0} />
+            </WSPanel>
+          ) : null}
+        </>
       );
     }
+
+    if (mode !== "view") return null;
 
     return (
       <div className="ws-row-stack">
@@ -1119,6 +1532,24 @@ export function App() {
             <b>{session?.provenance.authorityStatus ?? "none"}</b>
           </div>
           <div className="ws-kv">
+            <span>renderer</span>
+            <b>{rendererStatusLabel(renderMode, rendererDiagnostics)}</b>
+          </div>
+          <div className="ws-kv">
+            <span>ply source</span>
+            <b>{rendererDiagnostics?.gaussianSourceFormat ?? "unknown"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>spark prep</span>
+            <b>{rendererPreparationLabel(rendererDiagnostics)}</b>
+          </div>
+          {rendererDiagnostics?.sparkFailureReason ? (
+            <div className="ws-kv">
+              <span>fallback</span>
+              <b>{rendererDiagnostics.sparkFailureReason}</b>
+            </div>
+          ) : null}
+          <div className="ws-kv">
             <span>ui</span>
             <button className="ws-node click" onClick={() => setDense((value) => !value)}>
               {dense ? "dense" : "regular"}
@@ -1137,21 +1568,6 @@ export function App() {
             </button>
           </div>
         </WSPanel>
-        {rendererInfo ? <RendererDebugPanel info={rendererInfo} renderMode={renderMode} /> : null}
-        {mode === "simulate" ? (
-          <>
-            <SimulationControlPanel
-              info={physicsInfo}
-              onReset={() => issueSimulationCommand("reset")}
-              onStep={() => issueSimulationCommand("step", 16)}
-            />
-            <PhysicsDebugPanel
-              enabled={physicsDebug}
-              info={physicsInfo}
-              onToggle={() => setPhysicsDebug((value) => !value)}
-            />
-          </>
-        ) : null}
         <PackageIssues issues={packageIssues} />
         <PackageInspector insights={packageInsights} selectedId={activePackageInsight?.id ?? null} onSelect={setSelectedInsightId} />
         <PackageInsightDetail insight={activePackageInsight} />
@@ -1179,6 +1595,27 @@ function createManifestOnlySession(input: LoadedWorldInput): WorldSession {
       authorityStatus: input.authorityStatus
     }
   };
+}
+
+function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagnostics | null): string {
+  if (renderMode === "points") return "three.js · ordinary PLY";
+  if (renderMode === "mesh") return "three.js · OBJ mesh";
+  if (renderMode === "semantic") return "three.js · semantic points";
+  if (renderMode === "depth") return "three.js · depth points";
+
+  if (!diagnostics?.hasGaussianSource) return "splat fallback · no gaussian";
+  if (diagnostics.sparkState === "idle" || diagnostics.sparkState === "loading") return "spark loading · point fallback";
+  if (diagnostics.splatRenderPath === "spark-gaussian") {
+    return `spark gaussian · ${diagnostics.gaussianSplatCount ?? "ready"} splats`;
+  }
+  if (diagnostics.sparkState === "failed") return `splat fallback · ${diagnostics.sparkFailureReason ?? "spark failed"}`;
+  return "splat fallback · not renderable";
+}
+
+function rendererPreparationLabel(diagnostics: RendererDiagnostics | null): string {
+  if (!diagnostics?.hasGaussianSource) return "none";
+  if (diagnostics.gaussianPreparedForSpark === undefined) return "pending";
+  return diagnostics.gaussianPreparedForSpark ? "converted" : "native";
 }
 
 function createPointCloudSession(input: LoadedWorldInput, pointCount: number, classes: WorldClass[]): WorldSession {
@@ -1283,395 +1720,45 @@ function sceneClassToWorldClass(entry: LoftSceneManifest["classes"][number]): Wo
   };
 }
 
+function interpolateTrajectory(trajectory: Array<[number, number]>, t: number): AgentState {
+  const first = trajectory[0];
+  if (!first || trajectory.length < 2) {
+    return { x: first?.[0] ?? 0, z: first?.[1] ?? 0, heading: 0 };
+  }
+  const fi = Math.min(trajectory.length - 1.001, Math.max(0, t) * (trajectory.length - 1));
+  const index = Math.floor(fi);
+  const u = fi - index;
+  const a = trajectory[index] ?? first;
+  const b = trajectory[index + 1] ?? a;
+  return {
+    x: a[0] + (b[0] - a[0]) * u,
+    z: a[1] + (b[1] - a[1]) * u,
+    heading: Math.atan2(b[1] - a[1], b[0] - a[0])
+  };
+}
+
+function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
+  const text = payload.budoMediaFrames?.text;
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as { frames?: Array<{ display_name?: string; rgb_path?: string }> };
+    if (!Array.isArray(parsed.frames)) return [];
+    return parsed.frames.map((frame, index) => ({
+      name: frame.display_name ?? `frame ${index + 1}`,
+      path: frame.rgb_path ?? ""
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function compactPath(value: string): string {
   if (value.length <= 42) return value;
   return `...${value.slice(-39)}`;
 }
 
-function createAgentMoveStatus(
-  status: AgentMoveResult["status"],
-  from: AgentState,
-  target: AgentState,
-  resolved: AgentState,
-  message: string
-): AgentMoveResult {
-  return {
-    status,
-    from,
-    target,
-    resolved,
-    footprintRadius: agentFootprintRadius,
-    message,
-    source: "renderer"
-  };
-}
-
-function simulationCommandToEpisode(
-  action: SimulationCommand["action"],
-  steps = 1,
-  preset?: SimulatedPropPreset,
-  position?: SimulationCommand["position"],
-  targetPropId?: string,
-  delta?: SimulationCommand["delta"]
-): Omit<EpisodeEvent, "id" | "frame"> {
-  if (action === "spawn-prop") {
-    return {
-      lane: "object",
-      kind: "prop-spawn",
-      label: `prop spawn · ${preset ?? "crate"}`,
-      pose: position,
-      status: "queued"
-    };
-  }
-  if (action === "duplicate-prop") {
-    return {
-      lane: "object",
-      kind: "prop-duplicate",
-      label: "prop duplicate",
-      targetId: targetPropId,
-      status: "queued"
-    };
-  }
-  if (action === "delete-prop") {
-    return {
-      lane: "object",
-      kind: "prop-delete",
-      label: "prop delete",
-      targetId: targetPropId,
-      status: "queued"
-    };
-  }
-  if (action === "reset-prop") {
-    return {
-      lane: "object",
-      kind: "prop-reset",
-      label: "prop reset",
-      targetId: targetPropId,
-      status: "spawn"
-    };
-  }
-  if (action === "move-prop") {
-    return {
-      lane: "object",
-      kind: "prop-move",
-      label: "prop move",
-      targetId: targetPropId,
-      pose: position,
-      status: "valid"
-    };
-  }
-  if (action === "nudge-prop") {
-    const offset = delta ? `${delta.x.toFixed(2)} · ${(delta.z ?? 0).toFixed(2)}` : "offset";
-    return {
-      lane: "object",
-      kind: "prop-move",
-      label: `prop nudge · ${offset}`,
-      targetId: targetPropId,
-      status: "queued"
-    };
-  }
-  if (action === "step") {
-    return {
-      lane: "object",
-      kind: "simulation-step",
-      label: `physics step · ${steps}`,
-      status: "deterministic"
-    };
-  }
-  return {
-    lane: "object",
-    kind: "simulation-reset",
-    label: "physics reset",
-    status: "ready"
-  };
-}
-
-function rendererStatusLabel(renderMode: RenderMode, info: RendererDebugInfo | null): string {
-  if (!info) return "renderer · blank";
-  if (renderMode === "splat") {
-    if (info.activeSplatBackend === "spark") return "splat · Spark ready";
-    if (info.sparkStatus === "loading") return "splat · Spark loading";
-    return "splat · points fallback";
-  }
-  if (renderMode === "points") return "points · ordinary PLY";
-  if (renderMode === "mesh") return "mesh · OBJ";
-  if (renderMode === "semantic") return "semantic · point labels";
-  return "depth · point distances";
-}
-
-function RendererDebugPanel({ info, renderMode }: { info: RendererDebugInfo | null; renderMode: RenderMode }) {
-  return (
-    <WSPanel title="Renderer" meta={info?.activeSplatBackend ?? "blank"} className="ws-renderer-panel">
-      <div className="ws-row-stack" data-testid="renderer-debug-panel">
-        <div className="ws-kv">
-          <span>mode</span>
-          <b>{renderMode}</b>
-        </div>
-        <div className="ws-kv" data-testid="renderer-splat-backend">
-          <span>splat</span>
-          <b>{info?.activeSplatBackend ?? "unavailable"}</b>
-        </div>
-        <div className="ws-kv" data-testid="renderer-spark-status">
-          <span>spark</span>
-          <b>{info?.sparkStatus ?? "unavailable"}</b>
-        </div>
-        <div className="ws-kv" data-testid="renderer-spark-splats">
-          <span>splats</span>
-          <b>{info?.sparkSplatCount ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>points</span>
-          <b>{info?.pointCount ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>gaussian</span>
-          <b title={info?.gaussianUrl}>{info?.gaussianUrl ? compactPath(info.gaussianUrl) : "none"}</b>
-        </div>
-        <div className="ws-kv">
-          <span>state</span>
-          <b>{info?.message ?? "waiting"}</b>
-        </div>
-      </div>
-    </WSPanel>
-  );
-}
-
-function PilotPropPanel({
-  tool,
-  preset,
-  placement,
-  info,
-  selectedProp,
-  selectedPropId,
-  draggingPropId,
-  onToolChange,
-  onPresetChange,
-  onSelectProp,
-  onReset,
-  onDuplicateSelected,
-  onResetSelected,
-  onDeleteSelected,
-  onNudgeSelected
-}: {
-  tool: "agent" | "prop";
-  preset: SimulatedPropPreset;
-  placement: SpawnPlacementResult | null;
-  info: PhysicsDebugInfo | null;
-  selectedProp: SimulatedPropState | null;
-  selectedPropId: string | null;
-  draggingPropId: string | null;
-  onToolChange: (tool: "agent" | "prop") => void;
-  onPresetChange: (preset: SimulatedPropPreset) => void;
-  onSelectProp: (id: string) => void;
-  onReset: () => void;
-  onDuplicateSelected: (id: string) => void;
-  onResetSelected: (id: string) => void;
-  onDeleteSelected: (id: string) => void;
-  onNudgeSelected: (id: string, delta: NonNullable<SimulationCommand["delta"]>) => void;
-}) {
-  const props = info?.props ?? [];
-  return (
-    <WSPanel title="Props" meta={tool === "prop" ? "click place" : "agent tool"} className="ws-prop-panel">
-      <div className="ws-row-stack" data-testid="pilot-prop-panel">
-        <div className="ws-btn-row">
-          <WSPill active={tool === "agent"} onClick={() => onToolChange("agent")}>
-            Agent
-          </WSPill>
-          <WSPill active={tool === "prop"} onClick={() => onToolChange("prop")}>
-            Prop
-          </WSPill>
-        </div>
-        <div className="ws-btn-row">
-          {propPresets.map((entry) => (
-            <WSPill key={entry} active={preset === entry} onClick={() => onPresetChange(entry)}>
-              {entry === "crate" ? "Crate" : "Tall"}
-            </WSPill>
-          ))}
-        </div>
-        <div className={`ws-placement-state ${placement?.status ?? "idle"}`} data-testid="pilot-prop-placement-status">
-          <span>{tool === "prop" ? preset : "agent"}</span>
-          <b>{tool === "prop" ? placement?.message ?? "click canvas" : "spawn click"}</b>
-        </div>
-        <div className="ws-kv" data-testid="pilot-prop-count">
-          <span>props</span>
-          <b>{info?.dynamicBodies ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>footprint</span>
-          <b>{(tool === "prop" ? propPresetFootprint(preset) : agentFootprintRadius).toFixed(2)}m</b>
-        </div>
-        <div className="ws-btn-row">
-          <WSButton onClick={onReset}>Reset Props</WSButton>
-        </div>
-        <div className="ws-prop-list" data-testid="pilot-prop-list">
-          {props.length ? (
-            props.slice(-6).map((prop) => (
-              <button
-                aria-label={`Select prop ${prop.label}`}
-                aria-pressed={selectedPropId === prop.id}
-                className={`ws-prop-row ${prop.contactState}`}
-                key={prop.id}
-                onClick={() => onSelectProp(prop.id)}
-                type="button"
-              >
-                <span>{prop.label}</span>
-                <b>{prop.contactState}</b>
-              </button>
-            ))
-          ) : (
-            <div className="ws-kv">
-              <span>list</span>
-              <b>none</b>
-            </div>
-          )}
-        </div>
-        {selectedProp ? (
-          <div className="ws-prop-inspector" data-testid="selected-prop-inspector">
-            <div className="ws-insight-head">
-              <span>{selectedProp.label}</span>
-              <b>{selectedProp.preset}</b>
-            </div>
-            <div className="ws-kv" data-testid="selected-prop-contact">
-              <span>contact</span>
-              <b>{selectedProp.contactState}</b>
-            </div>
-            <div className="ws-kv">
-              <span>pose</span>
-              <b data-testid="selected-prop-pose">{formatPropPose(selectedProp)}</b>
-            </div>
-            <div className="ws-kv">
-              <span>footprint</span>
-              <b>{selectedProp.footprintRadius.toFixed(2)}m</b>
-            </div>
-            <div className={`ws-placement-state ${draggingPropId === selectedProp.id ? placement?.status ?? "pending" : "idle"}`} data-testid="selected-prop-move-status">
-              <span>move</span>
-              <b>{draggingPropId === selectedProp.id ? placement?.message ?? "pending" : "idle"}</b>
-            </div>
-            <div className="ws-btn-row ws-prop-actions">
-              <WSButton onClick={() => onDuplicateSelected(selectedProp.id)}>Duplicate</WSButton>
-              <WSButton onClick={() => onResetSelected(selectedProp.id)}>Reset Selected</WSButton>
-              <WSButton onClick={() => onDeleteSelected(selectedProp.id)}>Delete Selected</WSButton>
-            </div>
-            <div className="ws-prop-nudge" data-testid="selected-prop-nudge">
-              <WSButton aria-label="Nudge selected prop west" onClick={() => onNudgeSelected(selectedProp.id, { x: -0.12, z: 0 })}>
-                -X
-              </WSButton>
-              <WSButton aria-label="Nudge selected prop east" onClick={() => onNudgeSelected(selectedProp.id, { x: 0.12, z: 0 })}>
-                +X
-              </WSButton>
-              <WSButton aria-label="Nudge selected prop north" onClick={() => onNudgeSelected(selectedProp.id, { x: 0, z: -0.12 })}>
-                -Z
-              </WSButton>
-              <WSButton aria-label="Nudge selected prop south" onClick={() => onNudgeSelected(selectedProp.id, { x: 0, z: 0.12 })}>
-                +Z
-              </WSButton>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </WSPanel>
-  );
-}
-
-function SimulationControlPanel({
-  info,
-  onReset,
-  onStep
-}: {
-  info: PhysicsDebugInfo | null;
-  onReset: () => void;
-  onStep: () => void;
-}) {
-  const primaryProp = info?.props?.[0];
-  const pose = primaryProp ? `${primaryProp.x.toFixed(2)} · ${primaryProp.y.toFixed(2)} · ${primaryProp.z.toFixed(2)}` : "none";
-  return (
-    <WSPanel title="Prop Physics" meta="deterministic" className="ws-simulation-panel">
-      <div className="ws-row-stack" data-testid="simulation-control-panel">
-        <div className="ws-btn-row">
-          <WSButton onClick={onReset}>Reset</WSButton>
-          <WSButton accent onClick={onStep}>
-            Step
-          </WSButton>
-        </div>
-        <div className="ws-kv" data-testid="simulation-step-index">
-          <span>step</span>
-          <b>{info?.simulationStep ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>fixed dt</span>
-          <b>{info?.fixedTimestep ? `${(info.fixedTimestep * 1000).toFixed(2)}ms` : "16.67ms"}</b>
-        </div>
-        <div className="ws-kv" data-testid="simulation-dynamic-bodies">
-          <span>bodies</span>
-          <b>{info?.dynamicBodies ?? 0}</b>
-        </div>
-        <div className="ws-kv" data-testid="simulation-prop-pose">
-          <span>{primaryProp?.label ?? "prop"}</span>
-          <b>{pose}</b>
-        </div>
-        <div className="ws-kv">
-          <span>state</span>
-          <b>{primaryProp?.contactState ?? "paused"}</b>
-        </div>
-      </div>
-    </WSPanel>
-  );
-}
-
-function PhysicsDebugPanel({
-  enabled,
-  info,
-  onToggle
-}: {
-  enabled: boolean;
-  info: PhysicsDebugInfo | null;
-  onToggle: () => void;
-}) {
-  return (
-    <WSPanel title="Physics" meta={enabled ? "overlay on" : "overlay off"} className="ws-physics-panel">
-      <div className="ws-row-stack" data-testid="physics-debug-panel">
-        <div className="ws-btn-row">
-          <WSButton onClick={onToggle}>{enabled ? "Debug Off" : "Debug On"}</WSButton>
-        </div>
-        <div className="ws-kv">
-          <span>status</span>
-          <b>{info?.status ?? "unavailable"}</b>
-        </div>
-        <div className="ws-kv">
-          <span>colliders</span>
-          <b>{info?.colliders ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>bodies</span>
-          <b>{info?.dynamicBodies ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>step</span>
-          <b>{info?.simulationStep ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>triangles</span>
-          <b>{info?.obstacleTriangles ?? 0}</b>
-        </div>
-        <div className="ws-kv">
-          <span>source</span>
-          <b>{info?.source ?? "renderer"}</b>
-        </div>
-      </div>
-    </WSPanel>
-  );
-}
-
 function getDesktopApi() {
   return window.worldStudioDesktop;
-}
-
-function propPresetFootprint(preset: SimulatedPropPreset): number {
-  return preset === "tall-crate" ? 0.26 : 0.3;
-}
-
-function formatPropPose(prop: SimulatedPropState): string {
-  return `${prop.x.toFixed(2)} · ${prop.y.toFixed(2)} · ${prop.z.toFixed(2)}`;
 }
 
 function PackageIssues({ issues }: { issues: LocalPackageIssue[] }) {
@@ -1825,11 +1912,13 @@ function PackageInsightDetail({ insight }: { insight: LocalPackageInsight | null
 
 function ModeCard({
   mode,
+  renderMode,
   session,
   assetSummary,
   playhead
 }: {
   mode: StudioMode;
+  renderMode: RenderMode;
   session: WorldSession | null;
   assetSummary: AssetSummary | null;
   playhead: number;
@@ -1839,8 +1928,9 @@ function ModeCard({
     <div className="ws-row-stack">
       <div className="ws-mode-title-row">
         <div className="ws-mode-title">{title}</div>
-        <WSChip accent>{session ? "live" : "blank"}</WSChip>
+        <WSChip accent={Boolean(session)}>{session ? "live" : "blank"}</WSChip>
       </div>
+      {renderMode === "depth" ? <WSRamp from={0} to={0.978} label="magma" /> : null}
       <div className="ws-kv">
         <span>points</span>
         <b>{assetSummary?.pointCount ?? session?.pointCount ?? 0}</b>
@@ -1862,16 +1952,158 @@ function ModeCard({
   );
 }
 
-function ToolRail() {
+function ToolRail({ tool, onSelect }: { tool: string; onSelect: (tool: string) => void }) {
   return (
     <div className="ws-rail">
-      {["◌", "✕", "↺", "⇱"].map((item, index) => (
-        <button className={`ws-rail-btn ${index === 0 ? "on" : ""}`} key={item} title={item}>
-          {item}
+      {editTools.map((entry) => (
+        <button
+          className={`ws-rail-btn ${entry.id === tool ? "on" : ""}`}
+          key={entry.id}
+          title={entry.title}
+          onClick={() => onSelect(entry.id)}
+        >
+          <WSIcon name={entry.icon} />
         </button>
       ))}
     </div>
   );
+}
+
+function PilotPropPanel({
+  props,
+  preset,
+  selectedProp,
+  onPresetChange,
+  onSpawn,
+  onSelect,
+  onDuplicate,
+  onResetSelected,
+  onDelete,
+  onResetAll,
+  onNudge
+}: {
+  props: SimulatedPropState[];
+  preset: SimulatedPropPreset;
+  selectedProp: SimulatedPropState | null;
+  onPresetChange: (preset: SimulatedPropPreset) => void;
+  onSpawn: (preset: SimulatedPropPreset) => void;
+  onSelect: (id: string) => void;
+  onDuplicate: () => void;
+  onResetSelected: () => void;
+  onDelete: () => void;
+  onResetAll: () => void;
+  onNudge: (dx: number, dz: number) => void;
+}) {
+  return (
+    <WSPanel title="Props" meta={`${props.length} bodies`} className="ws-prop-panel">
+      <div className="ws-row-stack" data-testid="pilot-prop-panel">
+        <div className="ws-btn-row">
+          {(["crate", "tall-crate"] as SimulatedPropPreset[]).map((entry) => (
+            <WSButton accent={preset === entry} key={entry} onClick={() => onPresetChange(entry)}>
+              {entry === "crate" ? "Crate" : "Tall"}
+            </WSButton>
+          ))}
+        </div>
+        <div className="ws-btn-row">
+          <WSButton accent onClick={() => onSpawn(preset)}>
+            Spawn Prop
+          </WSButton>
+          <WSButton onClick={onResetAll}>Reset Props</WSButton>
+        </div>
+        <div className="ws-kv" data-testid="pilot-prop-count">
+          <span>props</span>
+          <b>{props.length} bodies</b>
+        </div>
+        <div className="ws-prop-list" data-testid="pilot-prop-list">
+          {props.length ? (
+            props.slice(-6).map((prop) => (
+              <button
+                aria-label={`Select prop ${prop.label}`}
+                aria-pressed={selectedProp?.id === prop.id}
+                className={`ws-prop-row ${prop.contactState}`}
+                key={prop.id}
+                onClick={() => onSelect(prop.id)}
+                type="button"
+              >
+                <span>{prop.label}</span>
+                <b>{prop.contactState}</b>
+              </button>
+            ))
+          ) : (
+            <div className="ws-kv">
+              <span>list</span>
+              <b>none</b>
+            </div>
+          )}
+        </div>
+        {selectedProp ? (
+          <div className="ws-prop-inspector" data-testid="selected-prop-inspector">
+            <div className="ws-insight-head">
+              <span>{selectedProp.label}</span>
+              <b>{selectedProp.preset}</b>
+            </div>
+            <div className="ws-kv">
+              <span>pose</span>
+              <b data-testid="selected-prop-pose">
+                {selectedProp.x.toFixed(2)} · {selectedProp.y.toFixed(2)} · {selectedProp.z.toFixed(2)}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>contact</span>
+              <b>{selectedProp.contactState}</b>
+            </div>
+            <div className="ws-btn-row ws-prop-actions">
+              <WSButton onClick={onDuplicate}>Duplicate</WSButton>
+              <WSButton onClick={onResetSelected}>Reset Selected</WSButton>
+              <WSButton onClick={onDelete}>Delete Selected</WSButton>
+            </div>
+            <div className="ws-prop-nudge" data-testid="selected-prop-nudge">
+              <WSButton aria-label="Nudge selected prop west" onClick={() => onNudge(-0.12, 0)}>
+                -X
+              </WSButton>
+              <WSButton aria-label="Nudge selected prop east" onClick={() => onNudge(0.12, 0)}>
+                +X
+              </WSButton>
+              <WSButton aria-label="Nudge selected prop north" onClick={() => onNudge(0, -0.12)}>
+                -Z
+              </WSButton>
+              <WSButton aria-label="Nudge selected prop south" onClick={() => onNudge(0, 0.12)}>
+                +Z
+              </WSButton>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </WSPanel>
+  );
+}
+
+function driveCommandForKey(key: string): DriveCommand {
+  if (key === "w") return { move: 1, turn: 0 };
+  if (key === "s") return { move: -1, turn: 0 };
+  if (key === "a") return { move: 0, turn: -1 };
+  return { move: 0, turn: 1 };
+}
+
+function driveActionLabel(key: string): string {
+  if (key === "w") return "MoveAhead(0.12)";
+  if (key === "s") return "MoveBack(0.12)";
+  if (key === "a") return "Rotate(-9deg)";
+  return "Rotate(+9deg)";
+}
+
+function buildSpawnChoices(session: WorldSession | null): SpawnChoice[] {
+  const scene = session?.agentSpawn ?? defaultSpawn;
+  return [
+    { id: "scene", label: "Scene", agent: scene },
+    { id: "origin", label: "Origin", agent: { x: 0, z: 0, heading: 0 } },
+    { id: "window", label: "Window", agent: { x: -1.8, z: 1.3, heading: -0.65 } },
+    { id: "shelf", label: "Shelf", agent: { x: 2.0, z: 1.4, heading: 2.8 } }
+  ];
+}
+
+function samePose(a: AgentState, b: AgentState): boolean {
+  return Math.abs(a.x - b.x) < 0.001 && Math.abs(a.z - b.z) < 0.001 && Math.abs(a.heading - b.heading) < 0.001;
 }
 
 function nextAccent(current: keyof typeof accents): keyof typeof accents {

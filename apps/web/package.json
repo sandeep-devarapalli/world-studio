@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/source-serif-4": "^5.2.9",
+    "@fontsource/spline-sans": "^5.2.8",
     "@sparkjsdev/spark": "2.1.0",
     "@world-studio/artifacts": "workspace:*",
     "@world-studio/design-system": "workspace:*",

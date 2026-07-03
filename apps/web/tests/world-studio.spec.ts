@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { LocalWorldPackagePayload } from "@world-studio/world-core";
+import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
   label: string;
@@ -23,6 +24,8 @@ const localScene = {
   ],
   agent_spawn: { x: 0, z: 0, heading_rad: 0 }
 };
+
+const loftFixture = (name: string) => new URL(`../public/fixtures/loft_04/${name}`, import.meta.url);
 
 const localPoints = `ply
 format ascii 1.0
@@ -48,23 +51,7 @@ end_header
 0 0.5 0.4 210 130 80 2
 0.2 0.3 0.4 210 130 80 2`;
 
-const localGaussian = `ply
-format ascii 1.0
-element vertex 1
-property float x
-property float y
-property float z
-property float opacity
-property float scale_0
-property float scale_1
-property float scale_2
-property float rot_0
-property float rot_1
-property float rot_2
-property float rot_3
-property float f_dc_0
-end_header
-0 0 0 1 0.1 0.1 0.1 1 0 0 0 0.5`;
+const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
 
 const localPackagePayload: LocalWorldPackagePayload = {
   kind: "world-studio.local-package",
@@ -533,142 +520,100 @@ test("exercises edit delete undo and pilot keys", async ({ page }) => {
   await page.getByRole("button", { name: "Pilot" }).click();
   await page.keyboard.press("w");
   await page.keyboard.press("a");
-  const placementStatus = page.getByTestId("spawn-placement-status");
-  await expect(placementStatus).toBeVisible();
-  const physicsPanel = page.getByTestId("physics-debug-panel");
-  await expect(physicsPanel).toBeVisible();
-  await expect.poll(async () => (await physicsPanel.textContent()) ?? "", { timeout: 8_000 }).toContain("ready");
-  await expect(physicsPanel).toContainText("triangles");
-  await physicsPanel.getByRole("button", { name: "Debug On" }).click();
-  await expect(physicsPanel.getByRole("button", { name: "Debug Off" })).toBeVisible();
-  await expectCanvasScreenshot(page);
-  await expect
-    .poll(
-      async () => {
-        await canvas.click({ position: { x: box.width * 0.5, y: box.height * 0.7 } });
-        return (await placementStatus.textContent()) ?? "";
-      },
-      { timeout: 8_000 }
-    )
-    .toContain("valid");
-  await expect(placementStatus).toContainText("grounded and clear");
-  const moveStatus = page.getByTestId("agent-move-status");
-  await page.keyboard.press("w");
-  await expect(moveStatus).toContainText("movement clear");
-  for (let index = 0; index < 60; index++) {
-    await page.keyboard.press("w");
-  }
-  await expect(moveStatus).toContainText(/blocked|outside_bounds/, { timeout: 12_000 });
   await expect(page.getByText("agent live")).toBeVisible();
 });
 
-test("spawns Pilot props through canvas placement", async ({ page }) => {
+test("shows Rapier physics diagnostics and steps the pilot agent", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+
+  const physicsPanel = page.locator(".ws-card", { hasText: "Physics" });
+  await expect(physicsPanel).toContainText("rapier3d-compat");
+  await expect(physicsPanel).toContainText("60hz");
+  await expect(physicsPanel).toContainText("colliders");
+
+  await page.keyboard.press("s");
+  await expect(page.locator(".ws-statusbar")).toContainText("physics rapier3d-compat");
+
+  await page.getByRole("button", { name: "Pilot" }).click();
+  await page.keyboard.press("w");
+  const pilotPanel = page.locator(".ws-agent-pad");
+  await expect(pilotPanel).toContainText("rapier3d-compat");
+  await expect(pilotPanel).toContainText("grounded");
+  await expect(page.locator(".ws-statusbar")).toContainText(/step [1-9]/);
+});
+
+test("changes spawn, body preset, and collision debug overlay", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Pilot" }).click();
+
+  const pilotPanel = page.locator(".ws-agent-pad");
+  await page.getByRole("button", { name: "Cargo body" }).click();
+  await expect(pilotPanel).toContainText("Agent — Cargo");
+
+  await page.getByRole("button", { name: "Spawn at Origin" }).click();
+  await expect(pilotPanel).toContainText("x 0.00 · z 0.00");
+
+  await page.keyboard.press("w");
+  await expect(page.locator(".ws-statusbar")).toContainText(/step [1-9]/);
+  await page.getByRole("button", { name: "Reset to Spawn" }).click();
+  await expect(page.locator(".ws-statusbar")).toContainText("step 0");
+
+  await page.getByRole("button", { name: "collision off" }).click();
+  await expect(pilotPanel).toContainText("collision on");
+  await expectCanvasScreenshot(page);
+});
+
+test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
   await page.getByRole("button", { name: "Pilot" }).click();
 
   const propPanel = page.getByTestId("pilot-prop-panel");
   await expect(propPanel).toBeVisible();
-  await expect(page.getByTestId("pilot-prop-count")).toContainText("2", { timeout: 8_000 });
+  await expect(propPanel).toContainText("2 bodies");
 
-  await propPanel.getByRole("button", { name: "Prop", exact: true }).click();
-  await propPanel.getByRole("button", { name: "Tall" }).click();
+  await propPanel.getByRole("button", { name: "Tall", exact: true }).click();
+  await propPanel.getByRole("button", { name: "Spawn Prop" }).click();
+  await expect(propPanel).toContainText("3 bodies");
+  await page.getByRole("button", { name: /Select prop tall-crate_/ }).last().click();
 
-  const canvas = page.locator("[data-testid='world-canvas']");
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error("canvas missing");
-  await expect
-    .poll(
-      async () => {
-        await canvas.click({ position: { x: box.width * 0.5, y: box.height * 0.7 } });
-        return (await page.getByTestId("pilot-prop-placement-status").textContent()) ?? "";
-      },
-      { timeout: 8_000 }
-    )
-    .toContain("grounded and clear");
-
-  await expect(page.getByTestId("pilot-prop-placement-status")).toContainText("grounded and clear");
-  await expect(page.getByTestId("pilot-prop-count")).toContainText("3", { timeout: 8_000 });
-  await expect(page.getByTestId("pilot-prop-list")).toContainText("tall-crate");
-  await page.getByRole("button", { name: /Select prop tall-crate/ }).last().click();
   const inspector = page.getByTestId("selected-prop-inspector");
   await expect(inspector).toContainText("tall-crate");
-  await expect(page.getByTestId("selected-prop-contact")).toContainText(/grounded|airborne|sleeping/);
-  await expect(inspector).toContainText("footprint");
-  await page.getByRole("button", { name: /Select prop crate_a/ }).click();
-  await expect(inspector).toContainText("crate_a");
-  await canvas.click({ position: { x: box.width * 0.5, y: box.height * 0.7 } });
-  await expect(inspector).toContainText("tall-crate");
-  await expect(page.getByTestId("pilot-prop-count")).toContainText("3");
   const pose = page.getByTestId("selected-prop-pose");
-  const poseBeforeDrag = (await pose.textContent()) ?? "";
-  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.7);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.56, box.y + box.height * 0.68, { steps: 8 });
-  await expect(page.getByTestId("selected-prop-move-status")).toContainText("grounded and clear", { timeout: 8_000 });
-  await page.mouse.up();
-  await expect.poll(async () => (await pose.textContent()) ?? "", { timeout: 8_000 }).not.toBe(poseBeforeDrag);
-
-  await inspector.getByRole("button", { name: "Duplicate" }).click();
-  await expect(page.getByTestId("pilot-prop-count")).toContainText("4", { timeout: 8_000 });
-  const duplicatedPose = (await pose.textContent()) ?? "";
+  const initialPose = (await pose.textContent()) ?? "";
   await inspector.getByRole("button", { name: "Nudge selected prop east" }).click();
-  await expect.poll(async () => (await pose.textContent()) ?? "", { timeout: 8_000 }).not.toBe(duplicatedPose);
-  const nudgedPose = (await pose.textContent()) ?? "";
-  await inspector.getByRole("button", { name: "Reset Selected" }).click();
-  await expect.poll(async () => (await pose.textContent()) ?? "", { timeout: 8_000 }).not.toBe(nudgedPose);
+  await expect.poll(async () => (await pose.textContent()) ?? "", { timeout: 8_000 }).not.toBe(initialPose);
+  await inspector.getByRole("button", { name: "Duplicate" }).click();
+  await expect(propPanel).toContainText("4 bodies");
   await inspector.getByRole("button", { name: "Delete Selected" }).click();
-  await expect(page.getByTestId("pilot-prop-count")).toContainText("3", { timeout: 8_000 });
+  await expect(propPanel).toContainText("3 bodies");
   await propPanel.getByRole("button", { name: "Reset Props" }).click();
-  await expect(page.getByTestId("pilot-prop-count")).toContainText("3");
+  await expect(propPanel).toContainText("2 bodies");
 
   await page.getByRole("button", { name: "Episode" }).click();
-  const episodeEvents = page.getByTestId("episode-event-list");
-  await expect(episodeEvents).toBeVisible();
-  await expect(episodeEvents).toContainText("prop spawn");
-  await expect(episodeEvents).toContainText("prop move");
-  await expect(episodeEvents).toContainText("prop duplicate");
-  await expect(episodeEvents).toContainText("prop delete");
-  await expect(episodeEvents).toContainText("physics reset");
-});
-
-test("steps deterministic Rapier prop physics in Simulate", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Load loft_04" }).click();
-  await page.getByRole("button", { name: "Simulate" }).click();
-
-  const simPanel = page.getByTestId("simulation-control-panel");
-  await expect(simPanel).toBeVisible();
-  await expect(page.getByTestId("simulation-dynamic-bodies")).toContainText("2", { timeout: 8_000 });
-  await expect(page.getByTestId("simulation-step-index")).toContainText("0");
-
-  const propPose = page.getByTestId("simulation-prop-pose");
-  const initialPose = (await propPose.textContent()) ?? "";
-  await simPanel.getByRole("button", { name: "Step" }).click();
-  await expect(page.getByTestId("simulation-step-index")).toContainText("16", { timeout: 8_000 });
-  await expect.poll(async () => (await propPose.textContent()) ?? "", { timeout: 8_000 }).not.toBe(initialPose);
-
-  await simPanel.getByRole("button", { name: "Reset" }).click();
-  await expect(page.getByTestId("simulation-step-index")).toContainText("0", { timeout: 8_000 });
-  await expect.poll(async () => (await propPose.textContent()) ?? "", { timeout: 8_000 }).toBe(initialPose);
+  const events = page.getByTestId("episode-event-list");
+  await expect(events).toContainText("prop spawn");
+  await expect(events).toContainText("prop nudge");
+  await expect(events).toContainText("prop duplicate");
+  await expect(events).toContainText("prop delete");
+  await expect(events).toContainText("prop reset all");
 });
 
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
+  const statusbar = page.locator(".ws-statusbar");
+
+  await page.getByRole("button", { name: "splat" }).click();
+  await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
+  await expect(statusbar).not.toContainText("point fallback");
 
   for (const mode of ["splat", "points", "mesh", "semantic", "depth"]) {
     await page.getByRole("button", { name: mode }).click();
     await expect(page.getByText(`${mode} · 90% density`)).toBeVisible();
-    if (mode === "splat") {
-      await expect(page.getByTestId("renderer-spark-status")).toContainText("ready", { timeout: 15_000 });
-      await expect(page.getByTestId("renderer-splat-backend")).toContainText("spark");
-      await expect(page.getByTestId("renderer-spark-splats")).toContainText("16060");
-      await expect(page.getByText("splat · Spark ready")).toBeVisible();
-    }
-    if (mode === "points") {
-      await expect(page.getByText("points · ordinary PLY")).toBeVisible();
-    }
     await expectCanvasScreenshot(page);
   }
 
@@ -688,6 +633,7 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: "Open Local" }).click();
+  const statusbar = page.locator(".ws-statusbar");
 
   await expect(page.locator(".ws-logo-sub", { hasText: "local_lab · v1" })).toBeVisible();
   await expect(page.getByText("world-studio-local-folder")).toBeVisible();
@@ -697,6 +643,13 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
   await expect(page.getByText("Package Inspector")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Scene Manifest detail" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Asset Set detail" })).toBeVisible();
+  await page.getByRole("button", { name: "splat" }).click();
+  await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
+  await expect(statusbar).toContainText("16060 splats");
+  await expect(page.getByText("ply source")).toBeVisible();
+  await expect(page.getByText("ascii", { exact: true })).toBeVisible();
+  await expect(page.getByText("spark prep")).toBeVisible();
+  await expect(page.getByText("converted", { exact: true })).toBeVisible();
 });
 
 test("loads generic manifest-only packages through the desktop bridge", async ({ page }) => {
@@ -807,6 +760,68 @@ test("selects compatibility package layouts through the visible UI test bridge",
     await expect(subtitle).toContainText(choice.payload.name);
     if (choice.payload.packageIssues?.length) {
       await expect(page.locator(".ws-issue-panel")).toContainText(choice.payload.packageIssues[0].title);
+    }
+  }
+});
+
+test("selects with the rect tool, deletes, and undoes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "rect select" }).click();
+
+  const canvas = page.locator("[data-testid='world-canvas']");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("canvas missing");
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.65);
+  await page.mouse.up();
+
+  const statusbar = page.locator(".ws-statusbar");
+  await expect(statusbar).not.toContainText("0 selected");
+  await expect(statusbar).toContainText("0 hidden");
+
+  await page.keyboard.press("Delete");
+  await expect(statusbar).toContainText("0 selected");
+  await expect(statusbar).not.toContainText("0 hidden");
+
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Z" : "Control+Z");
+  await expect(statusbar).toContainText("0 hidden");
+});
+
+test("keeps the stage centered and chrome visible across window resizes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1000, height: 700 },
+    { width: 640, height: 480 },
+    { width: 2200, height: 1200 }
+  ]) {
+    await page.setViewportSize(viewport);
+
+    const expectedWidth = Math.min(viewport.width / 1920, viewport.height / 1080) * 1920;
+    await expect
+      .poll(async () => {
+        const box = await page.locator(".ws-stage").boundingBox();
+        return box ? Math.abs(box.width - expectedWidth) : Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThan(2);
+
+    const stage = await page.locator(".ws-stage").boundingBox();
+    if (!stage) throw new Error("stage missing");
+    expect(Math.abs(stage.x + stage.width / 2 - viewport.width / 2)).toBeLessThan(2);
+    expect(Math.abs(stage.y + stage.height / 2 - viewport.height / 2)).toBeLessThan(2);
+
+    for (const selector of [".ws-wordmark", ".ws-mode-switch", ".ws-statusbar"]) {
+      const box = await page.locator(selector).first().boundingBox();
+      if (!box) throw new Error(`${selector} missing`);
+      expect(box.x).toBeGreaterThanOrEqual(-1);
+      expect(box.y).toBeGreaterThanOrEqual(-1);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
     }
   }
 });
