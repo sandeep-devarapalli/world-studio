@@ -122,6 +122,9 @@ importers:
 
   packages/renderer:
     dependencies:
+      '@dimforge/rapier3d-compat':
+        specifier: 0.19.3
+        version: 0.19.3
       '@sparkjsdev/spark':
         specifier: 2.1.0
         version: 2.1.0(three@0.185.1)

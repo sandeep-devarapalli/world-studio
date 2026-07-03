@@ -222,6 +222,10 @@ body {
   scrollbar-width: thin;
 }
 
+.ws-root.mode-pilot .ws-left {
+  max-height: 620px;
+}
+
 .ws-right-col {
   max-height: 690px;
   overflow-y: auto;
@@ -297,4 +301,141 @@ body {
 .ws-slider-row input[type="range"] {
   flex: 1;
   accent-color: var(--acc);
+}
+
+.ws-prop-panel .ws-panel-body {
+  max-height: 356px;
+  overflow: auto;
+}
+
+.ws-prop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 126px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ws-prop-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  border: 1px solid var(--line);
+  border-left: 2px solid #c9a93f;
+  border-radius: 6px;
+  color: var(--ink-mut);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--mono);
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.ws-prop-row span,
+.ws-prop-row b,
+.ws-episode-row span,
+.ws-episode-row b {
+  font-size: var(--fs-head);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-prop-row b,
+.ws-episode-row b {
+  color: var(--ink-faint);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.ws-prop-row.grounded {
+  border-left-color: #67c06f;
+}
+
+.ws-prop-row.airborne {
+  border-left-color: #c9a93f;
+}
+
+.ws-prop-row.sleeping {
+  border-left-color: #8d8172;
+}
+
+.ws-prop-row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acc), transparent 86%);
+  border-color: color-mix(in srgb, var(--acc), white 18%);
+}
+
+.ws-prop-inspector {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+}
+
+.ws-prop-actions .ws-btn {
+  flex: 1 1 auto;
+}
+
+.ws-prop-nudge {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ws-prop-nudge .ws-btn {
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.ws-episode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 208px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ws-episode-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--panel), transparent 10%);
+  border: 1px solid var(--line);
+  border-left: 2px solid #8d8172;
+  border-radius: 6px;
+  color: var(--ink-mut);
+  display: grid;
+  font-family: var(--mono);
+  gap: 8px;
+  grid-template-columns: 42px minmax(0, 1fr) 86px;
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.ws-episode-row.agent {
+  border-left-color: #4fc3d9;
+}
+
+.ws-episode-row.object {
+  border-left-color: #d9764a;
+}
+
+.ws-episode-row.capture {
+  border-left-color: #67c06f;
+}
+
+.ws-episode-frame {
+  color: var(--ink-faint);
+}
+
+.ws-episode-label {
+  color: var(--ink);
+}
+
+.ws-episode-row b {
+  text-align: right;
 }

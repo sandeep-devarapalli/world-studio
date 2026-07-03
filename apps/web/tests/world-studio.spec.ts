@@ -566,6 +566,42 @@ test("changes spawn, body preset, and collision debug overlay", async ({ page })
   await expectCanvasScreenshot(page);
 });
 
+test("records Pilot prop actions in Episode mode", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Pilot" }).click();
+
+  const propPanel = page.getByTestId("pilot-prop-panel");
+  await expect(propPanel).toBeVisible();
+  await expect(propPanel).toContainText("2 bodies");
+
+  await propPanel.getByRole("button", { name: "Tall", exact: true }).click();
+  await propPanel.getByRole("button", { name: "Spawn Prop" }).click();
+  await expect(propPanel).toContainText("3 bodies");
+  await page.getByRole("button", { name: /Select prop tall-crate_/ }).last().click();
+
+  const inspector = page.getByTestId("selected-prop-inspector");
+  await expect(inspector).toContainText("tall-crate");
+  const pose = page.getByTestId("selected-prop-pose");
+  const initialPose = (await pose.textContent()) ?? "";
+  await inspector.getByRole("button", { name: "Nudge selected prop east" }).click();
+  await expect.poll(async () => (await pose.textContent()) ?? "", { timeout: 8_000 }).not.toBe(initialPose);
+  await inspector.getByRole("button", { name: "Duplicate" }).click();
+  await expect(propPanel).toContainText("4 bodies");
+  await inspector.getByRole("button", { name: "Delete Selected" }).click();
+  await expect(propPanel).toContainText("3 bodies");
+  await propPanel.getByRole("button", { name: "Reset Props" }).click();
+  await expect(propPanel).toContainText("2 bodies");
+
+  await page.getByRole("button", { name: "Episode" }).click();
+  const events = page.getByTestId("episode-event-list");
+  await expect(events).toContainText("prop spawn");
+  await expect(events).toContainText("prop nudge");
+  await expect(events).toContainText("prop duplicate");
+  await expect(events).toContainText("prop delete");
+  await expect(events).toContainText("prop reset all");
+});
+
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();

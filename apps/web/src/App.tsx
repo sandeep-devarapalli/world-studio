@@ -166,12 +166,42 @@ interface SpawnChoice {
   agent: AgentState;
 }
 
+type SimulatedPropPreset = "crate" | "tall-crate";
+type EpisodeLane = "agent" | "object" | "capture";
+
+interface SimulatedPropState {
+  id: string;
+  label: string;
+  preset: SimulatedPropPreset;
+  contactState: "grounded" | "airborne" | "sleeping";
+  x: number;
+  y: number;
+  z: number;
+  footprintRadius: number;
+}
+
+interface EpisodeEvent {
+  id: string;
+  frame: number;
+  lane: EpisodeLane;
+  label: string;
+  targetId?: string;
+  status?: string;
+}
+
+const defaultProps: SimulatedPropState[] = [
+  { id: "prop-crate-a", label: "crate_a", preset: "crate", contactState: "grounded", x: -0.8, y: 0.18, z: 0.4, footprintRadius: 0.3 },
+  { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
+];
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect"; x: number; y: number } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const simulationRef = useRef<RapierSimulation | null>(null);
   const simulationTokenRef = useRef(0);
+  const propSeqRef = useRef(defaultProps.length);
+  const episodeFrameRef = useRef(0);
   const collisionMeshRef = useRef<ParsedObjMesh | undefined>(undefined);
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
@@ -204,6 +234,10 @@ export function App() {
   const [sensors, setSensors] = useState(initialSensors);
   const [playhead, setPlayhead] = useState(0.28);
   const [playing, setPlaying] = useState(false);
+  const [props, setProps] = useState<SimulatedPropState[]>(defaultProps);
+  const [selectedPropId, setSelectedPropId] = useState<string | null>(null);
+  const [selectedPropPreset, setSelectedPropPreset] = useState<SimulatedPropPreset>("crate");
+  const [episodeEvents, setEpisodeEvents] = useState<EpisodeEvent[]>([]);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -224,6 +258,10 @@ export function App() {
     [bodyPresetId]
   );
   const spawnChoices = useMemo(() => buildSpawnChoices(session), [session]);
+  const selectedProp = useMemo(
+    () => props.find((prop) => prop.id === selectedPropId) ?? props[0] ?? null,
+    [props, selectedPropId]
+  );
   const agentEye: FeedPose = {
     x: agent.x - Math.cos(agent.heading) * 0.35,
     y: 0.62,
@@ -361,6 +399,11 @@ export function App() {
     setHistory([]);
     setStepCount(0);
     setLastAction("idle");
+    setProps(defaultProps);
+    setSelectedPropId(null);
+    setEpisodeEvents([]);
+    propSeqRef.current = defaultProps.length;
+    episodeFrameRef.current = 0;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
   }, []);
 
@@ -576,24 +619,34 @@ export function App() {
 
   const clearSelected = () => setSelected(new Set());
 
+  const recordEpisodeEvent = useCallback((event: Omit<EpisodeEvent, "id" | "frame">) => {
+    episodeFrameRef.current += 1;
+    const frame = episodeFrameRef.current;
+    setEpisodeEvents((current) => [{ ...event, id: `event-${frame}`, frame }, ...current].slice(0, 80));
+  }, []);
+
   const resetAgent = () => {
     restartSimulationAt(spawn, bodyPreset, "ResetToSpawn");
+    recordEpisodeEvent({ lane: "agent", label: "agent reset", status: "spawn" });
   };
 
   const selectSpawn = (choice: SpawnChoice) => {
     restartSimulationAt(choice.agent, bodyPreset, `Spawn(${choice.label})`);
+    recordEpisodeEvent({ lane: "agent", label: `agent spawn · ${choice.label}`, status: "valid" });
   };
 
   const setSpawnHere = () => {
     const nextSpawn = { ...agent };
     setSpawn(nextSpawn);
     setLastAction("SetSpawnHere");
+    recordEpisodeEvent({ lane: "agent", label: "agent spawn set", status: "valid" });
   };
 
   const selectBodyPreset = (id: AgentBodyPresetId) => {
     const nextBody = agentBodyPresets.find((preset) => preset.id === id) ?? bodyPreset;
     setBodyPresetId(nextBody.id);
     restartSimulationAt(spawn, nextBody, `Body(${nextBody.label})`);
+    recordEpisodeEvent({ lane: "agent", label: `agent body · ${nextBody.label}`, status: "ready" });
   };
 
   const stepPhysics = (command: DriveCommand, action: string) => {
@@ -604,6 +657,7 @@ export function App() {
       setAgent(step.agent);
       setPhysicsDiagnostics(step.diagnostics);
       setTrajectory((points) => [...points.slice(-42), [step.agent.x, step.agent.z]]);
+      recordEpisodeEvent({ lane: "agent", label: action, status: step.diagnostics.grounded ? "grounded" : "airborne" });
       return true;
     }
     return false;
@@ -627,8 +681,83 @@ export function App() {
         };
       }
       setTrajectory((points) => [...points.slice(-42), [next.x, next.z]]);
+      recordEpisodeEvent({ lane: "agent", label: driveActionLabel(key), status: "fallback" });
       return next;
     });
+  };
+
+  const resetProps = () => {
+    setProps(defaultProps);
+    setSelectedPropId(null);
+    propSeqRef.current = defaultProps.length;
+    recordEpisodeEvent({ lane: "object", label: "prop reset all", status: "ready" });
+  };
+
+  const spawnProp = (preset: SimulatedPropPreset) => {
+    const nextIndex = propSeqRef.current + 1;
+    propSeqRef.current = nextIndex;
+    const nextProp: SimulatedPropState = {
+      id: `prop-${nextIndex}`,
+      label: `${preset}_${nextIndex}`,
+      preset,
+      contactState: "grounded",
+      x: agent.x + Math.cos(agent.heading) * 0.48,
+      y: preset === "tall-crate" ? 0.42 : 0.18,
+      z: agent.z + Math.sin(agent.heading) * 0.48,
+      footprintRadius: preset === "tall-crate" ? 0.26 : 0.3
+    };
+    setProps((current) => [...current, nextProp]);
+    setSelectedPropId(nextProp.id);
+    setSelectedPropPreset(preset);
+    recordEpisodeEvent({ lane: "object", label: `prop spawn · ${preset}`, targetId: nextProp.id, status: "grounded" });
+  };
+
+  const selectProp = (id: string) => {
+    setSelectedPropId(id);
+    recordEpisodeEvent({ lane: "object", label: "prop select", targetId: id, status: "active" });
+  };
+
+  const duplicateSelectedProp = () => {
+    if (!selectedProp) return;
+    const nextIndex = propSeqRef.current + 1;
+    propSeqRef.current = nextIndex;
+    const duplicate = {
+      ...selectedProp,
+      id: `prop-${nextIndex}`,
+      label: `${selectedProp.preset}_${nextIndex}`,
+      x: selectedProp.x + 0.18,
+      z: selectedProp.z + 0.18
+    };
+    setProps((current) => [...current, duplicate]);
+    setSelectedPropId(duplicate.id);
+    recordEpisodeEvent({ lane: "object", label: "prop duplicate", targetId: selectedProp.id, status: "grounded" });
+  };
+
+  const resetSelectedProp = () => {
+    if (!selectedProp) return;
+    setProps((current) =>
+      current.map((prop) =>
+        prop.id === selectedProp.id
+          ? { ...prop, x: selectedProp.preset === "tall-crate" ? 0.9 : -0.8, z: selectedProp.preset === "tall-crate" ? 0.9 : 0.4, contactState: "grounded" }
+          : prop
+      )
+    );
+    recordEpisodeEvent({ lane: "object", label: "prop reset", targetId: selectedProp.id, status: "grounded" });
+  };
+
+  const deleteSelectedProp = () => {
+    if (!selectedProp) return;
+    setProps((current) => current.filter((prop) => prop.id !== selectedProp.id));
+    setSelectedPropId(null);
+    recordEpisodeEvent({ lane: "object", label: "prop delete", targetId: selectedProp.id, status: "removed" });
+  };
+
+  const nudgeSelectedProp = (dx: number, dz: number) => {
+    if (!selectedProp) return;
+    setProps((current) =>
+      current.map((prop) => (prop.id === selectedProp.id ? { ...prop, x: prop.x + dx, z: prop.z + dz, contactState: "grounded" } : prop))
+    );
+    recordEpisodeEvent({ lane: "object", label: "prop nudge", targetId: selectedProp.id, status: "grounded" });
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -708,7 +837,7 @@ export function App() {
   };
 
   const activeMode = modes.find((entry) => entry.id === mode) ?? modes[0];
-  const rootClass = `ws-root ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
+  const rootClass = `ws-root mode-${mode} ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
   const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
 
   return (
@@ -933,7 +1062,23 @@ export function App() {
                   </div>
                   <div className="ws-kv">
                     <span>source</span>
-                    <b>{trajectory.length > 1 ? "pilot drive" : "no recording"}</b>
+                    <b>{episodeEvents.length ? "pilot events" : trajectory.length > 1 ? "pilot drive" : "no recording"}</b>
+                  </div>
+                  <div className="ws-episode-list" data-testid="episode-event-list">
+                    {episodeEvents.length ? (
+                      episodeEvents.slice(0, 8).map((event) => (
+                        <div className={`ws-episode-row ${event.lane}`} key={event.id}>
+                          <span className="ws-episode-frame">{String(event.frame).padStart(3, "0")}</span>
+                          <span className="ws-episode-label">{event.label}</span>
+                          <b>{event.status ?? event.lane}</b>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="ws-kv">
+                        <span>events</span>
+                        <b>none</b>
+                      </div>
+                    )}
                   </div>
                 </WSPanel>
               </div>
@@ -1087,82 +1232,97 @@ export function App() {
 
     if (mode === "pilot") {
       return (
-        <WSPanel title={`Agent — ${bodyPreset?.label ?? "body"}`} className="ws-agent-pad">
-          <div className="ws-pad">
-            <span />
-            <WSKey active={pressed.has("w")}>W</WSKey>
-            <span />
-            <WSKey active={pressed.has("a")}>A</WSKey>
-            <WSKey active={pressed.has("s")}>S</WSKey>
-            <WSKey active={pressed.has("d")}>D</WSKey>
-          </div>
-          <div className="ws-kv">
-            <span>pose</span>
-            <b>
-              x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)}
-            </b>
-          </div>
-          <div className="ws-kv">
-            <span>physics</span>
-            <b>{physicsDiagnostics.backend}</b>
-          </div>
-          <div className="ws-kv">
-            <span>spawn</span>
-            <b>
-              x {spawn.x.toFixed(2)} · z {spawn.z.toFixed(2)}
-            </b>
-          </div>
-          <div className="ws-kv">
-            <span>contacts</span>
-            <b>
-              {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
-            </b>
-          </div>
-          <div className="ws-kv">
-            <span>debug</span>
-            <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
-              {debugCollision ? "collision on" : "collision off"}
-            </button>
-          </div>
-          <div className="ws-btn-row">
-            {agentBodyPresets.map((preset) => (
-              <WSButton
-                accent={preset.id === bodyPresetId}
-                aria-label={`${preset.label} body`}
-                key={preset.id}
-                onClick={() => selectBodyPreset(preset.id)}
-              >
-                {preset.label}
-              </WSButton>
-            ))}
-          </div>
-          <div className="ws-spawn-grid">
-            {spawnChoices.map((choice) => (
-              <button
-                aria-label={`Spawn at ${choice.label}`}
-                className={`ws-spawn-item ${samePose(choice.agent, spawn) ? "on" : ""}`.trim()}
-                key={choice.id}
-                onClick={() => selectSpawn(choice)}
-                type="button"
-              >
-                <WSIcon name="spawn" size={17} />
-                <span>{choice.label}</span>
+        <div className="ws-row-stack">
+          <WSPanel title={`Agent — ${bodyPreset?.label ?? "body"}`} className="ws-agent-pad">
+            <div className="ws-pad">
+              <span />
+              <WSKey active={pressed.has("w")}>W</WSKey>
+              <span />
+              <WSKey active={pressed.has("a")}>A</WSKey>
+              <WSKey active={pressed.has("s")}>S</WSKey>
+              <WSKey active={pressed.has("d")}>D</WSKey>
+            </div>
+            <div className="ws-kv">
+              <span>pose</span>
+              <b>
+                x {agent.x.toFixed(2)} · z {agent.z.toFixed(2)}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>physics</span>
+              <b>{physicsDiagnostics.backend}</b>
+            </div>
+            <div className="ws-kv">
+              <span>spawn</span>
+              <b>
+                x {spawn.x.toFixed(2)} · z {spawn.z.toFixed(2)}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>contacts</span>
+              <b>
+                {physicsDiagnostics.contactCount} · {physicsDiagnostics.grounded ? "grounded" : "airborne"}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>debug</span>
+              <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
+                {debugCollision ? "collision on" : "collision off"}
               </button>
-            ))}
-          </div>
-          <div className="ws-kv">
-            <span>MoveAhead</span>
-            <b>0.12 m</b>
-          </div>
-          <div className="ws-kv">
-            <span>Rotate</span>
-            <b>9°</b>
-          </div>
-          <div className="ws-btn-row">
-            <WSButton onClick={resetAgent}>Reset to Spawn</WSButton>
-            <WSButton onClick={setSpawnHere}>Set Spawn Here</WSButton>
-          </div>
-        </WSPanel>
+            </div>
+            <div className="ws-btn-row">
+              {agentBodyPresets.map((preset) => (
+                <WSButton
+                  accent={preset.id === bodyPresetId}
+                  aria-label={`${preset.label} body`}
+                  key={preset.id}
+                  onClick={() => selectBodyPreset(preset.id)}
+                >
+                  {preset.label}
+                </WSButton>
+              ))}
+            </div>
+            <div className="ws-spawn-grid">
+              {spawnChoices.map((choice) => (
+                <button
+                  aria-label={`Spawn at ${choice.label}`}
+                  className={`ws-spawn-item ${samePose(choice.agent, spawn) ? "on" : ""}`.trim()}
+                  key={choice.id}
+                  onClick={() => selectSpawn(choice)}
+                  type="button"
+                >
+                  <WSIcon name="spawn" size={17} />
+                  <span>{choice.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="ws-kv">
+              <span>MoveAhead</span>
+              <b>0.12 m</b>
+            </div>
+            <div className="ws-kv">
+              <span>Rotate</span>
+              <b>9°</b>
+            </div>
+            <div className="ws-btn-row">
+              <WSButton onClick={resetAgent}>Reset to Spawn</WSButton>
+              <WSButton onClick={setSpawnHere}>Set Spawn Here</WSButton>
+            </div>
+          </WSPanel>
+          <PilotPropPanel
+            props={props}
+            preset={selectedPropPreset}
+            selectedProp={selectedProp}
+            onPresetChange={setSelectedPropPreset}
+            onSpawn={spawnProp}
+            onSelect={selectProp}
+            onDuplicate={duplicateSelectedProp}
+            onResetSelected={resetSelectedProp}
+            onDelete={deleteSelectedProp}
+            onResetAll={resetProps}
+            onNudge={nudgeSelectedProp}
+          />
+        </div>
       );
     }
 
@@ -1806,6 +1966,115 @@ function ToolRail({ tool, onSelect }: { tool: string; onSelect: (tool: string) =
         </button>
       ))}
     </div>
+  );
+}
+
+function PilotPropPanel({
+  props,
+  preset,
+  selectedProp,
+  onPresetChange,
+  onSpawn,
+  onSelect,
+  onDuplicate,
+  onResetSelected,
+  onDelete,
+  onResetAll,
+  onNudge
+}: {
+  props: SimulatedPropState[];
+  preset: SimulatedPropPreset;
+  selectedProp: SimulatedPropState | null;
+  onPresetChange: (preset: SimulatedPropPreset) => void;
+  onSpawn: (preset: SimulatedPropPreset) => void;
+  onSelect: (id: string) => void;
+  onDuplicate: () => void;
+  onResetSelected: () => void;
+  onDelete: () => void;
+  onResetAll: () => void;
+  onNudge: (dx: number, dz: number) => void;
+}) {
+  return (
+    <WSPanel title="Props" meta={`${props.length} bodies`} className="ws-prop-panel">
+      <div className="ws-row-stack" data-testid="pilot-prop-panel">
+        <div className="ws-btn-row">
+          {(["crate", "tall-crate"] as SimulatedPropPreset[]).map((entry) => (
+            <WSButton accent={preset === entry} key={entry} onClick={() => onPresetChange(entry)}>
+              {entry === "crate" ? "Crate" : "Tall"}
+            </WSButton>
+          ))}
+        </div>
+        <div className="ws-btn-row">
+          <WSButton accent onClick={() => onSpawn(preset)}>
+            Spawn Prop
+          </WSButton>
+          <WSButton onClick={onResetAll}>Reset Props</WSButton>
+        </div>
+        <div className="ws-kv" data-testid="pilot-prop-count">
+          <span>props</span>
+          <b>{props.length} bodies</b>
+        </div>
+        <div className="ws-prop-list" data-testid="pilot-prop-list">
+          {props.length ? (
+            props.slice(-6).map((prop) => (
+              <button
+                aria-label={`Select prop ${prop.label}`}
+                aria-pressed={selectedProp?.id === prop.id}
+                className={`ws-prop-row ${prop.contactState}`}
+                key={prop.id}
+                onClick={() => onSelect(prop.id)}
+                type="button"
+              >
+                <span>{prop.label}</span>
+                <b>{prop.contactState}</b>
+              </button>
+            ))
+          ) : (
+            <div className="ws-kv">
+              <span>list</span>
+              <b>none</b>
+            </div>
+          )}
+        </div>
+        {selectedProp ? (
+          <div className="ws-prop-inspector" data-testid="selected-prop-inspector">
+            <div className="ws-insight-head">
+              <span>{selectedProp.label}</span>
+              <b>{selectedProp.preset}</b>
+            </div>
+            <div className="ws-kv">
+              <span>pose</span>
+              <b data-testid="selected-prop-pose">
+                {selectedProp.x.toFixed(2)} · {selectedProp.y.toFixed(2)} · {selectedProp.z.toFixed(2)}
+              </b>
+            </div>
+            <div className="ws-kv">
+              <span>contact</span>
+              <b>{selectedProp.contactState}</b>
+            </div>
+            <div className="ws-btn-row ws-prop-actions">
+              <WSButton onClick={onDuplicate}>Duplicate</WSButton>
+              <WSButton onClick={onResetSelected}>Reset Selected</WSButton>
+              <WSButton onClick={onDelete}>Delete Selected</WSButton>
+            </div>
+            <div className="ws-prop-nudge" data-testid="selected-prop-nudge">
+              <WSButton aria-label="Nudge selected prop west" onClick={() => onNudge(-0.12, 0)}>
+                -X
+              </WSButton>
+              <WSButton aria-label="Nudge selected prop east" onClick={() => onNudge(0.12, 0)}>
+                +X
+              </WSButton>
+              <WSButton aria-label="Nudge selected prop north" onClick={() => onNudge(0, -0.12)}>
+                -Z
+              </WSButton>
+              <WSButton aria-label="Nudge selected prop south" onClick={() => onNudge(0, 0.12)}>
+                +Z
+              </WSButton>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </WSPanel>
   );
 }
 
