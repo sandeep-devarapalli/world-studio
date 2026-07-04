@@ -670,8 +670,8 @@ export function App() {
     [episodeTimeline, selectEpisodeEvent, selectedEpisodeEvent?.id]
   );
 
-  const createEpisodeManifestText = useCallback(() => {
-    const manifest = buildEpisodeManifest({
+  const createEpisodeManifest = useCallback(() => {
+    return buildEpisodeManifest({
       session,
       events: episodeTimeline,
       selectedEventId: selectedEpisodeEvent?.id ?? null,
@@ -680,8 +680,23 @@ export function App() {
       props,
       sensors
     });
-    return JSON.stringify(manifest, null, 2);
   }, [episodeTimeline, playhead, props, selectedEpisodeEvent?.id, sensors, session, trajectory]);
+
+  const createEpisodeManifestText = useCallback(() => {
+    const manifest = createEpisodeManifest();
+    return JSON.stringify(manifest, null, 2);
+  }, [createEpisodeManifest]);
+
+  const createEpisodeBundleText = useCallback(() => {
+    const bundle = buildEpisodeBundle({
+      episodeManifest: createEpisodeManifest(),
+      session,
+      renderMode,
+      rendererStatus: rendererStatusLabel(renderMode, rendererDiagnostics),
+      rendererDiagnostics
+    });
+    return JSON.stringify(bundle, null, 2);
+  }, [createEpisodeManifest, renderMode, rendererDiagnostics, session]);
 
   const exportEpisodeManifest = useCallback(() => {
     setEpisodeExportText(createEpisodeManifestText());
@@ -702,6 +717,21 @@ export function App() {
     downloadTextFile(suggestedName, text, "application/json");
     setEpisodeSaveStatus(`downloaded ${suggestedName}`);
   }, [createEpisodeManifestText, episodeTimeline.length, session]);
+
+  const saveEpisodeBundle = useCallback(async () => {
+    if (!episodeTimeline.length) return;
+    const text = createEpisodeBundleText();
+    const suggestedName = episodeBundleFileName(session);
+    setEpisodeExportText(text);
+    const desktopSave = getDesktopApi()?.saveEpisodeBundle;
+    if (desktopSave) {
+      const result = await desktopSave({ suggestedName, text });
+      setEpisodeSaveStatus(result?.path ? `saved package ${compactPath(result.path)}` : "package save canceled");
+      return;
+    }
+    downloadTextFile(suggestedName, text, "application/json");
+    setEpisodeSaveStatus(`downloaded package ${suggestedName}`);
+  }, [createEpisodeBundleText, episodeTimeline.length, session]);
 
   const applyEpisodeManifestText = useCallback((text: string, sourceLabel: string) => {
     const imported = parseEpisodeManifestText(text);
@@ -1232,6 +1262,9 @@ export function App() {
                     </WSButton>
                     <WSButton disabled={!episodeTimeline.length} onClick={() => void saveEpisodeManifest()}>
                       Save Episode
+                    </WSButton>
+                    <WSButton disabled={!episodeTimeline.length} onClick={() => void saveEpisodeBundle()}>
+                      Export Package
                     </WSButton>
                   </div>
                   <input
@@ -1932,21 +1965,30 @@ function parseEpisodeManifestText(text: string): ImportedEpisodeManifest {
   } catch {
     throw new Error("malformed episode JSON");
   }
-  if (!isRecord(parsed) || parsed.schema !== "world-studio.episode.v0.1") {
+  return parseEpisodePayload(parsed);
+}
+
+function parseEpisodePayload(parsed: unknown): ImportedEpisodeManifest {
+  let episode = parsed;
+  if (isRecord(parsed) && parsed.schema === "world-studio.episode_bundle.v0.1") {
+    if (!isRecord(parsed.episodeManifest)) throw new Error("missing bundled episode");
+    episode = parsed.episodeManifest;
+  }
+  if (!isRecord(episode) || episode.schema !== "world-studio.episode.v0.1") {
     throw new Error("unsupported episode schema");
   }
 
-  const playback = isRecord(parsed.playback) ? parsed.playback : {};
-  const events = readArray(parsed.events, "events").map(parseEpisodeEvent);
+  const playback = isRecord(episode.playback) ? episode.playback : {};
+  const events = readArray(episode.events, "events").map(parseEpisodeEvent);
   if (!events.length) throw new Error("episode has no events");
 
-  const trajectory = Array.isArray(parsed.agentTrajectory)
-    ? parsed.agentTrajectory.map(parseTrajectoryPoint).filter((point): point is [number, number] => Boolean(point))
+  const trajectory = Array.isArray(episode.agentTrajectory)
+    ? episode.agentTrajectory.map(parseTrajectoryPoint).filter((point): point is [number, number] => Boolean(point))
     : [];
-  const props = Array.isArray(parsed.props) ? parsed.props.map(parseEpisodeProp) : defaultProps;
-  const sensors = Array.isArray(parsed.sensors) ? parsed.sensors.map(parseEpisodeSensor) : initialSensors;
+  const props = Array.isArray(episode.props) ? episode.props.map(parseEpisodeProp) : defaultProps;
+  const sensors = Array.isArray(episode.sensors) ? episode.sensors.map(parseEpisodeSensor) : initialSensors;
   const selectedEventId = typeof playback.selectedEventId === "string" ? playback.selectedEventId : null;
-  const world = isRecord(parsed.world) ? parsed.world : null;
+  const world = isRecord(episode.world) ? episode.world : null;
 
   return {
     worldName: world && typeof world.name === "string" ? world.name : null,
@@ -2103,10 +2145,91 @@ function buildEpisodeManifest({
   };
 }
 
+function buildEpisodeBundle({
+  episodeManifest,
+  session,
+  renderMode,
+  rendererStatus,
+  rendererDiagnostics
+}: {
+  episodeManifest: ReturnType<typeof buildEpisodeManifest>;
+  session: WorldSession | null;
+  renderMode: RenderMode;
+  rendererStatus: string;
+  rendererDiagnostics: RendererDiagnostics | null;
+}) {
+  const provenance = session?.provenance ?? null;
+  return {
+    schema: "world-studio.episode_bundle.v0.1",
+    createdAt: new Date().toISOString(),
+    episodeManifest,
+    worldContext: session
+      ? {
+          id: session.id,
+          name: session.name,
+          version: session.version ?? null,
+          units: session.units,
+          upAxis: session.upAxis,
+          pointCount: session.pointCount ?? null,
+          bounds: session.bounds ?? null
+        }
+      : null,
+    package: provenance
+      ? {
+          kind: provenance.packageKind ?? "unknown",
+          sourceKind: provenance.sourceKind,
+          sourcePath: provenance.sourcePath,
+          loadedVia: provenance.loadedVia,
+          primaryArtifact: provenance.primaryArtifact,
+          companionArtifacts: provenance.companionArtifacts,
+          authorityStatus: provenance.authorityStatus
+        }
+      : null,
+    renderer: {
+      mode: renderMode,
+      status: rendererStatus,
+      sparkState: rendererDiagnostics?.sparkState ?? "unavailable",
+      splatRenderPath: rendererDiagnostics?.splatRenderPath ?? "point-fallback",
+      hasGaussianSource: rendererDiagnostics?.hasGaussianSource ?? false,
+      gaussianSplatCount: rendererDiagnostics?.gaussianSplatCount ?? null
+    },
+    compatibility: {
+      notes: episodeBundleCompatibilityNotes(session, rendererDiagnostics)
+    }
+  };
+}
+
+function episodeBundleCompatibilityNotes(session: WorldSession | null, diagnostics: RendererDiagnostics | null): string[] {
+  const notes = ["Episode state is embedded; world source assets remain external."];
+  const provenance = session?.provenance;
+  if (!provenance) {
+    notes.push("No loaded world provenance is attached to this bundle.");
+    return notes;
+  }
+  if (provenance.loadedVia === "electron-picker") {
+    notes.push("Local package assets are referenced by filesystem path and are not embedded.");
+  }
+  if (provenance.packageKind === "fixture") {
+    notes.push("Fixture assets are referenced by app fixture path and are not embedded.");
+  }
+  if (!diagnostics?.hasGaussianSource) {
+    notes.push("No Gaussian source is available for splat replay.");
+  } else if (diagnostics.splatRenderPath !== "spark-gaussian") {
+    notes.push("Splat replay may use point fallback unless the Gaussian source is available and Spark-ready.");
+  }
+  return notes;
+}
+
 function episodeFileName(session: WorldSession | null): string {
   const name = session?.name ?? "untitled";
   const safeName = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
   return `world-studio-episode-${safeName}.json`;
+}
+
+function episodeBundleFileName(session: WorldSession | null): string {
+  const name = session?.name ?? "untitled";
+  const safeName = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+  return `world-studio-episode-${safeName}.world-episode.json`;
 }
 
 function downloadTextFile(fileName: string, text: string, type: string): void {

@@ -611,7 +611,6 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(exportPreview).toContainText("world-studio.episode.v0.1");
   await expect(exportPreview).toContainText("prop nudge");
   await expect(exportPreview).toContainText("loft_04");
-  const exportedEpisode = (await exportPreview.textContent()) ?? "";
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -620,28 +619,42 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   expect(download.suggestedFilename()).toBe("world-studio-episode-loft_04.json");
   await expect(page.getByTestId("episode-save-status")).toContainText("downloaded world-studio-episode-loft_04.json");
 
-  const roundTripEpisode = JSON.parse(exportedEpisode) as {
-    playback: { selectedEventId: string };
-    events: Array<{ id: string; frame: number; lane: string; label: string; status: string }>;
+  const [bundleDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export Package" }).click()
+  ]);
+  expect(bundleDownload.suggestedFilename()).toBe("world-studio-episode-loft_04.world-episode.json");
+  await expect(page.getByTestId("episode-save-status")).toContainText("downloaded package world-studio-episode-loft_04.world-episode.json");
+  const bundlePreview = page.getByTestId("episode-export-preview");
+  await expect(bundlePreview).toContainText("world-studio.episode_bundle.v0.1");
+  await expect(bundlePreview).toContainText("Episode state is embedded");
+
+  const roundTripBundle = JSON.parse((await bundlePreview.textContent()) ?? "") as {
+    episodeManifest: {
+      playback: { selectedEventId: string };
+      events: Array<{ id: string; frame: number; lane: string; label: string; status: string }>;
+    };
   };
-  roundTripEpisode.playback.selectedEventId = "event-browser-roundtrip";
-  roundTripEpisode.events = [{ id: "event-browser-roundtrip", frame: 7, lane: "capture", label: "browser roundtrip", status: "loaded" }];
+  roundTripBundle.episodeManifest.playback.selectedEventId = "event-browser-bundle";
+  roundTripBundle.episodeManifest.events = [{ id: "event-browser-bundle", frame: 7, lane: "capture", label: "browser bundle", status: "loaded" }];
   await page.getByTestId("episode-import-input").setInputFiles({
-    name: "episode-roundtrip.json",
+    name: "episode-roundtrip.world-episode.json",
     mimeType: "application/json",
-    buffer: Buffer.from(JSON.stringify(roundTripEpisode))
+    buffer: Buffer.from(JSON.stringify(roundTripBundle))
   });
-  await expect(page.getByTestId("episode-save-status")).toContainText("loaded episode-roundtrip.json");
-  await expect(events).toContainText("browser roundtrip");
-  await expect(page.getByTestId("episode-selected-event")).toContainText("browser roundtrip");
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded episode-roundtrip.world-episode.json");
+  await expect(events).toContainText("browser bundle");
+  await expect(page.getByTestId("episode-selected-event")).toContainText("browser bundle");
 });
 
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
   await page.addInitScript(() => {
     const bridgeWindow = window as Window & {
       __savedEpisode?: { suggestedName: string; text: string };
+      __savedBundle?: { suggestedName: string; text: string };
       worldStudioDesktop?: {
         saveEpisodeManifest: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
+        saveEpisodeBundle: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
         openEpisodeManifest: () => Promise<{ path: string; text: string } | null>;
       };
     };
@@ -650,17 +663,26 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
         bridgeWindow.__savedEpisode = input;
         return { path: `/tmp/${input.suggestedName}` };
       },
+      saveEpisodeBundle: async (input) => {
+        bridgeWindow.__savedBundle = input;
+        return { path: `/tmp/${input.suggestedName}` };
+      },
       openEpisodeManifest: async () => ({
-        path: "/tmp/imported-episode.json",
+        path: "/tmp/imported-episode.world-episode.json",
         text: JSON.stringify({
-          schema: "world-studio.episode.v0.1",
+          schema: "world-studio.episode_bundle.v0.1",
           createdAt: "2026-07-04T00:00:00.000Z",
-          world: { name: "loft_04" },
-          playback: { playhead: 0.5, selectedEventId: "event-imported", eventCount: 1 },
-          events: [{ id: "event-imported", frame: 1, lane: "capture", label: "desktop import", status: "loaded" }],
-          agentTrajectory: [{ frame: 0, x: 1.5, z: -0.5 }],
-          props: [],
-          sensors: [{ id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72°" }]
+          episodeManifest: {
+            schema: "world-studio.episode.v0.1",
+            createdAt: "2026-07-04T00:00:00.000Z",
+            world: { name: "loft_04" },
+            playback: { playhead: 0.5, selectedEventId: "event-imported", eventCount: 1 },
+            events: [{ id: "event-imported", frame: 1, lane: "capture", label: "desktop import", status: "loaded" }],
+            agentTrajectory: [{ frame: 0, x: 1.5, z: -0.5 }],
+            props: [],
+            sensors: [{ id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72°" }]
+          },
+          compatibility: { notes: ["test bundle"] }
         })
       })
     };
@@ -682,8 +704,18 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   expect(saved?.suggestedName).toBe("world-studio-episode-loft_04.json");
   expect(saved?.text).toContain("world-studio.episode.v0.1");
 
+  await page.getByRole("button", { name: "Export Package" }).click();
+  await expect(page.getByTestId("episode-save-status")).toContainText("saved package");
+  await expect(page.getByTestId("episode-save-status")).toContainText("world-episode.json");
+  const savedBundle = await page.evaluate(() => {
+    const bridgeWindow = window as Window & { __savedBundle?: { suggestedName: string; text: string } };
+    return bridgeWindow.__savedBundle ?? null;
+  });
+  expect(savedBundle?.suggestedName).toBe("world-studio-episode-loft_04.world-episode.json");
+  expect(savedBundle?.text).toContain("world-studio.episode_bundle.v0.1");
+
   await page.getByRole("button", { name: "Load Episode" }).click();
-  await expect(page.getByTestId("episode-save-status")).toContainText("loaded /tmp/imported-episode.json");
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded /tmp/imported-episode.world-episode.json");
   await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
   await expect(page.getByTestId("episode-selected-event")).toContainText("desktop import");
 });
