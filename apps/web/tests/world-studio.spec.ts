@@ -611,6 +611,7 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(exportPreview).toContainText("world-studio.episode.v0.1");
   await expect(exportPreview).toContainText("prop nudge");
   await expect(exportPreview).toContainText("loft_04");
+  const exportedEpisode = (await exportPreview.textContent()) ?? "";
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -618,21 +619,50 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   ]);
   expect(download.suggestedFilename()).toBe("world-studio-episode-loft_04.json");
   await expect(page.getByTestId("episode-save-status")).toContainText("downloaded world-studio-episode-loft_04.json");
+
+  const roundTripEpisode = JSON.parse(exportedEpisode) as {
+    playback: { selectedEventId: string };
+    events: Array<{ id: string; frame: number; lane: string; label: string; status: string }>;
+  };
+  roundTripEpisode.playback.selectedEventId = "event-browser-roundtrip";
+  roundTripEpisode.events = [{ id: "event-browser-roundtrip", frame: 7, lane: "capture", label: "browser roundtrip", status: "loaded" }];
+  await page.getByTestId("episode-import-input").setInputFiles({
+    name: "episode-roundtrip.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(roundTripEpisode))
+  });
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded episode-roundtrip.json");
+  await expect(events).toContainText("browser roundtrip");
+  await expect(page.getByTestId("episode-selected-event")).toContainText("browser roundtrip");
 });
 
-test("saves Episode manifests through the desktop bridge", async ({ page }) => {
+test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
   await page.addInitScript(() => {
     const bridgeWindow = window as Window & {
       __savedEpisode?: { suggestedName: string; text: string };
       worldStudioDesktop?: {
         saveEpisodeManifest: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
+        openEpisodeManifest: () => Promise<{ path: string; text: string } | null>;
       };
     };
     bridgeWindow.worldStudioDesktop = {
       saveEpisodeManifest: async (input) => {
         bridgeWindow.__savedEpisode = input;
         return { path: `/tmp/${input.suggestedName}` };
-      }
+      },
+      openEpisodeManifest: async () => ({
+        path: "/tmp/imported-episode.json",
+        text: JSON.stringify({
+          schema: "world-studio.episode.v0.1",
+          createdAt: "2026-07-04T00:00:00.000Z",
+          world: { name: "loft_04" },
+          playback: { playhead: 0.5, selectedEventId: "event-imported", eventCount: 1 },
+          events: [{ id: "event-imported", frame: 1, lane: "capture", label: "desktop import", status: "loaded" }],
+          agentTrajectory: [{ frame: 0, x: 1.5, z: -0.5 }],
+          props: [],
+          sensors: [{ id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72°" }]
+        })
+      })
     };
   });
 
@@ -651,6 +681,22 @@ test("saves Episode manifests through the desktop bridge", async ({ page }) => {
   });
   expect(saved?.suggestedName).toBe("world-studio-episode-loft_04.json");
   expect(saved?.text).toContain("world-studio.episode.v0.1");
+
+  await page.getByRole("button", { name: "Load Episode" }).click();
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded /tmp/imported-episode.json");
+  await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
+  await expect(page.getByTestId("episode-selected-event")).toContainText("desktop import");
+});
+
+test("rejects invalid Episode manifest imports", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Episode" }).click();
+  await page.getByTestId("episode-import-input").setInputFiles({
+    name: "not-an-episode.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ schema: "world-studio.package.v0" }))
+  });
+  await expect(page.getByTestId("episode-save-status")).toContainText("load failed · unsupported episode schema");
 });
 
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
