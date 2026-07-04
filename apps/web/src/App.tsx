@@ -197,6 +197,22 @@ interface ImportedEpisodeManifest {
   trajectory: Array<[number, number]>;
   props: SimulatedPropState[];
   sensors: SensorRigChannel[];
+  provenance: EpisodeProvenanceSummary;
+}
+
+interface EpisodeProvenanceSummary {
+  schema: string;
+  source: "manifest" | "bundle";
+  loadedFrom: string;
+  worldName: string;
+  packageKind: string;
+  sourcePath: string;
+  loadedVia: string;
+  primaryArtifact: string;
+  authorityStatus: string;
+  rendererMode: string;
+  rendererStatus: string;
+  notes: string[];
 }
 
 const defaultProps: SimulatedPropState[] = [
@@ -252,6 +268,7 @@ export function App() {
   const [selectedEpisodeEventId, setSelectedEpisodeEventId] = useState<string | null>(null);
   const [episodeExportText, setEpisodeExportText] = useState<string | null>(null);
   const [episodeSaveStatus, setEpisodeSaveStatus] = useState<string | null>(null);
+  const [episodeProvenance, setEpisodeProvenance] = useState<EpisodeProvenanceSummary | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -425,6 +442,7 @@ export function App() {
     setSelectedEpisodeEventId(null);
     setEpisodeExportText(null);
     setEpisodeSaveStatus(null);
+    setEpisodeProvenance(null);
     propSeqRef.current = defaultProps.length;
     episodeFrameRef.current = 0;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
@@ -650,6 +668,7 @@ export function App() {
     setSelectedEpisodeEventId(id);
     setEpisodeExportText(null);
     setEpisodeSaveStatus(null);
+    setEpisodeProvenance(null);
   }, []);
 
   const selectEpisodeEvent = useCallback(
@@ -751,6 +770,7 @@ export function App() {
     setSelectedSensorId(imported.sensors[0]?.id ?? initialSensors[0]?.id ?? "rgb");
     setEpisodeExportText(text);
     setEpisodeSaveStatus(`loaded ${compactPath(sourceLabel)}${imported.worldName ? ` · ${imported.worldName}` : ""}`);
+    setEpisodeProvenance({ ...imported.provenance, loadedFrom: sourceLabel });
     episodeFrameRef.current = maxFrame;
     propSeqRef.current = Math.max(defaultProps.length, imported.props.length);
   }, []);
@@ -770,6 +790,7 @@ export function App() {
       applyEpisodeManifestText(result.text, result.path);
     } catch (error) {
       setEpisodeExportText(null);
+      setEpisodeProvenance(null);
       setEpisodeSaveStatus(error instanceof Error ? `load failed · ${error.message}` : "load failed");
     }
   }, [applyEpisodeManifestText]);
@@ -783,6 +804,7 @@ export function App() {
         applyEpisodeManifestText(await file.text(), file.name);
       } catch (error) {
         setEpisodeExportText(null);
+        setEpisodeProvenance(null);
         setEpisodeSaveStatus(error instanceof Error ? `load failed · ${error.message}` : "load failed");
       }
     },
@@ -1280,6 +1302,42 @@ export function App() {
                     <span>file</span>
                     <b>{episodeSaveStatus ?? (getDesktopApi()?.saveEpisodeManifest ? "desktop save ready" : "browser download ready")}</b>
                   </div>
+                  {episodeProvenance ? (
+                    <div className="ws-episode-provenance" data-testid="episode-provenance">
+                      <div className="ws-kv">
+                        <span>schema</span>
+                        <b>{episodeProvenance.schema}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>world</span>
+                        <b>{episodeProvenance.worldName}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>package</span>
+                        <b>{episodeProvenance.packageKind}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>source</span>
+                        <b>{compactPath(episodeProvenance.sourcePath)}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>artifact</span>
+                        <b>{episodeProvenance.primaryArtifact}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>authority</span>
+                        <b>{episodeProvenance.authorityStatus}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>renderer</span>
+                        <b>{episodeProvenance.rendererStatus}</b>
+                      </div>
+                      <div className="ws-kv">
+                        <span>notes</span>
+                        <b>{episodeProvenance.notes.join(" · ")}</b>
+                      </div>
+                    </div>
+                  ) : null}
                   {episodeExportText ? (
                     <pre className="ws-episode-export" data-testid="episode-export-preview">
                       {episodeExportText}
@@ -1970,6 +2028,7 @@ function parseEpisodeManifestText(text: string): ImportedEpisodeManifest {
 
 function parseEpisodePayload(parsed: unknown): ImportedEpisodeManifest {
   let episode = parsed;
+  const isBundle = isRecord(parsed) && parsed.schema === "world-studio.episode_bundle.v0.1";
   if (isRecord(parsed) && parsed.schema === "world-studio.episode_bundle.v0.1") {
     if (!isRecord(parsed.episodeManifest)) throw new Error("missing bundled episode");
     episode = parsed.episodeManifest;
@@ -1989,15 +2048,62 @@ function parseEpisodePayload(parsed: unknown): ImportedEpisodeManifest {
   const sensors = Array.isArray(episode.sensors) ? episode.sensors.map(parseEpisodeSensor) : initialSensors;
   const selectedEventId = typeof playback.selectedEventId === "string" ? playback.selectedEventId : null;
   const world = isRecord(episode.world) ? episode.world : null;
+  const worldName = world && typeof world.name === "string" ? world.name : null;
 
   return {
-    worldName: world && typeof world.name === "string" ? world.name : null,
+    worldName,
     selectedEventId,
     playhead: clamp01(typeof playback.playhead === "number" ? playback.playhead : 0),
     events,
     trajectory: trajectory.length ? trajectory : [[defaultSpawn.x, defaultSpawn.z]],
     props,
-    sensors
+    sensors,
+    provenance: isBundle && isRecord(parsed)
+      ? parseEpisodeBundleProvenance(parsed, worldName)
+      : parseStandaloneEpisodeProvenance(episode, worldName)
+  };
+}
+
+function parseEpisodeBundleProvenance(bundle: Record<string, unknown>, fallbackWorldName: string | null): EpisodeProvenanceSummary {
+  const worldContext = isRecord(bundle.worldContext) ? bundle.worldContext : {};
+  const packageInfo = isRecord(bundle.package) ? bundle.package : {};
+  const renderer = isRecord(bundle.renderer) ? bundle.renderer : {};
+  const compatibility = isRecord(bundle.compatibility) ? bundle.compatibility : {};
+  const notes = Array.isArray(compatibility.notes) ? compatibility.notes.filter((note): note is string => typeof note === "string" && note.length > 0) : [];
+  return {
+    schema: "world-studio.episode_bundle.v0.1",
+    source: "bundle",
+    loadedFrom: "unknown",
+    worldName: optionalString(worldContext.name) ?? fallbackWorldName ?? "unknown",
+    packageKind: optionalString(packageInfo.kind) ?? "unknown",
+    sourcePath: optionalString(packageInfo.sourcePath) ?? "not supplied",
+    loadedVia: optionalString(packageInfo.loadedVia) ?? "not supplied",
+    primaryArtifact: optionalString(packageInfo.primaryArtifact) ?? "not supplied",
+    authorityStatus: optionalString(packageInfo.authorityStatus) ?? "not supplied",
+    rendererMode: optionalString(renderer.mode) ?? "not supplied",
+    rendererStatus: optionalString(renderer.status) ?? "not supplied",
+    notes: notes.length ? notes : ["No compatibility notes supplied."]
+  };
+}
+
+function parseStandaloneEpisodeProvenance(episode: unknown, fallbackWorldName: string | null): EpisodeProvenanceSummary {
+  const world = isRecord(episode) && isRecord(episode.world) ? episode.world : {};
+  const provenance = isRecord(world.provenance) ? world.provenance : {};
+  const notes = ["Standalone Episode manifest; world source assets are not embedded."];
+  if (!isRecord(world.provenance)) notes.push("No package provenance supplied.");
+  return {
+    schema: "world-studio.episode.v0.1",
+    source: "manifest",
+    loadedFrom: "unknown",
+    worldName: optionalString(world.name) ?? fallbackWorldName ?? "unknown",
+    packageKind: optionalString(provenance.packageKind) ?? "not bundled",
+    sourcePath: optionalString(provenance.sourcePath) ?? "not supplied",
+    loadedVia: optionalString(provenance.loadedVia) ?? "not supplied",
+    primaryArtifact: optionalString(provenance.primaryArtifact) ?? "not supplied",
+    authorityStatus: optionalString(provenance.authorityStatus) ?? "not supplied",
+    rendererMode: "not bundled",
+    rendererStatus: "not bundled",
+    notes
   };
 }
 
@@ -2074,6 +2180,10 @@ function readFiniteNumber(value: unknown, label: string): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function clamp01(value: number): number {

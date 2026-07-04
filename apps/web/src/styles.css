@@ -457,6 +457,18 @@ button.ws-episode-row {
   text-align: right;
 }
 
+.ws-episode-provenance {
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 7px;
+}
+
+.ws-episode-provenance .ws-kv b {
+  max-width: 196px;
+}
+
 .ws-episode-export {
   background: color-mix(in srgb, #080604, transparent 18%);
   border: 1px solid var(--line);
