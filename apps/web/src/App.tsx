@@ -213,6 +213,7 @@ interface EpisodeProvenanceSummary {
   sourcePath: string;
   loadedVia: string;
   primaryArtifact: string;
+  companionArtifacts: string[];
   authorityStatus: string;
   rendererMode: string;
   rendererStatus: string;
@@ -221,6 +222,11 @@ interface EpisodeProvenanceSummary {
 
 interface EpisodeSourceMatch {
   status: "matched" | "missing" | "mismatch" | "manifest";
+  detail: string;
+}
+
+interface EpisodeAssetValidation {
+  status: "validated" | "missing" | "pending" | "manifest";
   detail: string;
 }
 
@@ -309,6 +315,10 @@ export function App() {
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
     [episodeProvenance, session]
+  );
+  const episodeAssetValidation = useMemo(
+    () => (episodeProvenance && episodeSourceMatch ? describeEpisodeAssetValidation(episodeProvenance, session, episodeSourceMatch.status) : null),
+    [episodeProvenance, episodeSourceMatch, session]
   );
   const episodeTotalFrames = Math.max(totalSteps, episodeTimeline.at(-1)?.frame ?? 0, 1);
   const episodeStep = Math.round(playhead * episodeTotalFrames);
@@ -1370,6 +1380,12 @@ export function App() {
                           <b>{episodeSourceMatch.status} · {episodeSourceMatch.detail}</b>
                         </div>
                       ) : null}
+                      {episodeAssetValidation ? (
+                        <div className={`ws-kv ws-asset-validation ${episodeAssetValidation.status}`}>
+                          <span>assets</span>
+                          <b>{episodeAssetValidation.status} · {episodeAssetValidation.detail}</b>
+                        </div>
+                      ) : null}
                       <div className="ws-kv">
                         <span>notes</span>
                         <b>{episodeProvenance.notes.join(" · ")}</b>
@@ -2124,6 +2140,7 @@ function parseEpisodeBundleProvenance(bundle: Record<string, unknown>, fallbackW
     sourcePath: optionalString(packageInfo.sourcePath) ?? "not supplied",
     loadedVia: optionalString(packageInfo.loadedVia) ?? "not supplied",
     primaryArtifact: optionalString(packageInfo.primaryArtifact) ?? "not supplied",
+    companionArtifacts: readStringList(packageInfo.companionArtifacts),
     authorityStatus: optionalString(packageInfo.authorityStatus) ?? "not supplied",
     rendererMode: optionalString(renderer.mode) ?? "not supplied",
     rendererStatus: optionalString(renderer.status) ?? "not supplied",
@@ -2145,6 +2162,7 @@ function parseStandaloneEpisodeProvenance(episode: unknown, fallbackWorldName: s
     sourcePath: optionalString(provenance.sourcePath) ?? "not supplied",
     loadedVia: optionalString(provenance.loadedVia) ?? "not supplied",
     primaryArtifact: optionalString(provenance.primaryArtifact) ?? "not supplied",
+    companionArtifacts: readStringList(provenance.companionArtifacts),
     authorityStatus: optionalString(provenance.authorityStatus) ?? "not supplied",
     rendererMode: "not bundled",
     rendererStatus: "not bundled",
@@ -2179,10 +2197,59 @@ function describeEpisodeSourceMatch(provenance: EpisodeProvenanceSummary, sessio
   };
 }
 
+function describeEpisodeAssetValidation(provenance: EpisodeProvenanceSummary, session: WorldSession | null, sourceStatus: EpisodeSourceMatch["status"]): EpisodeAssetValidation {
+  const expectedArtifacts = episodeExpectedArtifacts(provenance);
+  if (provenance.source === "manifest") {
+    return { status: "manifest", detail: "standalone episode; companion assets are not bundled" };
+  }
+
+  if (!expectedArtifacts.length) {
+    return { status: "pending", detail: "no companion artifact list in bundle" };
+  }
+
+  if (!session || sourceStatus !== "matched") {
+    return { status: "pending", detail: `${expectedArtifacts.length} relative assets waiting for matching source` };
+  }
+
+  const actualArtifacts = new Set(session.provenance.companionArtifacts);
+  const missing = expectedArtifacts.filter((artifact) => !actualArtifacts.has(artifact));
+  if (missing.length) {
+    return {
+      status: "missing",
+      detail: `${missing.length}/${expectedArtifacts.length} missing: ${formatArtifactList(missing)}`
+    };
+  }
+
+  return {
+    status: "validated",
+    detail: `${expectedArtifacts.length}/${expectedArtifacts.length} relative assets under ${compactPath(session.provenance.sourcePath)}`
+  };
+}
+
+function episodeExpectedArtifacts(provenance: EpisodeProvenanceSummary): string[] {
+  return uniqueStrings([
+    ...provenance.companionArtifacts,
+    knownEpisodeValue(provenance.primaryArtifact)
+  ]);
+}
+
+function formatArtifactList(artifacts: string[]): string {
+  const shown = artifacts.slice(0, 3).join(", ");
+  return artifacts.length > 3 ? `${shown}, +${artifacts.length - 3} more` : shown;
+}
+
 function knownEpisodeValue(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "unknown" || trimmed === "not supplied" || trimmed === "not bundled") return null;
   return trimmed;
+}
+
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value) ? uniqueStrings(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)) : [];
+}
+
+function uniqueStrings(values: Array<string | null>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
 function parseEpisodeEvent(value: unknown, index: number): EpisodeEvent {
