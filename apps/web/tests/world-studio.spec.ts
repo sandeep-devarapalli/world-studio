@@ -550,6 +550,8 @@ test("loads loft_04 and switches all six modes", async ({ page }) => {
   await expect(page.getByText("World Studio")).toBeVisible();
   await page.getByRole("button", { name: "Load loft_04" }).click();
   await expect(page.locator(".ws-logo-sub", { hasText: "loft_04 · v3" })).toBeVisible();
+  await expect(page.locator(".ws-timeline")).toContainText("0292");
+  await expect(page.locator(".ws-timeline")).toContainText("REC");
 
   for (const mode of ["View", "Edit", "Simulate", "Pilot", "Sensors", "Episode"]) {
     await page.getByRole("button", { name: mode }).click();
