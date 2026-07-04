@@ -238,6 +238,8 @@ export function App() {
   const [selectedPropId, setSelectedPropId] = useState<string | null>(null);
   const [selectedPropPreset, setSelectedPropPreset] = useState<SimulatedPropPreset>("crate");
   const [episodeEvents, setEpisodeEvents] = useState<EpisodeEvent[]>([]);
+  const [selectedEpisodeEventId, setSelectedEpisodeEventId] = useState<string | null>(null);
+  const [episodeExportText, setEpisodeExportText] = useState<string | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -251,7 +253,6 @@ export function App() {
   const [selectRect, setSelectRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const accent = accents[accentName];
   const totalSteps = Math.max(trajectory.length - 1, 1);
-  const episodeStep = Math.round(playhead * totalSteps);
   const replayAgent = useMemo(() => interpolateTrajectory(trajectory, playhead), [trajectory, playhead]);
   const bodyPreset = useMemo(
     () => agentBodyPresets.find((preset) => preset.id === bodyPresetId) ?? agentBodyPresets[1],
@@ -262,6 +263,13 @@ export function App() {
     () => props.find((prop) => prop.id === selectedPropId) ?? props[0] ?? null,
     [props, selectedPropId]
   );
+  const episodeTimeline = useMemo(() => [...episodeEvents].sort((a, b) => a.frame - b.frame), [episodeEvents]);
+  const selectedEpisodeEvent = useMemo(
+    () => episodeTimeline.find((event) => event.id === selectedEpisodeEventId) ?? episodeTimeline.at(-1) ?? null,
+    [episodeTimeline, selectedEpisodeEventId]
+  );
+  const episodeTotalFrames = Math.max(totalSteps, episodeTimeline.at(-1)?.frame ?? 0, 1);
+  const episodeStep = Math.round(playhead * episodeTotalFrames);
   const agentEye: FeedPose = {
     x: agent.x - Math.cos(agent.heading) * 0.35,
     y: 0.62,
@@ -337,10 +345,10 @@ export function App() {
       }
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
+      if (event.key.toLowerCase() === "e" && mode === "episode") exportEpisodeManifest();
       if (event.key.toLowerCase() === "s" && mode === "simulate") stepPhysics({ move: 0, turn: 0 }, "PhysicsStep(1/60s)");
       if (mode === "episode" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-        const delta = (event.key === "ArrowRight" ? 1 : -1) / Math.max(trajectory.length - 1, 1);
-        setPlayhead((value) => Math.min(1, Math.max(0, value + delta)));
+        stepEpisodeEvent(event.key === "ArrowRight" ? 1 : -1);
       }
       if (event.key.toLowerCase() === "r" && mode === "pilot") resetAgent();
       if (event.key === "Delete" && mode === "edit") deleteSelected();
@@ -362,7 +370,7 @@ export function App() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [mode, selected, history, trajectory]);
+  }, [mode, selected, history, trajectory, selectedEpisodeEventId, episodeEvents, episodeTotalFrames]);
 
   const initializeSimulation = useCallback((worldSession: WorldSession, mesh: ParsedObjMesh | undefined, nextSpawn: AgentState, body: AgentBodyPreset) => {
     const token = simulationTokenRef.current + 1;
@@ -402,6 +410,8 @@ export function App() {
     setProps(defaultProps);
     setSelectedPropId(null);
     setEpisodeEvents([]);
+    setSelectedEpisodeEventId(null);
+    setEpisodeExportText(null);
     propSeqRef.current = defaultProps.length;
     episodeFrameRef.current = 0;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
@@ -622,8 +632,42 @@ export function App() {
   const recordEpisodeEvent = useCallback((event: Omit<EpisodeEvent, "id" | "frame">) => {
     episodeFrameRef.current += 1;
     const frame = episodeFrameRef.current;
-    setEpisodeEvents((current) => [{ ...event, id: `event-${frame}`, frame }, ...current].slice(0, 80));
+    const id = `event-${frame}`;
+    setEpisodeEvents((current) => [{ ...event, id, frame }, ...current].slice(0, 80));
+    setSelectedEpisodeEventId(id);
+    setEpisodeExportText(null);
   }, []);
+
+  const selectEpisodeEvent = useCallback(
+    (event: EpisodeEvent) => {
+      setSelectedEpisodeEventId(event.id);
+      setPlayhead(Math.min(1, Math.max(0, event.frame / episodeTotalFrames)));
+    },
+    [episodeTotalFrames]
+  );
+
+  const stepEpisodeEvent = useCallback(
+    (direction: -1 | 1) => {
+      if (!episodeTimeline.length) return;
+      const currentIndex = Math.max(0, episodeTimeline.findIndex((event) => event.id === selectedEpisodeEvent?.id));
+      const nextIndex = Math.min(episodeTimeline.length - 1, Math.max(0, currentIndex + direction));
+      selectEpisodeEvent(episodeTimeline[nextIndex] ?? episodeTimeline[0]!);
+    },
+    [episodeTimeline, selectEpisodeEvent, selectedEpisodeEvent?.id]
+  );
+
+  const exportEpisodeManifest = useCallback(() => {
+    const manifest = buildEpisodeManifest({
+      session,
+      events: episodeTimeline,
+      selectedEventId: selectedEpisodeEvent?.id ?? null,
+      playhead,
+      trajectory,
+      props,
+      sensors
+    });
+    setEpisodeExportText(JSON.stringify(manifest, null, 2));
+  }, [episodeTimeline, playhead, props, selectedEpisodeEvent?.id, sensors, session, trajectory]);
 
   const resetAgent = () => {
     restartSimulationAt(spawn, bodyPreset, "ResetToSpawn");
@@ -1064,14 +1108,25 @@ export function App() {
                     <span>source</span>
                     <b>{episodeEvents.length ? "pilot events" : trajectory.length > 1 ? "pilot drive" : "no recording"}</b>
                   </div>
+                  <div className="ws-kv" data-testid="episode-selected-event">
+                    <span>selected</span>
+                    <b>{selectedEpisodeEvent ? `${selectedEpisodeEvent.frame} · ${selectedEpisodeEvent.label}` : "none"}</b>
+                  </div>
                   <div className="ws-episode-list" data-testid="episode-event-list">
-                    {episodeEvents.length ? (
-                      episodeEvents.slice(0, 8).map((event) => (
-                        <div className={`ws-episode-row ${event.lane}`} key={event.id}>
+                    {episodeTimeline.length ? (
+                      episodeTimeline.map((event) => (
+                        <button
+                          aria-label={`Select episode event ${event.label}`}
+                          aria-pressed={selectedEpisodeEvent?.id === event.id}
+                          className={`ws-episode-row ${event.lane}`}
+                          key={event.id}
+                          onClick={() => selectEpisodeEvent(event)}
+                          type="button"
+                        >
                           <span className="ws-episode-frame">{String(event.frame).padStart(3, "0")}</span>
                           <span className="ws-episode-label">{event.label}</span>
                           <b>{event.status ?? event.lane}</b>
-                        </div>
+                        </button>
                       ))
                     ) : (
                       <div className="ws-kv">
@@ -1080,6 +1135,16 @@ export function App() {
                       </div>
                     )}
                   </div>
+                  <div className="ws-btn-row">
+                    <WSButton accent disabled={!episodeTimeline.length} onClick={exportEpisodeManifest}>
+                      Export Episode
+                    </WSButton>
+                  </div>
+                  {episodeExportText ? (
+                    <pre className="ws-episode-export" data-testid="episode-export-preview">
+                      {episodeExportText}
+                    </pre>
+                  ) : null}
                 </WSPanel>
               </div>
             ) : null}
@@ -1096,14 +1161,15 @@ export function App() {
               <div className="ws-bottom-full">
                 <TracksPanel
                   step={episodeStep}
-                  total={totalSteps}
+                  total={episodeTotalFrames}
                   playing={playing}
                   hasTrajectory={trajectory.length > 1}
-                  capturing={sensors.some((sensor) => sensor.enabled)}
+                  capturing={sensors.some((sensor) => sensor.enabled) || episodeTimeline.length > 0}
                   onToggle={() => setPlaying((value) => !value)}
                   onRewind={() => {
                     setPlayhead(0);
                     setPlaying(false);
+                    setSelectedEpisodeEventId(episodeTimeline[0]?.id ?? null);
                   }}
                 />
               </div>
@@ -1750,6 +1816,70 @@ function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
   } catch {
     return [];
   }
+}
+
+function buildEpisodeManifest({
+  session,
+  events,
+  selectedEventId,
+  playhead,
+  trajectory,
+  props,
+  sensors
+}: {
+  session: WorldSession | null;
+  events: EpisodeEvent[];
+  selectedEventId: string | null;
+  playhead: number;
+  trajectory: Array<[number, number]>;
+  props: SimulatedPropState[];
+  sensors: SensorRigChannel[];
+}) {
+  return {
+    schema: "world-studio.episode.v0.1",
+    createdAt: new Date().toISOString(),
+    world: session
+      ? {
+          id: session.id,
+          name: session.name,
+          version: session.version ?? null,
+          units: session.units,
+          upAxis: session.upAxis,
+          provenance: session.provenance
+        }
+      : null,
+    playback: {
+      playhead,
+      selectedEventId,
+      eventCount: events.length
+    },
+    events: events.map((event) => ({
+      id: event.id,
+      frame: event.frame,
+      lane: event.lane,
+      label: event.label,
+      targetId: event.targetId ?? null,
+      status: event.status ?? null
+    })),
+    agentTrajectory: trajectory.map(([x, z], index) => ({ frame: index, x, z })),
+    props: props.map((prop) => ({
+      id: prop.id,
+      label: prop.label,
+      preset: prop.preset,
+      contactState: prop.contactState,
+      x: prop.x,
+      y: prop.y,
+      z: prop.z,
+      footprintRadius: prop.footprintRadius
+    })),
+    sensors: sensors.map((sensor) => ({
+      id: sensor.id,
+      label: sensor.label,
+      kind: sensor.kind,
+      enabled: sensor.enabled,
+      spec: sensor.spec
+    }))
+  };
 }
 
 function compactPath(value: string): string {

@@ -600,6 +600,17 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(events).toContainText("prop duplicate");
   await expect(events).toContainText("prop delete");
   await expect(events).toContainText("prop reset all");
+
+  await events.getByRole("button", { name: /Select episode event prop spawn/ }).click();
+  await expect(page.getByTestId("episode-selected-event")).toContainText("prop spawn");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("episode-selected-event")).toContainText("prop select");
+
+  await page.getByRole("button", { name: "Export Episode" }).click();
+  const exportPreview = page.getByTestId("episode-export-preview");
+  await expect(exportPreview).toContainText("world-studio.episode.v0.1");
+  await expect(exportPreview).toContainText("prop nudge");
+  await expect(exportPreview).toContainText("loft_04");
 });
 
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
