@@ -240,6 +240,7 @@ export function App() {
   const [episodeEvents, setEpisodeEvents] = useState<EpisodeEvent[]>([]);
   const [selectedEpisodeEventId, setSelectedEpisodeEventId] = useState<string | null>(null);
   const [episodeExportText, setEpisodeExportText] = useState<string | null>(null);
+  const [episodeSaveStatus, setEpisodeSaveStatus] = useState<string | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -412,6 +413,7 @@ export function App() {
     setEpisodeEvents([]);
     setSelectedEpisodeEventId(null);
     setEpisodeExportText(null);
+    setEpisodeSaveStatus(null);
     propSeqRef.current = defaultProps.length;
     episodeFrameRef.current = 0;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
@@ -636,6 +638,7 @@ export function App() {
     setEpisodeEvents((current) => [{ ...event, id, frame }, ...current].slice(0, 80));
     setSelectedEpisodeEventId(id);
     setEpisodeExportText(null);
+    setEpisodeSaveStatus(null);
   }, []);
 
   const selectEpisodeEvent = useCallback(
@@ -656,7 +659,7 @@ export function App() {
     [episodeTimeline, selectEpisodeEvent, selectedEpisodeEvent?.id]
   );
 
-  const exportEpisodeManifest = useCallback(() => {
+  const createEpisodeManifestText = useCallback(() => {
     const manifest = buildEpisodeManifest({
       session,
       events: episodeTimeline,
@@ -666,8 +669,28 @@ export function App() {
       props,
       sensors
     });
-    setEpisodeExportText(JSON.stringify(manifest, null, 2));
+    return JSON.stringify(manifest, null, 2);
   }, [episodeTimeline, playhead, props, selectedEpisodeEvent?.id, sensors, session, trajectory]);
+
+  const exportEpisodeManifest = useCallback(() => {
+    setEpisodeExportText(createEpisodeManifestText());
+    setEpisodeSaveStatus("preview ready");
+  }, [createEpisodeManifestText]);
+
+  const saveEpisodeManifest = useCallback(async () => {
+    if (!episodeTimeline.length) return;
+    const text = createEpisodeManifestText();
+    const suggestedName = episodeFileName(session);
+    setEpisodeExportText(text);
+    const desktopSave = getDesktopApi()?.saveEpisodeManifest;
+    if (desktopSave) {
+      const result = await desktopSave({ suggestedName, text });
+      setEpisodeSaveStatus(result?.path ? `saved ${compactPath(result.path)}` : "save canceled");
+      return;
+    }
+    downloadTextFile(suggestedName, text, "application/json");
+    setEpisodeSaveStatus(`downloaded ${suggestedName}`);
+  }, [createEpisodeManifestText, episodeTimeline.length, session]);
 
   const resetAgent = () => {
     restartSimulationAt(spawn, bodyPreset, "ResetToSpawn");
@@ -1137,8 +1160,15 @@ export function App() {
                   </div>
                   <div className="ws-btn-row">
                     <WSButton accent disabled={!episodeTimeline.length} onClick={exportEpisodeManifest}>
-                      Export Episode
+                      Preview JSON
                     </WSButton>
+                    <WSButton disabled={!episodeTimeline.length} onClick={() => void saveEpisodeManifest()}>
+                      Save Episode
+                    </WSButton>
+                  </div>
+                  <div className="ws-kv" data-testid="episode-save-status">
+                    <span>file</span>
+                    <b>{episodeSaveStatus ?? (getDesktopApi()?.saveEpisodeManifest ? "desktop save ready" : "browser download ready")}</b>
                   </div>
                   {episodeExportText ? (
                     <pre className="ws-episode-export" data-testid="episode-export-preview">
@@ -1880,6 +1910,24 @@ function buildEpisodeManifest({
       spec: sensor.spec
     }))
   };
+}
+
+function episodeFileName(session: WorldSession | null): string {
+  const name = session?.name ?? "untitled";
+  const safeName = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+  return `world-studio-episode-${safeName}.json`;
+}
+
+function downloadTextFile(fileName: string, text: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function compactPath(value: string): string {

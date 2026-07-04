@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import type { LocalWorldPackagePayload } from "@world-studio/world-core";
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readLocalPackage } from "./package-reader.js";
@@ -53,6 +53,21 @@ ipcMain.handle("world-studio:open-local-package", async (): Promise<LocalWorldPa
   return readLocalPackage(info.isDirectory() ? selectedPath : path.dirname(selectedPath));
 });
 
+ipcMain.handle(
+  "world-studio:save-episode-manifest",
+  async (_event, input: { suggestedName?: string; text?: string }): Promise<{ path: string } | null> => {
+    if (!input?.text) return null;
+    const result = await dialog.showSaveDialog({
+      title: "Save Episode Manifest",
+      defaultPath: path.join(app.getPath("documents"), safeFileName(input.suggestedName ?? "world-studio-episode.json")),
+      filters: [{ name: "World Studio Episode", extensions: ["json"] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, input.text, "utf8");
+    return { path: result.filePath };
+  }
+);
+
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
@@ -62,3 +77,8 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) void createWindow();
 });
+
+function safeFileName(value: string): string {
+  const sanitized = value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized.endsWith(".json") ? sanitized : `${sanitized || "world-studio-episode"}.json`;
+}
