@@ -134,6 +134,10 @@ interface LoadedWorldInput {
   packageIssues?: LocalPackageIssue[];
 }
 
+interface LoadedWorldOptions {
+  preserveEpisode?: boolean;
+}
+
 interface HistoryItem {
   id: string;
   type: "select" | "delete";
@@ -213,6 +217,11 @@ interface EpisodeProvenanceSummary {
   rendererMode: string;
   rendererStatus: string;
   notes: string[];
+}
+
+interface EpisodeSourceMatch {
+  status: "matched" | "missing" | "mismatch" | "manifest";
+  detail: string;
 }
 
 const defaultProps: SimulatedPropState[] = [
@@ -296,6 +305,10 @@ export function App() {
   const selectedEpisodeEvent = useMemo(
     () => episodeTimeline.find((event) => event.id === selectedEpisodeEventId) ?? episodeTimeline.at(-1) ?? null,
     [episodeTimeline, selectedEpisodeEventId]
+  );
+  const episodeSourceMatch = useMemo(
+    () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
+    [episodeProvenance, session]
   );
   const episodeTotalFrames = Math.max(totalSteps, episodeTimeline.at(-1)?.frame ?? 0, 1);
   const episodeStep = Math.round(playhead * episodeTotalFrames);
@@ -507,7 +520,7 @@ export function App() {
     }
   }, []);
 
-  const applyLocalPackage = useCallback((payload: LocalWorldPackagePayload) => {
+  const applyLocalPackage = useCallback((payload: LocalWorldPackagePayload, options?: LoadedWorldOptions) => {
     applyLoadedWorld({
       name: payload.name,
       scene: payload.sceneJson as LoftSceneManifest | undefined,
@@ -525,10 +538,10 @@ export function App() {
       packageInsights: payload.packageInsights,
       packageIssues: payload.packageIssues,
       captureFrames: parseCaptureFrames(payload)
-    });
+    }, options);
   }, []);
 
-  const applyLoadedWorld = useCallback((input: LoadedWorldInput) => {
+  const applyLoadedWorld = useCallback((input: LoadedWorldInput, options?: LoadedWorldOptions) => {
     setLoadError(null);
 
     if (!input.pointsText) {
@@ -546,7 +559,7 @@ export function App() {
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
       setSelectedInsightId(nextInsights[0]?.id ?? null);
-      resetTransientState(worldSession);
+      if (!options?.preserveEpisode) resetTransientState(worldSession);
       initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
       return;
     }
@@ -595,7 +608,7 @@ export function App() {
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
     setSelectedInsightId(nextInsights[0]?.id ?? null);
-    resetTransientState(worldSession);
+    if (!options?.preserveEpisode) resetTransientState(worldSession);
     initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
   }, [bodyPreset, initializeSimulation, resetTransientState]);
 
@@ -794,6 +807,25 @@ export function App() {
       setEpisodeSaveStatus(error instanceof Error ? `load failed · ${error.message}` : "load failed");
     }
   }, [applyEpisodeManifestText]);
+
+  const relinkEpisodeWorldPackage = useCallback(async () => {
+    const desktopOpen = getDesktopApi()?.openLocalPackage;
+    if (!desktopOpen) {
+      setEpisodeSaveStatus("relink requires desktop package picker");
+      return;
+    }
+    try {
+      const payload = await desktopOpen();
+      if (!payload) {
+        setEpisodeSaveStatus("relink canceled");
+        return;
+      }
+      applyLocalPackage(payload, { preserveEpisode: true });
+      setEpisodeSaveStatus(`relinked ${compactPath(payload.sourcePath)}`);
+    } catch (error) {
+      setEpisodeSaveStatus(error instanceof Error ? `relink failed · ${error.message}` : "relink failed");
+    }
+  }, [applyLocalPackage]);
 
   const handleEpisodeFileImport = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1332,10 +1364,23 @@ export function App() {
                         <span>renderer</span>
                         <b>{episodeProvenance.rendererStatus}</b>
                       </div>
+                      {episodeSourceMatch ? (
+                        <div className={`ws-kv ws-source-match ${episodeSourceMatch.status}`}>
+                          <span>source match</span>
+                          <b>{episodeSourceMatch.status} · {episodeSourceMatch.detail}</b>
+                        </div>
+                      ) : null}
                       <div className="ws-kv">
                         <span>notes</span>
                         <b>{episodeProvenance.notes.join(" · ")}</b>
                       </div>
+                      {episodeProvenance.source === "bundle" && episodeSourceMatch?.status !== "matched" ? (
+                        <div className="ws-btn-row">
+                          <WSButton disabled={!getDesktopApi()?.openLocalPackage} onClick={() => void relinkEpisodeWorldPackage()}>
+                            Relink World Package
+                          </WSButton>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {episodeExportText ? (
@@ -2105,6 +2150,39 @@ function parseStandaloneEpisodeProvenance(episode: unknown, fallbackWorldName: s
     rendererStatus: "not bundled",
     notes
   };
+}
+
+function describeEpisodeSourceMatch(provenance: EpisodeProvenanceSummary, session: WorldSession | null): EpisodeSourceMatch {
+  if (provenance.source === "manifest") {
+    return { status: "manifest", detail: "standalone episode; load matching world manually" };
+  }
+
+  if (!session) {
+    return { status: "missing", detail: "load the source world package" };
+  }
+
+  const actual = session.provenance;
+  const expectedKind = knownEpisodeValue(provenance.packageKind);
+  const expectedPath = knownEpisodeValue(provenance.sourcePath);
+  const expectedArtifact = knownEpisodeValue(provenance.primaryArtifact);
+  const kindMatches = !expectedKind || actual.packageKind === expectedKind;
+  const pathMatches = !expectedPath || actual.sourcePath === expectedPath;
+  const artifactMatches = !expectedArtifact || actual.primaryArtifact === expectedArtifact;
+
+  if (kindMatches && pathMatches && artifactMatches) {
+    return { status: "matched", detail: `${session.name} · ${compactPath(actual.sourcePath)}` };
+  }
+
+  return {
+    status: "mismatch",
+    detail: `loaded ${actual.packageKind ?? "unknown"} · ${compactPath(actual.sourcePath)}`
+  };
+}
+
+function knownEpisodeValue(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "unknown" || trimmed === "not supplied" || trimmed === "not bundled") return null;
+  return trimmed;
 }
 
 function parseEpisodeEvent(value: unknown, index: number): EpisodeEvent {

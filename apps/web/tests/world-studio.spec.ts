@@ -650,21 +650,24 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(browserProvenance).toContainText("fixture");
   await expect(browserProvenance).toContainText("gaussians.ply");
   await expect(browserProvenance).toContainText("visual_evidence");
+  await expect(browserProvenance).toContainText("matched");
   await expect(browserProvenance).toContainText("Fixture assets are referenced");
 });
 
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.addInitScript((payload: LocalWorldPackagePayload) => {
     const bridgeWindow = window as Window & {
       __savedEpisode?: { suggestedName: string; text: string };
       __savedBundle?: { suggestedName: string; text: string };
       worldStudioDesktop?: {
+        openLocalPackage: () => Promise<LocalWorldPackagePayload | null>;
         saveEpisodeManifest: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
         saveEpisodeBundle: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
         openEpisodeManifest: () => Promise<{ path: string; text: string } | null>;
       };
     };
     bridgeWindow.worldStudioDesktop = {
+      openLocalPackage: async () => payload,
       saveEpisodeManifest: async (input) => {
         bridgeWindow.__savedEpisode = input;
         return { path: `/tmp/${input.suggestedName}` };
@@ -702,7 +705,7 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
         })
       })
     };
-  });
+  }, localPackagePayload);
 
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
@@ -741,7 +744,14 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(desktopProvenance).toContainText("gaussians.ply");
   await expect(desktopProvenance).toContainText("visual_evidence");
   await expect(desktopProvenance).toContainText("spark gaussian");
+  await expect(desktopProvenance).toContainText("mismatch");
   await expect(desktopProvenance).toContainText("Local package assets are referenced");
+
+  await page.getByRole("button", { name: "Relink World Package" }).click();
+  await expect(page.getByTestId("episode-save-status")).toContainText("relinked /tmp/world-studio/local_lab");
+  await expect(page.locator(".ws-logo-sub", { hasText: "local_lab · v1" })).toBeVisible();
+  await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
+  await expect(desktopProvenance).toContainText("matched");
 });
 
 test("rejects invalid Episode manifest imports", async ({ page }) => {
