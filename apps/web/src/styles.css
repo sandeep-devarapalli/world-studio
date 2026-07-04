@@ -483,6 +483,7 @@ button.ws-episode-row {
 }
 
 .ws-asset-validation.missing b,
+.ws-asset-validation.mismatch b,
 .ws-asset-validation.pending b {
   color: #d9a35f;
 }

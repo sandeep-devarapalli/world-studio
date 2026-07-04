@@ -37,8 +37,15 @@ export interface WorldProvenance {
   primaryArtifact: string;
   loadedAt: string;
   companionArtifacts: string[];
+  assetManifest?: WorldAssetManifestEntry[];
   packageKind?: string;
   authorityStatus: AuthorityStatus;
+}
+
+export interface WorldAssetManifestEntry {
+  relativePath: string;
+  sizeBytes?: number;
+  checksum?: string;
 }
 
 export interface WorldSession {
@@ -138,12 +145,16 @@ export interface RenderAdapter {
 export interface LocalWorldPackageTextFile {
   relativePath: string;
   text: string;
+  sizeBytes?: number;
+  checksum?: string;
 }
 
 export interface LocalWorldPackageBinaryFile {
   relativePath: string;
   dataUrl: string;
   headerText: string;
+  sizeBytes?: number;
+  checksum?: string;
 }
 
 export interface LocalPackageInsightMetric {
@@ -188,6 +199,7 @@ export interface LocalWorldPackagePayload {
   packageKind: string;
   primaryArtifact: string;
   companionArtifacts: string[];
+  assetManifest?: WorldAssetManifestEntry[];
   authorityStatus: AuthorityStatus;
   sceneJson?: unknown;
   pointsPly?: LocalWorldPackageTextFile;
