@@ -68,6 +68,21 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle(
+  "world-studio:save-episode-bundle",
+  async (_event, input: { suggestedName?: string; text?: string }): Promise<{ path: string } | null> => {
+    if (!input?.text) return null;
+    const result = await dialog.showSaveDialog({
+      title: "Save Episode Package",
+      defaultPath: path.join(app.getPath("documents"), safeFileName(input.suggestedName ?? "world-studio-episode.world-episode.json")),
+      filters: [{ name: "World Studio Episode Package", extensions: ["json"] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, input.text, "utf8");
+    return { path: result.filePath };
+  }
+);
+
 ipcMain.handle("world-studio:open-episode-manifest", async (): Promise<{ path: string; text: string } | null> => {
   const result = await dialog.showOpenDialog({
     properties: ["openFile"],
