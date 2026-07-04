@@ -555,7 +555,16 @@ test("loads loft_04 and switches all six modes", async ({ page }) => {
 
   for (const mode of ["View", "Edit", "Simulate", "Pilot", "Sensors", "Episode"]) {
     await page.getByRole("button", { name: mode }).click();
-    await expect(page.locator(".ws-mode-title", { hasText: mode })).toBeVisible();
+    await expect(page.locator(".ws-top-center .ws-pill.on")).toHaveText(mode);
+    if (mode !== "Sensors") await expect(page.locator(".ws-mode-title", { hasText: mode })).toBeVisible();
+    if (mode === "Simulate") {
+      await expect(page.locator(".ws-view-tag", { hasText: "Sensor feed" })).toBeVisible();
+      await expect(page.locator(".ws-bottom-tray")).toContainText("Physics");
+    }
+    if (mode === "Sensors") {
+      await expect(page.locator(".ws-sensor-list")).toContainText("Rig — rig_a");
+      await expect(page.locator(".ws-previews")).toContainText("cam_front · RGB");
+    }
   }
 
   await expect(page.locator("[data-testid='world-canvas']")).toBeVisible();
