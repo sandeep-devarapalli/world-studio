@@ -469,6 +469,15 @@ button.ws-episode-row {
   max-width: 196px;
 }
 
+.ws-source-match.matched b {
+  color: #8fcb9b;
+}
+
+.ws-source-match.missing b,
+.ws-source-match.mismatch b {
+  color: #d9a35f;
+}
+
 .ws-episode-export {
   background: color-mix(in srgb, #080604, transparent 18%);
   border: 1px solid var(--line);
