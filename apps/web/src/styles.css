@@ -478,6 +478,15 @@ button.ws-episode-row {
   color: #d9a35f;
 }
 
+.ws-asset-validation.validated b {
+  color: #8fcb9b;
+}
+
+.ws-asset-validation.missing b,
+.ws-asset-validation.pending b {
+  color: #d9a35f;
+}
+
 .ws-episode-export {
   background: color-mix(in srgb, #080604, transparent 18%);
   border: 1px solid var(--line);

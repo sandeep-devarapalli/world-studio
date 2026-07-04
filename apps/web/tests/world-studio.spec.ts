@@ -111,6 +111,44 @@ f 1 2 3`
   ]
 };
 
+const localPackageMissingPointsPayload: LocalWorldPackagePayload = (() => {
+  const payload: LocalWorldPackagePayload = {
+    ...localPackagePayload,
+    companionArtifacts: localPackagePayload.companionArtifacts.filter((artifact) => artifact !== "points.ply")
+  };
+  delete payload.pointsPly;
+  return payload;
+})();
+
+function importedEpisodeBundleText(companionArtifacts: string[] = localPackagePayload.companionArtifacts): string {
+  return JSON.stringify({
+    schema: "world-studio.episode_bundle.v0.1",
+    createdAt: "2026-07-04T00:00:00.000Z",
+    episodeManifest: {
+      schema: "world-studio.episode.v0.1",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      world: { name: "loft_04" },
+      playback: { playhead: 0.5, selectedEventId: "event-imported", eventCount: 1 },
+      events: [{ id: "event-imported", frame: 1, lane: "capture", label: "desktop import", status: "loaded" }],
+      agentTrajectory: [{ frame: 0, x: 1.5, z: -0.5 }],
+      props: [],
+      sensors: [{ id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72°" }]
+    },
+    worldContext: { name: "loft_04", version: "v3" },
+    package: {
+      kind: "world-studio-local-folder",
+      sourceKind: "world-studio.local_folder",
+      sourcePath: "/tmp/world-studio/local_lab",
+      loadedVia: "electron-picker",
+      primaryArtifact: "gaussians.ply",
+      companionArtifacts,
+      authorityStatus: "visual_evidence"
+    },
+    renderer: { mode: "splat", status: "spark gaussian · 16060 splats" },
+    compatibility: { notes: ["Local package assets are referenced by filesystem path and are not embedded.", "test bundle"] }
+  });
+}
+
 const genericManifestPayload: LocalWorldPackagePayload = {
   kind: "world-studio.local-package",
   name: "generic_package",
@@ -651,11 +689,13 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(browserProvenance).toContainText("gaussians.ply");
   await expect(browserProvenance).toContainText("visual_evidence");
   await expect(browserProvenance).toContainText("matched");
+  await expect(browserProvenance).toContainText("validated");
   await expect(browserProvenance).toContainText("Fixture assets are referenced");
 });
 
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
-  await page.addInitScript((payload: LocalWorldPackagePayload) => {
+  await page.addInitScript((input: { payload: LocalWorldPackagePayload; episodeText: string }) => {
+    const { payload, episodeText } = input;
     const bridgeWindow = window as Window & {
       __savedEpisode?: { suggestedName: string; text: string };
       __savedBundle?: { suggestedName: string; text: string };
@@ -678,34 +718,10 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
       },
       openEpisodeManifest: async () => ({
         path: "/tmp/imported-episode.world-episode.json",
-        text: JSON.stringify({
-          schema: "world-studio.episode_bundle.v0.1",
-          createdAt: "2026-07-04T00:00:00.000Z",
-          episodeManifest: {
-            schema: "world-studio.episode.v0.1",
-            createdAt: "2026-07-04T00:00:00.000Z",
-            world: { name: "loft_04" },
-            playback: { playhead: 0.5, selectedEventId: "event-imported", eventCount: 1 },
-            events: [{ id: "event-imported", frame: 1, lane: "capture", label: "desktop import", status: "loaded" }],
-            agentTrajectory: [{ frame: 0, x: 1.5, z: -0.5 }],
-            props: [],
-            sensors: [{ id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72°" }]
-          },
-          worldContext: { name: "loft_04", version: "v3" },
-          package: {
-            kind: "world-studio-local-folder",
-            sourceKind: "world-studio.local_folder",
-            sourcePath: "/tmp/world-studio/local_lab",
-            loadedVia: "electron-picker",
-            primaryArtifact: "gaussians.ply",
-            authorityStatus: "visual_evidence"
-          },
-          renderer: { mode: "splat", status: "spark gaussian · 16060 splats" },
-          compatibility: { notes: ["Local package assets are referenced by filesystem path and are not embedded.", "test bundle"] }
-        })
+        text: episodeText
       })
     };
-  }, localPackagePayload);
+  }, { payload: localPackagePayload, episodeText: importedEpisodeBundleText() });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
@@ -745,6 +761,7 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(desktopProvenance).toContainText("visual_evidence");
   await expect(desktopProvenance).toContainText("spark gaussian");
   await expect(desktopProvenance).toContainText("mismatch");
+  await expect(desktopProvenance).toContainText("pending");
   await expect(desktopProvenance).toContainText("Local package assets are referenced");
 
   await page.getByRole("button", { name: "Relink World Package" }).click();
@@ -752,6 +769,33 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(page.locator(".ws-logo-sub", { hasText: "local_lab · v1" })).toBeVisible();
   await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
   await expect(desktopProvenance).toContainText("matched");
+  await expect(desktopProvenance).toContainText("validated");
+  await expect(desktopProvenance).toContainText("4/4");
+});
+
+test("flags missing Episode companion assets after relink", async ({ page }) => {
+  await page.addInitScript((input: { payload: LocalWorldPackagePayload; episodeText: string }) => {
+    window.worldStudioDesktop = {
+      openLocalPackage: async () => input.payload,
+      openEpisodeManifest: async () => ({
+        path: "/tmp/imported-episode-missing-asset.world-episode.json",
+        text: input.episodeText
+      })
+    };
+  }, { payload: localPackageMissingPointsPayload, episodeText: importedEpisodeBundleText() });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Episode" }).click();
+  await page.getByRole("button", { name: "Load Episode" }).click();
+
+  const provenance = page.getByTestId("episode-provenance");
+  await expect(provenance).toContainText("pending");
+  await page.getByRole("button", { name: "Relink World Package" }).click();
+  await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
+  await expect(provenance).toContainText("matched");
+  await expect(provenance).toContainText("missing");
+  await expect(provenance).toContainText("points.ply");
 });
 
 test("rejects invalid Episode manifest imports", async ({ page }) => {
