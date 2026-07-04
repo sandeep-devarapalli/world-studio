@@ -318,6 +318,109 @@ body {
   max-height: 74px;
 }
 
+.ws-root.mode-simulate .ws-left {
+  top: 138px;
+  width: 396px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray {
+  bottom: 184px;
+  gap: 10px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-card {
+  width: 286px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-mode-card {
+  width: 324px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-panel-head {
+  padding: 10px 14px 0;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-panel-body {
+  padding: 8px 14px 12px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-kv {
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-kv span {
+  font-size: 9px;
+  padding-top: 1px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-kv b {
+  font-size: 11px;
+  max-width: 182px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-mode-title {
+  font-size: 19px;
+}
+
+.ws-root.mode-simulate .ws-bottom-center {
+  bottom: 62px;
+}
+
+.ws-root.mode-simulate .ws-frame-list {
+  padding: 7px;
+}
+
+.ws-root.mode-simulate .ws-frame-row {
+  min-height: 36px;
+}
+
+.ws-root.mode-sensors .ws-right-col {
+  top: 76px;
+  width: 408px;
+  gap: 12px;
+  max-height: 606px;
+}
+
+.ws-root.mode-sensors .ws-sensor-list .ws-panel-head {
+  padding: 10px 14px 0;
+}
+
+.ws-root.mode-sensors .ws-sensor-list .ws-sensor-row {
+  margin: 1px 6px;
+  min-height: 43px;
+  padding: 6px 10px;
+}
+
+.ws-root.mode-sensors .ws-sensor-spec {
+  font-size: 9.5px;
+}
+
+.ws-root.mode-sensors .ws-tree-foot {
+  padding: 8px 14px 10px;
+}
+
+.ws-root.mode-sensors .ws-intrinsics .ws-panel-head {
+  padding: 10px 14px 0;
+}
+
+.ws-root.mode-sensors .ws-intrinsics .ws-panel-body {
+  padding: 10px 14px 14px;
+}
+
+.ws-root.mode-sensors .ws-intrinsics .ws-kv {
+  padding: 3px 0;
+}
+
+.ws-root.mode-sensors .ws-bottom-left {
+  bottom: 64px;
+}
+
+.ws-root.mode-sensors .ws-preview-card {
+  width: 302px;
+  height: 190px;
+}
+
 .ws-bottom-right .ws-mode-card {
   width: 392px;
 }

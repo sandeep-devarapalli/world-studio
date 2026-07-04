@@ -1475,7 +1475,7 @@ export function App() {
               </div>
             ) : null}
 
-            {mode !== "pilot" && mode !== "simulate" && mode !== "episode" ? (
+            {mode !== "pilot" && mode !== "simulate" && mode !== "sensors" && mode !== "episode" ? (
               <div className="ws-bottom-right">
                 <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
                   <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
