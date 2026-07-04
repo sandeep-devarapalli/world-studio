@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import type { LocalWorldPackagePayload } from "@world-studio/world-core";
-import { stat, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readLocalPackage } from "./package-reader.js";
@@ -67,6 +67,18 @@ ipcMain.handle(
     return { path: result.filePath };
   }
 );
+
+ipcMain.handle("world-studio:open-episode-manifest", async (): Promise<{ path: string; text: string } | null> => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openFile"],
+    title: "Open Episode Manifest",
+    filters: [{ name: "World Studio Episode", extensions: ["json"] }]
+  });
+  if (result.canceled) return null;
+  const filePath = result.filePaths[0];
+  if (!filePath) return null;
+  return { path: filePath, text: await readFile(filePath, "utf8") };
+});
 
 app.whenReady().then(createWindow);
 

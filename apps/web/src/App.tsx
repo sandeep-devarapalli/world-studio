@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   createLoftWorldSession,
   detectPlyKind,
@@ -189,6 +189,16 @@ interface EpisodeEvent {
   status?: string;
 }
 
+interface ImportedEpisodeManifest {
+  worldName: string | null;
+  selectedEventId: string | null;
+  playhead: number;
+  events: EpisodeEvent[];
+  trajectory: Array<[number, number]>;
+  props: SimulatedPropState[];
+  sensors: SensorRigChannel[];
+}
+
 const defaultProps: SimulatedPropState[] = [
   { id: "prop-crate-a", label: "crate_a", preset: "crate", contactState: "grounded", x: -0.8, y: 0.18, z: 0.4, footprintRadius: 0.3 },
   { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
@@ -203,6 +213,7 @@ export function App() {
   const propSeqRef = useRef(defaultProps.length);
   const episodeFrameRef = useRef(0);
   const collisionMeshRef = useRef<ParsedObjMesh | undefined>(undefined);
+  const episodeImportInputRef = useRef<HTMLInputElement | null>(null);
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
@@ -692,6 +703,62 @@ export function App() {
     setEpisodeSaveStatus(`downloaded ${suggestedName}`);
   }, [createEpisodeManifestText, episodeTimeline.length, session]);
 
+  const applyEpisodeManifestText = useCallback((text: string, sourceLabel: string) => {
+    const imported = parseEpisodeManifestText(text);
+    const maxFrame = Math.max(0, ...imported.events.map((event) => event.frame));
+    const selectedEventId = imported.events.some((event) => event.id === imported.selectedEventId)
+      ? imported.selectedEventId
+      : (imported.events.at(-1)?.id ?? null);
+
+    setEpisodeEvents(imported.events);
+    setSelectedEpisodeEventId(selectedEventId);
+    setPlayhead(imported.playhead);
+    setPlaying(false);
+    setTrajectory(imported.trajectory);
+    setProps(imported.props);
+    setSelectedPropId(imported.props[0]?.id ?? null);
+    setSensors(imported.sensors);
+    setSelectedSensorId(imported.sensors[0]?.id ?? initialSensors[0]?.id ?? "rgb");
+    setEpisodeExportText(text);
+    setEpisodeSaveStatus(`loaded ${compactPath(sourceLabel)}${imported.worldName ? ` · ${imported.worldName}` : ""}`);
+    episodeFrameRef.current = maxFrame;
+    propSeqRef.current = Math.max(defaultProps.length, imported.props.length);
+  }, []);
+
+  const loadEpisodeManifest = useCallback(async () => {
+    const desktopOpen = getDesktopApi()?.openEpisodeManifest;
+    if (!desktopOpen) {
+      episodeImportInputRef.current?.click();
+      return;
+    }
+    try {
+      const result = await desktopOpen();
+      if (!result) {
+        setEpisodeSaveStatus("load canceled");
+        return;
+      }
+      applyEpisodeManifestText(result.text, result.path);
+    } catch (error) {
+      setEpisodeExportText(null);
+      setEpisodeSaveStatus(error instanceof Error ? `load failed · ${error.message}` : "load failed");
+    }
+  }, [applyEpisodeManifestText]);
+
+  const handleEpisodeFileImport = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0];
+      event.currentTarget.value = "";
+      if (!file) return;
+      try {
+        applyEpisodeManifestText(await file.text(), file.name);
+      } catch (error) {
+        setEpisodeExportText(null);
+        setEpisodeSaveStatus(error instanceof Error ? `load failed · ${error.message}` : "load failed");
+      }
+    },
+    [applyEpisodeManifestText]
+  );
+
   const resetAgent = () => {
     restartSimulationAt(spawn, bodyPreset, "ResetToSpawn");
     recordEpisodeEvent({ lane: "agent", label: "agent reset", status: "spawn" });
@@ -1159,6 +1226,7 @@ export function App() {
                     )}
                   </div>
                   <div className="ws-btn-row">
+                    <WSButton onClick={() => void loadEpisodeManifest()}>Load Episode</WSButton>
                     <WSButton accent disabled={!episodeTimeline.length} onClick={exportEpisodeManifest}>
                       Preview JSON
                     </WSButton>
@@ -1166,6 +1234,15 @@ export function App() {
                       Save Episode
                     </WSButton>
                   </div>
+                  <input
+                    accept="application/json,.json"
+                    aria-label="Episode manifest file"
+                    data-testid="episode-import-input"
+                    hidden
+                    onChange={(event) => void handleEpisodeFileImport(event)}
+                    ref={episodeImportInputRef}
+                    type="file"
+                  />
                   <div className="ws-kv" data-testid="episode-save-status">
                     <span>file</span>
                     <b>{episodeSaveStatus ?? (getDesktopApi()?.saveEpisodeManifest ? "desktop save ready" : "browser download ready")}</b>
@@ -1846,6 +1923,120 @@ function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
   } catch {
     return [];
   }
+}
+
+function parseEpisodeManifestText(text: string): ImportedEpisodeManifest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("malformed episode JSON");
+  }
+  if (!isRecord(parsed) || parsed.schema !== "world-studio.episode.v0.1") {
+    throw new Error("unsupported episode schema");
+  }
+
+  const playback = isRecord(parsed.playback) ? parsed.playback : {};
+  const events = readArray(parsed.events, "events").map(parseEpisodeEvent);
+  if (!events.length) throw new Error("episode has no events");
+
+  const trajectory = Array.isArray(parsed.agentTrajectory)
+    ? parsed.agentTrajectory.map(parseTrajectoryPoint).filter((point): point is [number, number] => Boolean(point))
+    : [];
+  const props = Array.isArray(parsed.props) ? parsed.props.map(parseEpisodeProp) : defaultProps;
+  const sensors = Array.isArray(parsed.sensors) ? parsed.sensors.map(parseEpisodeSensor) : initialSensors;
+  const selectedEventId = typeof playback.selectedEventId === "string" ? playback.selectedEventId : null;
+  const world = isRecord(parsed.world) ? parsed.world : null;
+
+  return {
+    worldName: world && typeof world.name === "string" ? world.name : null,
+    selectedEventId,
+    playhead: clamp01(typeof playback.playhead === "number" ? playback.playhead : 0),
+    events,
+    trajectory: trajectory.length ? trajectory : [[defaultSpawn.x, defaultSpawn.z]],
+    props,
+    sensors
+  };
+}
+
+function parseEpisodeEvent(value: unknown, index: number): EpisodeEvent {
+  if (!isRecord(value)) throw new Error(`invalid event ${index + 1}`);
+  const frame = readFiniteNumber(value.frame, `event ${index + 1} frame`);
+  const lane = parseEpisodeLane(value.lane, index);
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : `event-${frame}`,
+    frame,
+    lane,
+    label: typeof value.label === "string" && value.label ? value.label : lane,
+    targetId: typeof value.targetId === "string" ? value.targetId : undefined,
+    status: typeof value.status === "string" ? value.status : undefined
+  };
+}
+
+function parseEpisodeProp(value: unknown, index: number): SimulatedPropState {
+  if (!isRecord(value)) throw new Error(`invalid prop ${index + 1}`);
+  const preset = value.preset === "tall-crate" ? "tall-crate" : "crate";
+  const contactState =
+    value.contactState === "airborne" || value.contactState === "sleeping" || value.contactState === "grounded"
+      ? value.contactState
+      : "grounded";
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : `prop-${index + 1}`,
+    label: typeof value.label === "string" && value.label ? value.label : `${preset}_${index + 1}`,
+    preset,
+    contactState,
+    x: readFiniteNumber(value.x, `prop ${index + 1} x`),
+    y: readFiniteNumber(value.y, `prop ${index + 1} y`),
+    z: readFiniteNumber(value.z, `prop ${index + 1} z`),
+    footprintRadius: readFiniteNumber(value.footprintRadius, `prop ${index + 1} radius`)
+  };
+}
+
+function parseEpisodeSensor(value: unknown, index: number): SensorRigChannel {
+  if (!isRecord(value)) throw new Error(`invalid sensor ${index + 1}`);
+  const fallback = initialSensors[index] ?? initialSensors[0]!;
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : fallback.id,
+    label: typeof value.label === "string" && value.label ? value.label : fallback.label,
+    kind: parseSensorKind(value.kind, fallback.kind),
+    enabled: typeof value.enabled === "boolean" ? value.enabled : fallback.enabled,
+    spec: typeof value.spec === "string" ? value.spec : fallback.spec
+  };
+}
+
+function parseTrajectoryPoint(value: unknown): [number, number] | null {
+  if (!isRecord(value) || typeof value.x !== "number" || typeof value.z !== "number") return null;
+  if (!Number.isFinite(value.x) || !Number.isFinite(value.z)) return null;
+  return [value.x, value.z];
+}
+
+function parseEpisodeLane(value: unknown, index: number): EpisodeLane {
+  if (value === "agent" || value === "object" || value === "capture") return value;
+  throw new Error(`invalid event ${index + 1} lane`);
+}
+
+function parseSensorKind(value: unknown, fallback: SensorRigChannel["kind"]): SensorRigChannel["kind"] {
+  if (value === "rgb" || value === "depth" || value === "segmentation" || value === "lidar" || value === "imu") return value;
+  return fallback;
+}
+
+function readArray(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) throw new Error(`missing ${label}`);
+  return value;
+}
+
+function readFiniteNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`invalid ${label}`);
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
 }
 
 function buildEpisodeManifest({
