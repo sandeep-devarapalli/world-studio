@@ -794,6 +794,11 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(desktopProvenance).toContainText("validated");
   await expect(desktopProvenance).toContainText("4/4");
   await expect(desktopProvenance).toContainText("metadata checked");
+  await desktopProvenance.getByRole("button", { name: "Asset Details" }).click();
+  const validatedIntegrity = page.getByTestId("episode-integrity-table");
+  await expect(validatedIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("validated");
+  await expect(validatedIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("fnv1a32:points-local");
+  await expect(validatedIntegrity.locator("tr", { hasText: "gaussians.ply" })).toContainText("validated");
 });
 
 test("flags missing Episode companion assets after relink", async ({ page }) => {
@@ -819,6 +824,10 @@ test("flags missing Episode companion assets after relink", async ({ page }) => 
   await expect(provenance).toContainText("matched");
   await expect(provenance).toContainText("missing");
   await expect(provenance).toContainText("points.ply");
+  await provenance.getByRole("button", { name: "Asset Details" }).click();
+  const missingIntegrity = page.getByTestId("episode-integrity-table");
+  await expect(missingIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("missing");
+  await expect(missingIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("fnv1a32:points-local");
 });
 
 test("flags stale Episode companion asset metadata after relink", async ({ page }) => {
@@ -844,6 +853,11 @@ test("flags stale Episode companion asset metadata after relink", async ({ page 
   await expect(provenance).toContainText("matched");
   await expect(provenance).toContainText("mismatch");
   await expect(provenance).toContainText("points.ply");
+  await provenance.getByRole("button", { name: "Asset Details" }).click();
+  const staleIntegrity = page.getByTestId("episode-integrity-table");
+  await expect(staleIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("mismatch");
+  await expect(staleIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("fnv1a32:points-local");
+  await expect(staleIntegrity.locator("tr", { hasText: "points.ply" })).toContainText("fnv1a32:stale-points");
 });
 
 test("rejects invalid Episode manifest imports", async ({ page }) => {

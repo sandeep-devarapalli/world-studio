@@ -233,6 +233,15 @@ interface EpisodeAssetValidation {
   detail: string;
 }
 
+interface EpisodeIntegrityRow {
+  path: string;
+  status: "validated" | "missing" | "mismatch" | "pending";
+  expectedSize: string;
+  expectedChecksum: string;
+  actualSize: string;
+  actualChecksum: string;
+}
+
 const defaultProps: SimulatedPropState[] = [
   { id: "prop-crate-a", label: "crate_a", preset: "crate", contactState: "grounded", x: -0.8, y: 0.18, z: 0.4, footprintRadius: 0.3 },
   { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
@@ -287,6 +296,7 @@ export function App() {
   const [episodeExportText, setEpisodeExportText] = useState<string | null>(null);
   const [episodeSaveStatus, setEpisodeSaveStatus] = useState<string | null>(null);
   const [episodeProvenance, setEpisodeProvenance] = useState<EpisodeProvenanceSummary | null>(null);
+  const [episodeIntegrityOpen, setEpisodeIntegrityOpen] = useState(false);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -321,6 +331,10 @@ export function App() {
   );
   const episodeAssetValidation = useMemo(
     () => (episodeProvenance && episodeSourceMatch ? describeEpisodeAssetValidation(episodeProvenance, session, episodeSourceMatch.status) : null),
+    [episodeProvenance, episodeSourceMatch, session]
+  );
+  const episodeIntegrityRows = useMemo(
+    () => (episodeProvenance && episodeSourceMatch ? buildEpisodeIntegrityRows(episodeProvenance, session, episodeSourceMatch.status) : []),
     [episodeProvenance, episodeSourceMatch, session]
   );
   const episodeTotalFrames = Math.max(totalSteps, episodeTimeline.at(-1)?.frame ?? 0, 1);
@@ -469,6 +483,7 @@ export function App() {
     setEpisodeExportText(null);
     setEpisodeSaveStatus(null);
     setEpisodeProvenance(null);
+    setEpisodeIntegrityOpen(false);
     propSeqRef.current = defaultProps.length;
     episodeFrameRef.current = 0;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
@@ -704,6 +719,7 @@ export function App() {
     setEpisodeExportText(null);
     setEpisodeSaveStatus(null);
     setEpisodeProvenance(null);
+    setEpisodeIntegrityOpen(false);
   }, []);
 
   const selectEpisodeEvent = useCallback(
@@ -806,6 +822,7 @@ export function App() {
     setEpisodeExportText(text);
     setEpisodeSaveStatus(`loaded ${compactPath(sourceLabel)}${imported.worldName ? ` · ${imported.worldName}` : ""}`);
     setEpisodeProvenance({ ...imported.provenance, loadedFrom: sourceLabel });
+    setEpisodeIntegrityOpen(false);
     episodeFrameRef.current = maxFrame;
     propSeqRef.current = Math.max(defaultProps.length, imported.props.length);
   }, []);
@@ -1396,6 +1413,43 @@ export function App() {
                         <div className={`ws-kv ws-asset-validation ${episodeAssetValidation.status}`}>
                           <span>assets</span>
                           <b>{episodeAssetValidation.status} · {episodeAssetValidation.detail}</b>
+                        </div>
+                      ) : null}
+                      {episodeIntegrityRows.length ? (
+                        <div className="ws-integrity-block">
+                          <div className="ws-btn-row">
+                            <WSButton onClick={() => setEpisodeIntegrityOpen((value) => !value)}>
+                              {episodeIntegrityOpen ? "Hide Asset Details" : "Asset Details"}
+                            </WSButton>
+                          </div>
+                          {episodeIntegrityOpen ? (
+                            <div className="ws-integrity-table-wrap" data-testid="episode-integrity-table">
+                              <table className="ws-integrity-table">
+                                <thead>
+                                  <tr>
+                                    <th>path</th>
+                                    <th>status</th>
+                                    <th>expected size</th>
+                                    <th>expected checksum</th>
+                                    <th>actual size</th>
+                                    <th>actual checksum</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {episodeIntegrityRows.map((row) => (
+                                    <tr className={row.status} key={row.path}>
+                                      <td>{row.path}</td>
+                                      <td>{row.status}</td>
+                                      <td>{row.expectedSize}</td>
+                                      <td>{row.expectedChecksum}</td>
+                                      <td>{row.actualSize}</td>
+                                      <td>{row.actualChecksum}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                       <div className="ws-kv">
@@ -2267,6 +2321,58 @@ function describeEpisodeAssetValidation(provenance: EpisodeProvenanceSummary, se
     status: "validated",
     detail: `${expectedArtifacts.length}/${expectedArtifacts.length} names · ${expectedManifest.length} metadata checked`
   };
+}
+
+function buildEpisodeIntegrityRows(provenance: EpisodeProvenanceSummary, session: WorldSession | null, sourceStatus: EpisodeSourceMatch["status"]): EpisodeIntegrityRow[] {
+  if (provenance.source === "manifest") return [];
+  const expectedArtifacts = episodeExpectedArtifacts(provenance);
+  if (!expectedArtifacts.length) return [];
+
+  const expectedManifest = new Map(provenance.assetManifest.map((entry) => [entry.relativePath, entry]));
+  const actualManifest = new Map((session?.provenance.assetManifest ?? []).map((entry) => [entry.relativePath, entry]));
+  const actualArtifacts = new Set([
+    ...(session?.provenance.companionArtifacts ?? []),
+    ...actualManifest.keys()
+  ]);
+
+  return expectedArtifacts.map((path) => {
+    const expected = expectedManifest.get(path);
+    const actual = actualManifest.get(path);
+    return {
+      path,
+      status: episodeIntegrityStatus(path, expected, actual, actualArtifacts, sourceStatus),
+      expectedSize: formatAssetSize(expected?.sizeBytes),
+      expectedChecksum: formatAssetChecksum(expected?.checksum),
+      actualSize: formatAssetSize(actual?.sizeBytes, actualArtifacts.has(path)),
+      actualChecksum: formatAssetChecksum(actual?.checksum, actualArtifacts.has(path))
+    };
+  });
+}
+
+function episodeIntegrityStatus(
+  path: string,
+  expected: WorldAssetManifestEntry | undefined,
+  actual: WorldAssetManifestEntry | undefined,
+  actualArtifacts: Set<string>,
+  sourceStatus: EpisodeSourceMatch["status"]
+): EpisodeIntegrityRow["status"] {
+  if (sourceStatus !== "matched") return "pending";
+  if (!actualArtifacts.has(path)) return "missing";
+  if (expected && hasComparableAssetMetadata(expected)) {
+    if (!actual) return "pending";
+    return assetMetadataMatches(expected, actual) ? "validated" : "mismatch";
+  }
+  return "validated";
+}
+
+function formatAssetSize(value: number | undefined, artifactPresent = true): string {
+  if (!artifactPresent) return "missing";
+  return typeof value === "number" ? `${value} b` : "not supplied";
+}
+
+function formatAssetChecksum(value: string | undefined, artifactPresent = true): string {
+  if (!artifactPresent) return "missing";
+  return value ?? "not supplied";
 }
 
 function episodeExpectedArtifacts(provenance: EpisodeProvenanceSummary): string[] {
