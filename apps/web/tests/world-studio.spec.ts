@@ -645,6 +645,12 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(page.getByTestId("episode-save-status")).toContainText("loaded episode-roundtrip.world-episode.json");
   await expect(events).toContainText("browser bundle");
   await expect(page.getByTestId("episode-selected-event")).toContainText("browser bundle");
+  const browserProvenance = page.getByTestId("episode-provenance");
+  await expect(browserProvenance).toContainText("world-studio.episode_bundle.v0.1");
+  await expect(browserProvenance).toContainText("fixture");
+  await expect(browserProvenance).toContainText("gaussians.ply");
+  await expect(browserProvenance).toContainText("visual_evidence");
+  await expect(browserProvenance).toContainText("Fixture assets are referenced");
 });
 
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
@@ -682,7 +688,17 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
             props: [],
             sensors: [{ id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72°" }]
           },
-          compatibility: { notes: ["test bundle"] }
+          worldContext: { name: "loft_04", version: "v3" },
+          package: {
+            kind: "world-studio-local-folder",
+            sourceKind: "world-studio.local_folder",
+            sourcePath: "/tmp/world-studio/local_lab",
+            loadedVia: "electron-picker",
+            primaryArtifact: "gaussians.ply",
+            authorityStatus: "visual_evidence"
+          },
+          renderer: { mode: "splat", status: "spark gaussian · 16060 splats" },
+          compatibility: { notes: ["Local package assets are referenced by filesystem path and are not embedded.", "test bundle"] }
         })
       })
     };
@@ -718,6 +734,14 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(page.getByTestId("episode-save-status")).toContainText("loaded /tmp/imported-episode.world-episode.json");
   await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
   await expect(page.getByTestId("episode-selected-event")).toContainText("desktop import");
+  const desktopProvenance = page.getByTestId("episode-provenance");
+  await expect(desktopProvenance).toContainText("world-studio.episode_bundle.v0.1");
+  await expect(desktopProvenance).toContainText("world-studio-local-folder");
+  await expect(desktopProvenance).toContainText("/tmp/world-studio/local_lab");
+  await expect(desktopProvenance).toContainText("gaussians.ply");
+  await expect(desktopProvenance).toContainText("visual_evidence");
+  await expect(desktopProvenance).toContainText("spark gaussian");
+  await expect(desktopProvenance).toContainText("Local package assets are referenced");
 });
 
 test("rejects invalid Episode manifest imports", async ({ page }) => {
