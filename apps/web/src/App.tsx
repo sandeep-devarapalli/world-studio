@@ -27,6 +27,7 @@ import type {
   RenderOptions,
   SensorRigChannel,
   StudioMode,
+  WorldAssetManifestEntry,
   WorldClass,
   WorldSession
 } from "@world-studio/world-core";
@@ -129,6 +130,7 @@ interface LoadedWorldInput {
   packageKind: string;
   primaryArtifact: string;
   companionArtifacts: string[];
+  assetManifest?: WorldAssetManifestEntry[];
   authorityStatus: AuthorityStatus;
   packageInsights?: LocalPackageInsight[];
   packageIssues?: LocalPackageIssue[];
@@ -214,6 +216,7 @@ interface EpisodeProvenanceSummary {
   loadedVia: string;
   primaryArtifact: string;
   companionArtifacts: string[];
+  assetManifest: WorldAssetManifestEntry[];
   authorityStatus: string;
   rendererMode: string;
   rendererStatus: string;
@@ -226,7 +229,7 @@ interface EpisodeSourceMatch {
 }
 
 interface EpisodeAssetValidation {
-  status: "validated" | "missing" | "pending" | "manifest";
+  status: "validated" | "missing" | "mismatch" | "pending" | "manifest";
   detail: string;
 }
 
@@ -495,12 +498,13 @@ export function App() {
     if (!sceneResponse.ok || !pointsResponse.ok || !gaussiansResponse.ok || !objResponse.ok) {
       throw new Error("Failed to load loft_04 fixture");
     }
-    const scene = (await sceneResponse.json()) as LoftSceneManifest;
-    const [pointsText, gaussiansText, objText] = await Promise.all([
+    const [sceneText, pointsText, gaussiansText, objText] = await Promise.all([
+      sceneResponse.text(),
       pointsResponse.text(),
       gaussiansResponse.text(),
       objResponse.text()
     ]);
+    const scene = JSON.parse(sceneText) as LoftSceneManifest;
     applyLoadedWorld({
       name: scene.dataset,
       scene,
@@ -514,6 +518,12 @@ export function App() {
       packageKind: "fixture",
       primaryArtifact: "gaussians.ply",
       companionArtifacts: Object.keys(scene.files),
+      assetManifest: buildTextAssetManifest([
+        { relativePath: "scene.json", text: sceneText },
+        { relativePath: "points.ply", text: pointsText },
+        { relativePath: "gaussians.ply", text: gaussiansText },
+        { relativePath: "collision_mesh.obj", text: objText }
+      ]),
       authorityStatus: "visual_evidence",
       packageInsights: buildFixtureInsights(scene),
       packageIssues: []
@@ -544,6 +554,7 @@ export function App() {
       packageKind: payload.packageKind,
       primaryArtifact: payload.primaryArtifact,
       companionArtifacts: payload.companionArtifacts,
+      assetManifest: payload.assetManifest,
       authorityStatus: payload.authorityStatus,
       packageInsights: payload.packageInsights,
       packageIssues: payload.packageIssues,
@@ -592,6 +603,7 @@ export function App() {
         sourcePath: input.sourcePath,
         primaryArtifact: input.primaryArtifact,
         companionArtifacts: input.companionArtifacts,
+        assetManifest: input.assetManifest,
         loadedAt: new Date().toISOString(),
         authorityStatus: input.authorityStatus
       }
@@ -1916,6 +1928,7 @@ function createManifestOnlySession(input: LoadedWorldInput): WorldSession {
       sourcePath: input.sourcePath,
       primaryArtifact: input.primaryArtifact,
       companionArtifacts: input.companionArtifacts,
+      assetManifest: input.assetManifest,
       loadedAt: new Date().toISOString(),
       authorityStatus: input.authorityStatus
     }
@@ -1958,6 +1971,7 @@ function createPointCloudSession(input: LoadedWorldInput, pointCount: number, cl
       sourcePath: input.sourcePath,
       primaryArtifact: input.primaryArtifact,
       companionArtifacts: input.companionArtifacts,
+      assetManifest: input.assetManifest,
       loadedAt: new Date().toISOString(),
       authorityStatus: input.authorityStatus
     }
@@ -2141,6 +2155,7 @@ function parseEpisodeBundleProvenance(bundle: Record<string, unknown>, fallbackW
     loadedVia: optionalString(packageInfo.loadedVia) ?? "not supplied",
     primaryArtifact: optionalString(packageInfo.primaryArtifact) ?? "not supplied",
     companionArtifacts: readStringList(packageInfo.companionArtifacts),
+    assetManifest: readAssetManifest(packageInfo.assetManifest),
     authorityStatus: optionalString(packageInfo.authorityStatus) ?? "not supplied",
     rendererMode: optionalString(renderer.mode) ?? "not supplied",
     rendererStatus: optionalString(renderer.status) ?? "not supplied",
@@ -2163,6 +2178,7 @@ function parseStandaloneEpisodeProvenance(episode: unknown, fallbackWorldName: s
     loadedVia: optionalString(provenance.loadedVia) ?? "not supplied",
     primaryArtifact: optionalString(provenance.primaryArtifact) ?? "not supplied",
     companionArtifacts: readStringList(provenance.companionArtifacts),
+    assetManifest: readAssetManifest(provenance.assetManifest),
     authorityStatus: optionalString(provenance.authorityStatus) ?? "not supplied",
     rendererMode: "not bundled",
     rendererStatus: "not bundled",
@@ -2211,7 +2227,10 @@ function describeEpisodeAssetValidation(provenance: EpisodeProvenanceSummary, se
     return { status: "pending", detail: `${expectedArtifacts.length} relative assets waiting for matching source` };
   }
 
-  const actualArtifacts = new Set(session.provenance.companionArtifacts);
+  const actualArtifacts = new Set([
+    ...session.provenance.companionArtifacts,
+    ...(session.provenance.assetManifest ?? []).map((entry) => entry.relativePath)
+  ]);
   const missing = expectedArtifacts.filter((artifact) => !actualArtifacts.has(artifact));
   if (missing.length) {
     return {
@@ -2220,17 +2239,53 @@ function describeEpisodeAssetValidation(provenance: EpisodeProvenanceSummary, se
     };
   }
 
+  const expectedManifest = provenance.assetManifest.filter(hasComparableAssetMetadata);
+  if (!expectedManifest.length) {
+    return {
+      status: "validated",
+      detail: `${expectedArtifacts.length}/${expectedArtifacts.length} relative asset names`
+    };
+  }
+
+  const actualManifest = new Map((session.provenance.assetManifest ?? []).map((entry) => [entry.relativePath, entry]));
+  if (!actualManifest.size) {
+    return {
+      status: "pending",
+      detail: `${expectedArtifacts.length}/${expectedArtifacts.length} names found; no relink metadata`
+    };
+  }
+
+  const mismatched = expectedManifest.filter((expected) => !assetMetadataMatches(expected, actualManifest.get(expected.relativePath)));
+  if (mismatched.length) {
+    return {
+      status: "mismatch",
+      detail: `${mismatched.length}/${expectedManifest.length} stale: ${formatArtifactList(mismatched.map((entry) => entry.relativePath))}`
+    };
+  }
+
   return {
     status: "validated",
-    detail: `${expectedArtifacts.length}/${expectedArtifacts.length} relative assets under ${compactPath(session.provenance.sourcePath)}`
+    detail: `${expectedArtifacts.length}/${expectedArtifacts.length} names · ${expectedManifest.length} metadata checked`
   };
 }
 
 function episodeExpectedArtifacts(provenance: EpisodeProvenanceSummary): string[] {
   return uniqueStrings([
     ...provenance.companionArtifacts,
+    ...provenance.assetManifest.map((entry) => entry.relativePath),
     knownEpisodeValue(provenance.primaryArtifact)
   ]);
+}
+
+function hasComparableAssetMetadata(entry: WorldAssetManifestEntry): boolean {
+  return typeof entry.sizeBytes === "number" || Boolean(entry.checksum);
+}
+
+function assetMetadataMatches(expected: WorldAssetManifestEntry, actual: WorldAssetManifestEntry | undefined): boolean {
+  if (!actual) return false;
+  if (typeof expected.sizeBytes === "number" && actual.sizeBytes !== expected.sizeBytes) return false;
+  if (expected.checksum && actual.checksum !== expected.checksum) return false;
+  return true;
 }
 
 function formatArtifactList(artifacts: string[]): string {
@@ -2246,6 +2301,42 @@ function knownEpisodeValue(value: string): string | null {
 
 function readStringList(value: unknown): string[] {
   return Array.isArray(value) ? uniqueStrings(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)) : [];
+}
+
+function readAssetManifest(value: unknown): WorldAssetManifestEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const relativePath = optionalString(entry.relativePath);
+    if (!relativePath) return [];
+    const sizeBytes = typeof entry.sizeBytes === "number" && Number.isFinite(entry.sizeBytes) && entry.sizeBytes >= 0 ? entry.sizeBytes : undefined;
+    const checksum = optionalString(entry.checksum) ?? undefined;
+    return [{
+      relativePath,
+      ...(sizeBytes !== undefined ? { sizeBytes } : {}),
+      ...(checksum ? { checksum } : {})
+    }];
+  });
+}
+
+function buildTextAssetManifest(files: Array<{ relativePath: string; text: string }>): WorldAssetManifestEntry[] {
+  return files.map((file) => {
+    const bytes = new TextEncoder().encode(file.text);
+    return {
+      relativePath: file.relativePath,
+      sizeBytes: bytes.byteLength,
+      checksum: checksumBytes(bytes)
+    };
+  });
+}
+
+function checksumBytes(bytes: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of bytes) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }
 
 function uniqueStrings(values: Array<string | null>): string[] {
@@ -2437,6 +2528,7 @@ function buildEpisodeBundle({
           loadedVia: provenance.loadedVia,
           primaryArtifact: provenance.primaryArtifact,
           companionArtifacts: provenance.companionArtifacts,
+          assetManifest: provenance.assetManifest ?? [],
           authorityStatus: provenance.authorityStatus
         }
       : null,

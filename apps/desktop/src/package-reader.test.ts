@@ -53,6 +53,15 @@ end_header
     expect(payload.packageKind).toBe("world-studio-local-folder");
     expect(payload.primaryArtifact).toBe("points.ply");
     expect(payload.sceneJson).toMatchObject({ dataset: "reader_fixture" });
+    expect(payload.assetManifest).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relativePath: "points.ply",
+          sizeBytes: expect.any(Number),
+          checksum: expect.stringMatching(/^fnv1a32:/)
+        })
+      ])
+    );
     expect(payload.packageIssues).toEqual([]);
   });
 
@@ -143,6 +152,14 @@ end_header
     expect(payload.primaryArtifact).toBe("gaussians.ply");
     expect(payload.companionArtifacts).toEqual(
       expect.arrayContaining(["scene.json", "gaussians.ply", "points.ply", "collision_mesh.obj"])
+    );
+    expect(payload.assetManifest).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ relativePath: "scene.json", checksum: expect.stringMatching(/^fnv1a32:/) }),
+        expect.objectContaining({ relativePath: "gaussians.ply", sizeBytes: expect.any(Number) }),
+        expect.objectContaining({ relativePath: "points.ply", sizeBytes: expect.any(Number) }),
+        expect.objectContaining({ relativePath: "collision_mesh.obj", sizeBytes: expect.any(Number) })
+      ])
     );
     expect(payload.packageInsights.map((insight) => insight.kind)).toEqual(
       expect.arrayContaining(["asset-set", "scene-manifest"])

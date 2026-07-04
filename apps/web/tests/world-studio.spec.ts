@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LocalWorldPackagePayload } from "@world-studio/world-core";
+import type { LocalWorldPackagePayload, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
@@ -52,6 +52,17 @@ end_header
 0.2 0.3 0.4 210 130 80 2`;
 
 const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
+const localObj = `o local_fixture
+v -0.5 0 -0.5
+v 0.5 0 -0.5
+v 0 0.5 0.3
+f 1 2 3`;
+const localAssetManifest: WorldAssetManifestEntry[] = [
+  { relativePath: "scene.json", sizeBytes: Buffer.byteLength(JSON.stringify(localScene)), checksum: "fnv1a32:scene-local" },
+  { relativePath: "points.ply", sizeBytes: Buffer.byteLength(localPoints), checksum: "fnv1a32:points-local" },
+  { relativePath: "gaussians.ply", sizeBytes: Buffer.byteLength(localGaussian), checksum: "fnv1a32:gaussian-local" },
+  { relativePath: "collision_mesh.obj", sizeBytes: Buffer.byteLength(localObj), checksum: "fnv1a32:mesh-local" }
+];
 
 const localPackagePayload: LocalWorldPackagePayload = {
   kind: "world-studio.local-package",
@@ -62,6 +73,7 @@ const localPackagePayload: LocalWorldPackagePayload = {
   packageKind: "world-studio-local-folder",
   primaryArtifact: "gaussians.ply",
   companionArtifacts: ["scene.json", "points.ply", "gaussians.ply", "collision_mesh.obj"],
+  assetManifest: localAssetManifest,
   authorityStatus: "visual_evidence",
   sceneJson: localScene,
   pointsPly: { relativePath: "points.ply", text: localPoints },
@@ -70,14 +82,7 @@ const localPackagePayload: LocalWorldPackagePayload = {
     headerText: localGaussian,
     dataUrl: `data:application/octet-stream;base64,${Buffer.from(localGaussian).toString("base64")}`
   },
-  objMesh: {
-    relativePath: "collision_mesh.obj",
-    text: `o local_fixture
-v -0.5 0 -0.5
-v 0.5 0 -0.5
-v 0 0.5 0.3
-f 1 2 3`
-  },
+  objMesh: { relativePath: "collision_mesh.obj", text: localObj },
   packageInsights: [
     {
       id: "scene",
@@ -114,13 +119,27 @@ f 1 2 3`
 const localPackageMissingPointsPayload: LocalWorldPackagePayload = (() => {
   const payload: LocalWorldPackagePayload = {
     ...localPackagePayload,
-    companionArtifacts: localPackagePayload.companionArtifacts.filter((artifact) => artifact !== "points.ply")
+    companionArtifacts: localPackagePayload.companionArtifacts.filter((artifact) => artifact !== "points.ply"),
+    assetManifest: localAssetManifest.filter((entry) => entry.relativePath !== "points.ply")
   };
   delete payload.pointsPly;
   return payload;
 })();
 
-function importedEpisodeBundleText(companionArtifacts: string[] = localPackagePayload.companionArtifacts): string {
+const localPackageStalePointsPayload: LocalWorldPackagePayload = {
+  ...localPackagePayload,
+  assetManifest: localAssetManifest.map((entry) =>
+    entry.relativePath === "points.ply" ? { ...entry, checksum: "fnv1a32:stale-points" } : entry
+  )
+};
+
+function importedEpisodeBundleText({
+  companionArtifacts = localPackagePayload.companionArtifacts,
+  assetManifest = localAssetManifest
+}: {
+  companionArtifacts?: string[];
+  assetManifest?: WorldAssetManifestEntry[];
+} = {}): string {
   return JSON.stringify({
     schema: "world-studio.episode_bundle.v0.1",
     createdAt: "2026-07-04T00:00:00.000Z",
@@ -142,6 +161,7 @@ function importedEpisodeBundleText(companionArtifacts: string[] = localPackagePa
       loadedVia: "electron-picker",
       primaryArtifact: "gaussians.ply",
       companionArtifacts,
+      assetManifest,
       authorityStatus: "visual_evidence"
     },
     renderer: { mode: "splat", status: "spark gaussian · 16060 splats" },
@@ -748,6 +768,8 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   });
   expect(savedBundle?.suggestedName).toBe("world-studio-episode-loft_04.world-episode.json");
   expect(savedBundle?.text).toContain("world-studio.episode_bundle.v0.1");
+  expect(savedBundle?.text).toContain("\"assetManifest\"");
+  expect(savedBundle?.text).toContain("fnv1a32:");
 
   await page.getByRole("button", { name: "Load Episode" }).click();
   await expect(page.getByTestId("episode-save-status")).toContainText("loaded /tmp/imported-episode.world-episode.json");
@@ -771,6 +793,7 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(desktopProvenance).toContainText("matched");
   await expect(desktopProvenance).toContainText("validated");
   await expect(desktopProvenance).toContainText("4/4");
+  await expect(desktopProvenance).toContainText("metadata checked");
 });
 
 test("flags missing Episode companion assets after relink", async ({ page }) => {
@@ -795,6 +818,31 @@ test("flags missing Episode companion assets after relink", async ({ page }) => 
   await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
   await expect(provenance).toContainText("matched");
   await expect(provenance).toContainText("missing");
+  await expect(provenance).toContainText("points.ply");
+});
+
+test("flags stale Episode companion asset metadata after relink", async ({ page }) => {
+  await page.addInitScript((input: { payload: LocalWorldPackagePayload; episodeText: string }) => {
+    window.worldStudioDesktop = {
+      openLocalPackage: async () => input.payload,
+      openEpisodeManifest: async () => ({
+        path: "/tmp/imported-episode-stale-asset.world-episode.json",
+        text: input.episodeText
+      })
+    };
+  }, { payload: localPackageStalePointsPayload, episodeText: importedEpisodeBundleText() });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Episode" }).click();
+  await page.getByRole("button", { name: "Load Episode" }).click();
+
+  const provenance = page.getByTestId("episode-provenance");
+  await expect(provenance).toContainText("pending");
+  await page.getByRole("button", { name: "Relink World Package" }).click();
+  await expect(page.getByTestId("episode-event-list")).toContainText("desktop import");
+  await expect(provenance).toContainText("matched");
+  await expect(provenance).toContainText("mismatch");
   await expect(provenance).toContainText("points.ply");
 });
 

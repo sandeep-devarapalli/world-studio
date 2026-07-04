@@ -1,4 +1,4 @@
-import type { AuthorityStatus, LocalPackageInsight, LocalPackageIssue, LocalWorldPackagePayload, LocalWorldPackageTextFile } from "@world-studio/world-core";
+import type { AuthorityStatus, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -38,6 +38,16 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     verifiedExport?.relativePath,
     ...jsonManifests.map((file) => file.relativePath)
   ].filter((entry): entry is string => Boolean(entry)))];
+  const assetManifest = buildAssetManifest([
+    sceneFile,
+    pointsPly,
+    gaussianPly,
+    objMesh,
+    budoMediaFrames,
+    articleFigureViews,
+    verifiedExport,
+    ...jsonManifests
+  ]);
 
   const packageKind = classifyPackage({ articleFigureViews, budoMediaFrames, pointsPly, sceneFile, verifiedExport });
   const authorityStatus = classifyAuthority(packageKind);
@@ -77,6 +87,7 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     packageKind,
     primaryArtifact,
     companionArtifacts,
+    assetManifest,
     authorityStatus,
     sceneJson,
     pointsPly,
@@ -142,7 +153,9 @@ async function readOptionalText(root: string, relativePath: string, packageIssue
       });
       return undefined;
     }
-    return { relativePath, text: await readFile(filePath, "utf8") };
+    const text = await readFile(filePath, "utf8");
+    const bytes = Buffer.from(text, "utf8");
+    return { relativePath, text, sizeBytes: bytes.byteLength, checksum: checksumBytes(bytes) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -180,7 +193,7 @@ async function readFirstBinary(root: string, relativePaths: string[], packageIss
   return undefined;
 }
 
-async function readOptionalBinary(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]) {
+async function readOptionalBinary(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageBinaryFile | undefined> {
   const filePath = resolveInside(root, relativePath);
   try {
     const info = await stat(filePath);
@@ -199,12 +212,37 @@ async function readOptionalBinary(root: string, relativePath: string, packageIss
     return {
       relativePath,
       dataUrl: `data:application/octet-stream;base64,${bytes.toString("base64")}`,
-      headerText: bytes.subarray(0, 32 * 1024).toString("utf8")
+      headerText: bytes.subarray(0, 32 * 1024).toString("utf8"),
+      sizeBytes: bytes.byteLength,
+      checksum: checksumBytes(bytes)
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
+}
+
+function buildAssetManifest(files: Array<LocalWorldPackageTextFile | LocalWorldPackageBinaryFile | undefined>): WorldAssetManifestEntry[] {
+  const seen = new Set<string>();
+  return files.flatMap((file) => {
+    if (!file) return [];
+    if (seen.has(file.relativePath)) return [];
+    seen.add(file.relativePath);
+    return [{
+      relativePath: file.relativePath,
+      ...(typeof file.sizeBytes === "number" ? { sizeBytes: file.sizeBytes } : {}),
+      ...(file.checksum ? { checksum: file.checksum } : {})
+    }];
+  });
+}
+
+function checksumBytes(bytes: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of bytes) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }
 
 function resolveInside(root: string, relativePath: string): string {
