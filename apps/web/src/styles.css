@@ -414,6 +414,23 @@ body {
   grid-template-columns: 42px minmax(0, 1fr) 86px;
   min-height: 30px;
   padding: 5px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+button.ws-episode-row {
+  appearance: none;
+  cursor: pointer;
+}
+
+.ws-episode-row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--acc), transparent 86%);
+  border-color: color-mix(in srgb, var(--acc), white 18%);
+}
+
+.ws-episode-row:focus-visible {
+  outline: 1px solid var(--acc);
+  outline-offset: 2px;
 }
 
 .ws-episode-row.agent {
@@ -438,4 +455,19 @@ body {
 
 .ws-episode-row b {
   text-align: right;
+}
+
+.ws-episode-export {
+  background: color-mix(in srgb, #080604, transparent 18%);
+  border: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-family: var(--mono);
+  font-size: calc(var(--fs) - 3px);
+  line-height: 1.35;
+  margin: 0;
+  max-height: 190px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
