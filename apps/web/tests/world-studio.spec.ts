@@ -606,11 +606,51 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("episode-selected-event")).toContainText("prop select");
 
-  await page.getByRole("button", { name: "Export Episode" }).click();
+  await page.getByRole("button", { name: "Preview JSON" }).click();
   const exportPreview = page.getByTestId("episode-export-preview");
   await expect(exportPreview).toContainText("world-studio.episode.v0.1");
   await expect(exportPreview).toContainText("prop nudge");
   await expect(exportPreview).toContainText("loft_04");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save Episode" }).click()
+  ]);
+  expect(download.suggestedFilename()).toBe("world-studio-episode-loft_04.json");
+  await expect(page.getByTestId("episode-save-status")).toContainText("downloaded world-studio-episode-loft_04.json");
+});
+
+test("saves Episode manifests through the desktop bridge", async ({ page }) => {
+  await page.addInitScript(() => {
+    const bridgeWindow = window as Window & {
+      __savedEpisode?: { suggestedName: string; text: string };
+      worldStudioDesktop?: {
+        saveEpisodeManifest: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
+      };
+    };
+    bridgeWindow.worldStudioDesktop = {
+      saveEpisodeManifest: async (input) => {
+        bridgeWindow.__savedEpisode = input;
+        return { path: `/tmp/${input.suggestedName}` };
+      }
+    };
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Pilot" }).click();
+  await page.getByRole("button", { name: "Reset to Spawn" }).click();
+  await page.getByRole("button", { name: "Episode" }).click();
+  await expect(page.getByTestId("episode-save-status")).toContainText("desktop save ready");
+  await page.getByRole("button", { name: "Save Episode" }).click();
+
+  await expect(page.getByTestId("episode-save-status")).toContainText("saved /tmp/world-studio-episode-loft_04.json");
+  const saved = await page.evaluate(() => {
+    const bridgeWindow = window as Window & { __savedEpisode?: { suggestedName: string; text: string } };
+    return bridgeWindow.__savedEpisode ?? null;
+  });
+  expect(saved?.suggestedName).toBe("world-studio-episode-loft_04.json");
+  expect(saved?.text).toContain("world-studio.episode.v0.1");
 });
 
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
