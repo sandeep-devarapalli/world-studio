@@ -21,12 +21,47 @@ body {
   background: #080604;
 }
 
+.ws-stage-shell::before {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 22% 30%, rgba(224, 104, 58, 0.1), transparent 16%),
+    radial-gradient(circle at 70% 18%, rgba(224, 104, 58, 0.07), transparent 18%),
+    linear-gradient(180deg, rgba(21, 18, 14, 0.08), rgba(8, 6, 4, 0.22));
+  content: "";
+  pointer-events: none;
+}
+
 .ws-stage {
   position: absolute;
   left: 50%;
   top: 50%;
   width: 1920px;
   height: 1080px;
+}
+
+.ws-root::after {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 45%, rgba(8, 6, 4, 0.34) 78%, rgba(8, 6, 4, 0.76) 100%),
+    linear-gradient(180deg, rgba(8, 6, 4, 0.2), transparent 18%, transparent 78%, rgba(8, 6, 4, 0.28));
+  content: "";
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ws-root {
+  isolation: isolate;
+}
+
+.ws-canvas {
+  z-index: 0;
+}
+
+.ws-overlay,
+.ws-statusbar {
+  z-index: 2;
 }
 
 .ws-drag-strip {
@@ -84,8 +119,8 @@ body {
 .ws-insight-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 330px;
+  gap: 6px;
+  max-height: 206px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -100,7 +135,7 @@ body {
   color: inherit;
   cursor: pointer;
   font: inherit;
-  padding-top: 8px;
+  padding: 7px 8px 0;
   text-align: left;
   width: 100%;
 }
@@ -113,6 +148,7 @@ body {
 .ws-insight-row.active {
   background: color-mix(in srgb, var(--acc), transparent 92%);
   border-color: color-mix(in srgb, var(--acc), transparent 35%);
+  border-radius: 8px;
 }
 
 .ws-insight-row:focus-visible {
@@ -141,18 +177,18 @@ body {
   color: var(--ink-mut);
   font-size: calc(var(--fs) - 2px);
   line-height: 1.35;
-  margin: 4px 0;
+  margin: 3px 0;
 }
 
 .ws-detail-panel {
-  max-height: 396px;
+  max-height: 292px;
 }
 
 .ws-detail-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 330px;
+  max-height: 226px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -217,9 +253,13 @@ body {
 }
 
 .ws-left {
-  max-height: 800px;
+  max-height: 716px;
   overflow-y: auto;
   scrollbar-width: thin;
+}
+
+.ws-left-view {
+  top: 122px;
 }
 
 .ws-root.mode-pilot .ws-left {
@@ -227,14 +267,63 @@ body {
 }
 
 .ws-right-col {
-  max-height: 690px;
+  max-height: 654px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 
+.ws-right-col-view {
+  top: 110px;
+}
+
+.ws-right-col-view .ws-row-stack {
+  gap: 10px;
+}
+
+.ws-right-col-view .ws-panel {
+  background: rgba(32, 27, 22, 0.82);
+}
+
+.ws-right-col-view .ws-panel-head {
+  padding-top: 11px;
+}
+
+.ws-right-col-view .ws-panel-body {
+  padding-bottom: 12px;
+}
+
+.ws-right-col-view .ws-kv {
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.ws-right-col-view .ws-kv b {
+  font-size: calc(var(--fs) - 3px);
+}
+
+.ws-right-col-view .ws-insight-list {
+  max-height: 174px;
+}
+
+.ws-right-col-view .ws-detail-panel {
+  max-height: 168px;
+}
+
+.ws-right-col-view .ws-detail-body {
+  max-height: 106px;
+}
+
+.ws-right-col-view .ws-detail-preview {
+  max-height: 74px;
+}
+
 .ws-bottom-right .ws-mode-card {
   width: 392px;
+}
+
+.ws-bottom-right .ws-mode-card .ws-panel-body {
+  padding: 14px;
 }
 
 .ws-canvas {

@@ -337,6 +337,7 @@ export function App() {
     () => (episodeProvenance && episodeSourceMatch ? buildEpisodeIntegrityRows(episodeProvenance, session, episodeSourceMatch.status) : []),
     [episodeProvenance, episodeSourceMatch, session]
   );
+  const timelineTotal = Math.max(captureFrames.length, session ? 292 : 0, 1);
   const episodeTotalFrames = Math.max(totalSteps, episodeTimeline.at(-1)?.frame ?? 0, 1);
   const episodeStep = Math.round(playhead * episodeTotalFrames);
   const agentEye: FeedPose = {
@@ -368,7 +369,7 @@ export function App() {
     [accent, agent, bodyPreset?.radius, camera, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
-    () => packageInsights.find((insight) => insight.id === selectedInsightId) ?? packageInsights[0] ?? null,
+    () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
     [packageInsights, selectedInsightId]
   );
 
@@ -594,7 +595,7 @@ export function App() {
       setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
-      setSelectedInsightId(nextInsights[0]?.id ?? null);
+      setSelectedInsightId(null);
       if (!options?.preserveEpisode) resetTransientState(worldSession);
       initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
       return;
@@ -644,7 +645,7 @@ export function App() {
     });
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
-    setSelectedInsightId(nextInsights[0]?.id ?? null);
+    setSelectedInsightId(null);
     if (!options?.preserveEpisode) resetTransientState(worldSession);
     initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
   }, [bodyPreset, initializeSimulation, resetTransientState]);
@@ -1191,8 +1192,8 @@ export function App() {
               </div>
             ) : null}
 
-            <aside className="ws-left">{renderLeftPanel()}</aside>
-            <aside className="ws-right-col">{renderRightPanel()}</aside>
+            <aside className={`ws-left ws-left-${mode}`}>{renderLeftPanel()}</aside>
+            <aside className={`ws-right-col ws-right-col-${mode}`}>{renderRightPanel()}</aside>
 
             {mode === "pilot" ? (
               <>
@@ -1501,11 +1502,12 @@ export function App() {
             ) : (
               <div className="ws-bottom-center">
                 <div className="ws-bottom-stack">
-                  {(mode === "view" || mode === "simulate") && captureFrames.length ? (
+                  {mode === "view" || mode === "simulate" ? (
                     <TimelineCapsule
-                      frame={Math.round(playhead * captureFrames.length)}
-                      total={captureFrames.length}
+                      frame={Math.round(playhead * timelineTotal)}
+                      total={timelineTotal}
                       playing={playing}
+                      recording={mode === "view" && Boolean(session)}
                       onToggle={() => setPlaying((value) => !value)}
                       onRewind={() => setPlayhead(0)}
                     />
@@ -1960,8 +1962,8 @@ export function App() {
           </div>
         </WSPanel>
         <PackageIssues issues={packageIssues} />
-        <PackageInspector insights={packageInsights} selectedId={activePackageInsight?.id ?? null} onSelect={setSelectedInsightId} />
-        <PackageInsightDetail insight={activePackageInsight} />
+        <PackageInspector insights={packageInsights} selectedId={selectedInsightId} onSelect={setSelectedInsightId} />
+        {activePackageInsight ? <PackageInsightDetail insight={activePackageInsight} /> : null}
       </div>
     );
   }
