@@ -1106,11 +1106,104 @@ test("keeps the stage centered and chrome visible across window resizes", async 
   }
 });
 
+test("captures visual smoke for all modes across desktop viewports", async ({ page }, testInfo) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+
+  const visualCases: Array<{
+    mode: string;
+    required: string[];
+    absent?: string[];
+    noOverlap?: Array<[string, string, string]>;
+  }> = [
+    {
+      mode: "View",
+      required: [".ws-left-view", ".ws-right-col-view", ".ws-bottom-right .ws-mode-card", ".ws-bottom-center .ws-ctrlbar"]
+    },
+    {
+      mode: "Edit",
+      required: [".ws-left-edit", ".ws-right-col-edit", ".ws-render-row .ws-mode-switch", ".ws-bottom-right .ws-mode-card"]
+    },
+    {
+      mode: "Simulate",
+      required: [".ws-dual-left", ".ws-left-simulate", ".ws-bottom-tray", ".ws-timeline", ".ws-bottom-center .ws-ctrlbar"],
+      noOverlap: [[".ws-bottom-tray", ".ws-timeline", "Simulate tray must not cover the timeline"]]
+    },
+    {
+      mode: "Pilot",
+      required: [".ws-left-pilot", ".ws-strip", ".ws-pip", ".ws-bottom-left .ws-mode-card"]
+    },
+    {
+      mode: "Sensors",
+      required: [".ws-right-col-sensors", ".ws-previews", ".ws-bottom-center .ws-ctrlbar"],
+      absent: [".ws-bottom-right .ws-mode-card"]
+    },
+    {
+      mode: "Episode",
+      required: [".ws-episode-card", ".ws-bottom-full", ".ws-tracks-panel"]
+    }
+  ];
+
+  for (const viewport of [
+    { name: "desktop", width: 1920, height: 1080 },
+    { name: "compact", width: 1440, height: 900 }
+  ]) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    for (const visualCase of visualCases) {
+      await page.locator(".ws-top-center").getByRole("button", { name: visualCase.mode, exact: true }).click();
+      await expect(page.locator(".ws-top-center .ws-pill.on")).toHaveText(visualCase.mode);
+      await expectBoxWithinViewport(page, ".ws-wordmark", viewport);
+      await expectBoxWithinViewport(page, ".ws-top-center .ws-mode-switch", viewport);
+      await expectBoxWithinViewport(page, ".ws-statusbar", viewport);
+      for (const selector of visualCase.required) await expectBoxWithinViewport(page, selector, viewport);
+      for (const selector of visualCase.absent ?? []) await expect(page.locator(selector)).toHaveCount(0);
+      for (const [a, b, label] of visualCase.noOverlap ?? []) await expectNoOverlap(page, a, b, label);
+
+      const screenshot = await page.screenshot({ fullPage: false });
+      expect(screenshot.byteLength).toBeGreaterThan(30_000);
+      await testInfo.attach(`mode-${visualCase.mode.toLowerCase()}-${viewport.name}.png`, {
+        body: screenshot,
+        contentType: "image/png"
+      });
+    }
+  }
+
+  expect(consoleErrors).toEqual([]);
+});
+
 async function expectCanvasScreenshot(page: Page) {
   const canvas = page.locator("[data-testid='world-canvas']");
   await expect(canvas).toBeVisible();
   const screenshot = await canvas.screenshot();
   expect(screenshot.byteLength).toBeGreaterThan(10_000);
+}
+
+async function expectBoxWithinViewport(page: Page, selector: string, viewport: { width: number; height: number }) {
+  const locator = page.locator(selector).first();
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`${selector} missing`);
+  expect(box.x, `${selector} x`).toBeGreaterThanOrEqual(-1);
+  expect(box.y, `${selector} y`).toBeGreaterThanOrEqual(-1);
+  expect(box.x + box.width, `${selector} right`).toBeLessThanOrEqual(viewport.width + 1);
+  expect(box.y + box.height, `${selector} bottom`).toBeLessThanOrEqual(viewport.height + 1);
+}
+
+async function expectNoOverlap(page: Page, selectorA: string, selectorB: string, label: string) {
+  const boxA = await page.locator(selectorA).first().boundingBox();
+  const boxB = await page.locator(selectorB).first().boundingBox();
+  if (!boxA || !boxB) throw new Error(`${label}: missing box`);
+  const separated =
+    boxA.x + boxA.width <= boxB.x + 1 ||
+    boxB.x + boxB.width <= boxA.x + 1 ||
+    boxA.y + boxA.height <= boxB.y + 1 ||
+    boxB.y + boxB.height <= boxA.y + 1;
+  expect(separated, label).toBe(true);
 }
 
 async function installSelectablePackageBridge(page: Page, choices: PackageFixtureChoice[]) {
