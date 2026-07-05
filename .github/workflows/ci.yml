@@ -46,3 +46,28 @@ jobs:
 
       - name: UI smoke tests
         run: pnpm test:ui
+
+  desktop-package-smoke:
+    name: Packaged desktop smoke
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package and smoke test desktop app
+        run: pnpm desktop:package:smoke
