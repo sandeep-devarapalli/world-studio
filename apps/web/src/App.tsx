@@ -272,6 +272,11 @@ interface EpisodeIntegrityRow {
   actualChecksum: string;
 }
 
+interface MeasurePoint {
+  world: [number, number, number];
+  stage: { x: number; y: number };
+}
+
 const defaultProps: SimulatedPropState[] = [
   { id: "prop-crate-a", label: "crate_a", preset: "crate", contactState: "grounded", x: -0.8, y: 0.18, z: 0.4, footprintRadius: 0.3 },
   { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
@@ -309,6 +314,7 @@ export function App() {
   const [showDeleted, setShowDeleted] = useState(true);
   const [isolatedClass, setIsolatedClass] = useState<number | undefined>(undefined);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [measurePoints, setMeasurePoints] = useState<MeasurePoint[]>([]);
   const [agent, setAgent] = useState<AgentState>(defaultSpawn);
   const [spawn, setSpawn] = useState<AgentState>(defaultSpawn);
   const [bodyPresetId, setBodyPresetId] = useState<AgentBodyPresetId>("locobot");
@@ -360,6 +366,12 @@ export function App() {
     () => sensorCaptures.filter((capture) => capture.sensorId === selectedSensor?.id),
     [selectedSensor?.id, sensorCaptures]
   );
+  const measurementDistance = useMemo(() => {
+    if (measurePoints.length < 2) return null;
+    const [a, b] = measurePoints;
+    if (!a || !b) return null;
+    return Math.hypot(b.world[0] - a.world[0], b.world[1] - a.world[1], b.world[2] - a.world[2]);
+  }, [measurePoints]);
   const latestSensorCapture = selectedSensorCaptures[0] ?? null;
   const episodeTimeline = useMemo(() => [...episodeEvents].sort((a, b) => a.frame - b.frame), [episodeEvents]);
   const selectedEpisodeEvent = useMemo(
@@ -537,6 +549,7 @@ export function App() {
     setSelected(new Set());
     setDeleted(new Set());
     setHistory([]);
+    setMeasurePoints([]);
     setStepCount(0);
     setLastAction("idle");
     setProps(defaultProps);
@@ -739,6 +752,19 @@ export function App() {
       for (const index of indices) brushStrokeRef.current.add(index);
     },
     [options, renderer, scale]
+  );
+
+  const measureAt = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !renderer?.projectToGround) return;
+      const world = renderer.projectToGround(canvas, options, event.clientX, event.clientY);
+      if (!world) return;
+      const point: MeasurePoint = { world, stage: toStage(event.clientX, event.clientY) };
+      setMeasurePoints((current) => (current.length >= 2 ? [point] : [...current, point]));
+      setLastAction("measure point");
+    },
+    [options, renderer, toStage]
   );
 
   const deleteSelected = useCallback(() => {
@@ -1200,6 +1226,9 @@ export function App() {
       interactionRef.current = { kind: "rect", x: event.clientX, y: event.clientY };
       const start = toStage(event.clientX, event.clientY);
       setSelectRect({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
+    } else if (mode === "edit" && renderer && tool === "ruler") {
+      interactionRef.current = null;
+      measureAt(event);
     } else {
       interactionRef.current = { kind: "orbit", x: event.clientX, y: event.clientY };
     }
@@ -1269,6 +1298,24 @@ export function App() {
   const activeMode = modes.find((entry) => entry.id === mode) ?? modes[0];
   const rootClass = `ws-root mode-${mode} ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
   const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
+  const measureStart = measurePoints[0];
+  const measureEnd = measurePoints[1];
+  const measureLineStyle =
+    measureStart && measureEnd
+      ? {
+          left: measureStart.stage.x,
+          top: measureStart.stage.y,
+          width: Math.hypot(measureEnd.stage.x - measureStart.stage.x, measureEnd.stage.y - measureStart.stage.y),
+          transform: `rotate(${Math.atan2(measureEnd.stage.y - measureStart.stage.y, measureEnd.stage.x - measureStart.stage.x)}rad)`
+        }
+      : undefined;
+  const measureLabelStyle =
+    measureStart && measureEnd
+      ? {
+          left: (measureStart.stage.x + measureEnd.stage.x) / 2,
+          top: (measureStart.stage.y + measureEnd.stage.y) / 2
+        }
+      : undefined;
 
   return (
     <div className="ws-stage-shell">
@@ -1278,7 +1325,7 @@ export function App() {
           <canvas
             ref={canvasRef}
             className={`ws-canvas ${mode === "simulate" ? "dual-right" : ""} ${
-              mode === "edit" && (tool === "brush" || tool === "rect") ? "edit-tool" : ""
+              mode === "edit" && (tool === "brush" || tool === "rect" || tool === "ruler") ? "edit-tool" : ""
             }`.trim()}
             data-testid="world-canvas"
             onPointerDown={onPointerDown}
@@ -1304,6 +1351,21 @@ export function App() {
                 height: Math.abs(selectRect.y1 - selectRect.y0)
               }}
             />
+          ) : null}
+          {mode === "edit" && measurePoints.length ? (
+            <div className="ws-measure-overlay" data-testid="measure-overlay">
+              {measureLineStyle ? <div className="ws-measure-line" style={measureLineStyle} /> : null}
+              {measurePoints.map((point, index) => (
+                <div className="ws-measure-dot" key={`${point.world.join(":")}-${index}`} style={{ left: point.stage.x, top: point.stage.y }}>
+                  {index + 1}
+                </div>
+              ))}
+              {measurementDistance !== null && measureLabelStyle ? (
+                <div className="ws-measure-label" data-testid="measure-overlay-label" style={measureLabelStyle}>
+                  {measurementDistance.toFixed(2)} m
+                </div>
+              ) : null}
+            </div>
           ) : null}
           <div className="ws-overlay">
             {mode === "simulate" ? (
@@ -1914,6 +1976,21 @@ export function App() {
               <button className="ws-node click" onClick={() => setShowDeleted((value) => !value)}>
                 {showDeleted ? "visible" : "hidden"}
               </button>
+            </div>
+          </WSPanel>
+          <WSPanel title="Measure" meta={measurementDistance === null ? "two clicks" : "ground plane"} data-testid="measure-panel">
+            <div className="ws-kv" data-testid="measure-readout">
+              <span>distance</span>
+              <b>{measurementDistance === null ? (measurePoints.length ? "pick end" : "pick start") : `${measurementDistance.toFixed(2)} m`}</b>
+            </div>
+            <div className="ws-kv">
+              <span>basis</span>
+              <b>ground plane · meters</b>
+            </div>
+            <div className="ws-btn-row">
+              <WSButton disabled={!measurePoints.length} onClick={() => setMeasurePoints([])}>
+                Clear Measure
+              </WSButton>
             </div>
           </WSPanel>
           <WSPanel title="History" meta={`${history.length} ops`}>

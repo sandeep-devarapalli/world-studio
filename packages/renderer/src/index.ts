@@ -170,6 +170,19 @@ export class ThreeWorldRenderer implements RenderAdapter {
     return out;
   }
 
+  projectToGround(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number): [number, number, number] | null {
+    this.ensureThree(canvas);
+    if (!this.camera) return null;
+    this.updateCamera(canvas, options);
+
+    const rect = canvas.getBoundingClientRect();
+    const pointer = new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -(((y - rect.top) / rect.height) * 2 - 1));
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(pointer, this.camera);
+    const hit = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    return hit ? [hit.x, hit.y, hit.z] : null;
+  }
+
   capture(canvas: HTMLCanvasElement): string {
     return canvas.toDataURL("image/png");
   }
