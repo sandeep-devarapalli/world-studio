@@ -231,6 +231,7 @@
 .ws-frames-panel { left: var(--inset); width: 330px; }
 .ws-frame-list { padding: 6px; }
 .ws-frame-thumb { width: 40px; height: 26px; border-radius: 5px; background: linear-gradient(135deg, #4a3a2c, #2a2118); border: 1px solid var(--line); flex: 0 0 auto; }
+.ws-frame-thumb.image { object-fit: cover; display: block; }
 .ws-bottom-tray { position: absolute; left: 50%; transform: translateX(-50%); bottom: 132px; display: flex; gap: 14px; align-items: flex-end; }
 .ws-card { width: 296px; }
 .ws-bottom-center.dual-tl { bottom: 18px; }

@@ -117,6 +117,7 @@ interface AssetSummary {
 interface CaptureFrame {
   name: string;
   path: string;
+  previewDataUrl?: string;
 }
 
 interface SensorCaptureArtifact {
@@ -379,6 +380,7 @@ export function App() {
   );
   const simulateCompareCaptures = captureComparison.length ? captureComparison : captureCompareCandidates;
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
+  const simulateSourceFrame = simulateComparisonCapture ? null : captureFrames.find((frame) => frame.previewDataUrl) ?? null;
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
     [episodeProvenance, session]
@@ -1304,21 +1306,29 @@ export function App() {
           <div className="ws-overlay">
             {mode === "simulate" ? (
               <>
-                <div className={`ws-dual-left ${simulateComparisonCapture?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
+                <div className={`ws-dual-left ${simulateComparisonCapture?.previewDataUrl || simulateSourceFrame?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
                   {simulateComparisonCapture?.previewDataUrl ? (
                     <img
                       alt="Selected comparison capture evidence"
                       className="ws-sim-comparison-preview"
                       src={simulateComparisonCapture.previewDataUrl}
                     />
+                  ) : simulateSourceFrame?.previewDataUrl ? (
+                    <img
+                      alt="Selected source frame evidence"
+                      className="ws-sim-comparison-preview"
+                      src={simulateSourceFrame.previewDataUrl}
+                    />
                   ) : (
                     <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
                   )}
                   <div className="ws-view-tag">
-                    <span className="ws-head">{simulateComparisonCapture ? "Source evidence" : "Sensor feed"}</span>
+                    <span className="ws-head">{simulateComparisonCapture || simulateSourceFrame ? "Source evidence" : "Sensor feed"}</span>
                     <WSChip>
                       {simulateComparisonCapture
                         ? `frame ${simulateComparisonCapture.frame}`
+                        : simulateSourceFrame
+                          ? simulateSourceFrame.name
                         : captureFrames.length
                           ? `${captureFrames.length} frames`
                           : "cam_front · synthetic"}
@@ -1931,7 +1941,11 @@ export function App() {
             {captureFrames.length ? (
               captureFrames.slice(0, 7).map((frame) => (
                 <div key={frame.name} className="ws-frame-row">
-                  <span className="ws-frame-thumb" />
+                  {frame.previewDataUrl ? (
+                    <img alt={`${frame.name} preview`} className="ws-frame-thumb image" src={frame.previewDataUrl} />
+                  ) : (
+                    <span className="ws-frame-thumb" />
+                  )}
                   <span className="ws-row-name">{frame.name}</span>
                   <WSChip>ok</WSChip>
                 </div>
@@ -2142,13 +2156,13 @@ export function App() {
       return (
         <WSPanel
           title="3DGS Compare"
-          meta={simulateComparisonCapture ? "visual proxy" : "no episode"}
+          meta={simulateComparisonCapture || simulateSourceFrame ? "visual proxy" : "no episode"}
           className="ws-sim-comparison-panel"
           data-testid="simulate-comparison-panel"
         >
           <div className="ws-kv">
             <span>left</span>
-            <b>{simulateComparisonCapture ? "source/render evidence" : "synthetic sensor feed"}</b>
+            <b>{simulateComparisonCapture ? "source/render evidence" : simulateSourceFrame ? "source evidence" : "synthetic sensor feed"}</b>
           </div>
           <div className="ws-kv">
             <span>right</span>
@@ -2666,11 +2680,16 @@ function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
   const text = payload.budoMediaFrames?.text;
   if (!text) return [];
   try {
-    const parsed = JSON.parse(text) as { frames?: Array<{ display_name?: string; rgb_path?: string }> };
+    const parsed = JSON.parse(text) as { frames?: Array<{ display_name?: string; rgb_path?: string; preview_data_url?: string; previewDataUrl?: string }> };
     if (!Array.isArray(parsed.frames)) return [];
     return parsed.frames.map((frame, index) => ({
       name: frame.display_name ?? `frame ${index + 1}`,
-      path: frame.rgb_path ?? ""
+      path: frame.rgb_path ?? "",
+      previewDataUrl: typeof frame.preview_data_url === "string" && frame.preview_data_url.startsWith("data:image/")
+        ? frame.preview_data_url
+        : typeof frame.previewDataUrl === "string" && frame.previewDataUrl.startsWith("data:image/")
+          ? frame.previewDataUrl
+          : undefined
     }));
   } catch {
     return [];

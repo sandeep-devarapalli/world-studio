@@ -7,6 +7,7 @@ import { readLocalPackage } from "./package-reader.js";
 
 const tempRoots: string[] = [];
 const loftFixtureRoot = () => fileURLToPath(new URL("../../../apps/web/public/fixtures/loft_04", import.meta.url));
+const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==", "base64");
 
 async function makePackage(name: string) {
   const root = await mkdtemp(join(tmpdir(), `world-studio-${name}-`));
@@ -218,6 +219,48 @@ end_header
       summary: "Renderable Gaussian source detected; preview points were generated for bounds only.",
       details: [{ label: "points source", value: "generated preview, not a package file" }]
     }));
+    expect(payload.packageIssues).toEqual([]);
+  });
+
+  it("synthesizes source frame previews for Capture Splat image folders", async () => {
+    const root = await makePackage("capture-splat-images");
+    await mkdir(join(root, "images"));
+    await writeFile(join(root, "images", "frame_000001.png"), onePixelPng);
+    await writeFile(join(root, "images", "frame_000002.png"), onePixelPng);
+    await writeFile(join(root, "splat.ply"), `ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`);
+
+    const payload = await readLocalPackage(root);
+    const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ rgb_path?: string; preview_data_url?: string }>;
+      source_kind?: string;
+    };
+
+    expect(payload.packageKind).toBe("capture-splat-local-folder");
+    expect(payload.sourceKind).toBe("capture_splat.local_folder");
+    expect(payload.budoMediaFrames?.relativePath).toBe("capture-splat.media_frames.generated.json");
+    expect(mediaFrames.source_kind).toBe("capture_splat.image_folder");
+    expect(mediaFrames.frames).toHaveLength(2);
+    expect(mediaFrames.frames?.[0]?.rgb_path).toBe("images/frame_000001.png");
+    expect(mediaFrames.frames?.[0]?.preview_data_url).toMatch(/^data:image\/png;base64,/);
+    expect(payload.packageInsights.map((insight) => insight.kind)).toContain("media-frames");
     expect(payload.packageIssues).toEqual([]);
   });
 

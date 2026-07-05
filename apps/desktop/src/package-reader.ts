@@ -6,7 +6,11 @@ import path from "node:path";
 const maxTextBytes = 64 * 1024 * 1024;
 const maxBinaryBytes = 256 * 1024 * 1024;
 const maxGaussianPreviewPoints = 50_000;
+const maxCapturePreviewFrames = 24;
+const maxCapturePreviewImageBytes = 16 * 1024 * 1024;
 const maxPreviewChars = 8_000;
+const captureFrameDirs = ["source", "images", "rgb", "frames", "renders"];
+const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 export async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayload> {
   const sourcePath = path.resolve(folder);
@@ -19,7 +23,9 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     : undefined;
   const pointsPly = sourcePointsPly ?? generatedPointsPly;
   const objMesh = await readFirstText(sourcePath, ["collision_mesh.obj", "mesh.obj", "model.obj"], packageIssues);
-  const budoMediaFrames = await readOptionalText(sourcePath, "budo.media_frames.v0.8.json", packageIssues);
+  const sourceBudoMediaFrames = await readOptionalText(sourcePath, "budo.media_frames.v0.8.json", packageIssues);
+  const generatedCaptureFrames = sourceBudoMediaFrames ? undefined : await readCaptureFrameManifest(sourcePath, packageIssues);
+  const budoMediaFrames = sourceBudoMediaFrames ?? generatedCaptureFrames;
   const articleFigureViews = await readOptionalText(sourcePath, "budo.article_figure_3d_views.v0.1.json", packageIssues);
   const verifiedExport = await readOptionalText(sourcePath, "verified_export/manifest.json", packageIssues);
   const jsonManifests = await readPackageJsonManifests(sourcePath, packageIssues);
@@ -55,7 +61,9 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     ...jsonManifests
   ]);
 
-  const packageKind = classifyPackage({ articleFigureViews, budoMediaFrames, pointsPly: sourcePointsPly, sceneFile, verifiedExport });
+  const packageKind = generatedCaptureFrames
+    ? "capture-splat-local-folder"
+    : classifyPackage({ articleFigureViews, budoMediaFrames, pointsPly: sourcePointsPly, sceneFile, verifiedExport });
   const authorityStatus = classifyAuthority(packageKind);
   const primaryArtifact =
     verifiedExport?.relativePath ??
@@ -85,7 +93,9 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     sourcePath,
     loadedVia: "electron-picker",
     sourceKind:
-      packageKind.startsWith("budo") || packageKind === "verified-semantic-export"
+      packageKind === "capture-splat-local-folder"
+        ? "capture_splat.local_folder"
+        : packageKind.startsWith("budo") || packageKind === "verified-semantic-export"
         ? "budo.local_folder"
         : packageKind === "external-local-folder"
           ? "external.local_folder"
@@ -256,6 +266,122 @@ async function readGaussianPreviewPointCloud(
     });
     return undefined;
   }
+}
+
+async function readCaptureFrameManifest(
+  root: string,
+  packageIssues?: LocalPackageIssue[]
+): Promise<LocalWorldPackageTextFile | undefined> {
+  const frames = await readCaptureFrameFiles(root, packageIssues);
+  if (!frames.length) return undefined;
+
+  const manifest = {
+    schema: "budo.media_frames.v0.8",
+    source_kind: "capture_splat.image_folder",
+    generated_by: "world-studio.local-package-reader",
+    frames: frames.map((frame, index) => ({
+      display_name: frame.displayName,
+      frame_index: index,
+      rgb_path: frame.relativePath,
+      preview_data_url: frame.dataUrl,
+      mime_type: frame.mimeType,
+      size_bytes: frame.sizeBytes,
+      checksum: frame.checksum
+    }))
+  };
+  const text = `${JSON.stringify(manifest, null, 2)}\n`;
+  const bytes = Buffer.from(text, "utf8");
+  return {
+    relativePath: "capture-splat.media_frames.generated.json",
+    text,
+    sizeBytes: bytes.byteLength,
+    checksum: checksumBytes(bytes)
+  };
+}
+
+async function readCaptureFrameFiles(
+  root: string,
+  packageIssues?: LocalPackageIssue[]
+): Promise<Array<{
+  checksum: string;
+  dataUrl: string;
+  displayName: string;
+  mimeType: string;
+  relativePath: string;
+  sizeBytes: number;
+}>> {
+  for (const directory of captureFrameDirs) {
+    const dirPath = resolveInside(root, directory);
+    let entries;
+    try {
+      const info = await stat(dirPath);
+      if (!info.isDirectory()) continue;
+      entries = await readdir(dirPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    const imageEntries = entries
+      .filter((entry) => entry.isFile() && imageExtensions.has(path.extname(entry.name).toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      .slice(0, maxCapturePreviewFrames);
+    const frames = [];
+    for (const entry of imageEntries) {
+      const relativePath = `${directory}/${entry.name}`;
+      const frame = await readImagePreviewFile(root, relativePath, packageIssues);
+      if (frame) frames.push(frame);
+    }
+    if (frames.length) return frames;
+  }
+  return [];
+}
+
+async function readImagePreviewFile(
+  root: string,
+  relativePath: string,
+  packageIssues?: LocalPackageIssue[]
+): Promise<{
+  checksum: string;
+  dataUrl: string;
+  displayName: string;
+  mimeType: string;
+  relativePath: string;
+  sizeBytes: number;
+} | undefined> {
+  const filePath = resolveInside(root, relativePath);
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile()) return undefined;
+    if (info.size > maxCapturePreviewImageBytes) {
+      pushIssue(packageIssues, {
+        artifact: relativePath,
+        code: "file_too_large",
+        message: `${relativePath} is ${info.size} bytes; World Studio embeds source frame previews up to ${maxCapturePreviewImageBytes} bytes each.`,
+        severity: "warning",
+        title: "Source frame preview skipped"
+      });
+      return undefined;
+    }
+    const bytes = await readFile(filePath);
+    const mimeType = imageMimeType(relativePath);
+    return {
+      relativePath,
+      displayName: path.basename(relativePath, path.extname(relativePath)),
+      mimeType,
+      sizeBytes: bytes.byteLength,
+      checksum: checksumBytes(bytes),
+      dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function imageMimeType(relativePath: string): string {
+  const extension = path.extname(relativePath).toLowerCase();
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".webp") return "image/webp";
+  return "image/png";
 }
 
 function buildAssetManifest(files: Array<LocalWorldPackageTextFile | LocalWorldPackageBinaryFile | undefined>): WorldAssetManifestEntry[] {
