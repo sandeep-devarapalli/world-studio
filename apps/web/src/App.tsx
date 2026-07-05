@@ -326,6 +326,7 @@ export function App() {
   const [episodeSaveStatus, setEpisodeSaveStatus] = useState<string | null>(null);
   const [episodeProvenance, setEpisodeProvenance] = useState<EpisodeProvenanceSummary | null>(null);
   const [episodeIntegrityOpen, setEpisodeIntegrityOpen] = useState(false);
+  const [captureCompareIds, setCaptureCompareIds] = useState<string[]>([]);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -367,6 +368,14 @@ export function App() {
   const selectedEpisodeCapture = useMemo(
     () => sensorCaptures.find((capture) => capture.eventId === selectedEpisodeEvent?.id) ?? null,
     [selectedEpisodeEvent?.id, sensorCaptures]
+  );
+  const captureCompareCandidates = useMemo(
+    () => [...sensorCaptures].sort((a, b) => a.frame - b.frame),
+    [sensorCaptures]
+  );
+  const captureComparison = useMemo(
+    () => captureCompareIds.flatMap((id) => sensorCaptures.find((capture) => capture.id === id) ?? []),
+    [captureCompareIds, sensorCaptures]
   );
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
@@ -534,6 +543,7 @@ export function App() {
     setEpisodeSaveStatus(null);
     setEpisodeProvenance(null);
     setEpisodeIntegrityOpen(false);
+    setCaptureCompareIds([]);
     setSensorCaptures([]);
     propSeqRef.current = defaultProps.length;
     episodeFrameRef.current = 0;
@@ -838,6 +848,21 @@ export function App() {
     [episodeTotalFrames]
   );
 
+  const toggleCaptureComparison = useCallback((captureId: string) => {
+    setCaptureCompareIds((current) => {
+      if (current.includes(captureId)) return current.filter((id) => id !== captureId);
+      return [...current.slice(-1), captureId];
+    });
+    setEpisodeExportText(null);
+    setEpisodeSaveStatus(null);
+  }, []);
+
+  const clearCaptureComparison = useCallback(() => {
+    setCaptureCompareIds([]);
+    setEpisodeExportText(null);
+    setEpisodeSaveStatus(null);
+  }, []);
+
   const stepEpisodeEvent = useCallback(
     (direction: -1 | 1) => {
       if (!episodeTimeline.length) return;
@@ -884,10 +909,34 @@ export function App() {
 
   const createEpisodeBundleText = useCallback(() => createEpisodeBundlePayload().text, [createEpisodeBundlePayload]);
 
+  const createSensorCaptureManifestText = useCallback(() => {
+    const manifest = buildSensorCaptureManifest({
+      session,
+      captures: captureComparison,
+      events: episodeTimeline
+    });
+    return JSON.stringify(manifest, null, 2);
+  }, [captureComparison, episodeTimeline, session]);
+
   const exportEpisodeManifest = useCallback(() => {
     setEpisodeExportText(createEpisodeManifestText());
     setEpisodeSaveStatus("preview ready");
   }, [createEpisodeManifestText]);
+
+  const exportSensorCaptureManifest = useCallback(async () => {
+    if (!captureComparison.length) return;
+    const text = createSensorCaptureManifestText();
+    const suggestedName = sensorCaptureManifestFileName(session);
+    setEpisodeExportText(text);
+    const desktopSave = getDesktopApi()?.saveEpisodeManifest;
+    if (desktopSave) {
+      const result = await desktopSave({ suggestedName, text });
+      setEpisodeSaveStatus(result?.path ? `saved captures ${compactPath(result.path)}` : "capture export canceled");
+      return;
+    }
+    downloadTextFile(suggestedName, text, "application/json");
+    setEpisodeSaveStatus(`downloaded captures ${suggestedName}`);
+  }, [captureComparison.length, createSensorCaptureManifestText, session]);
 
   const saveEpisodeManifest = useCallback(async () => {
     if (!episodeTimeline.length) return;
@@ -936,6 +985,7 @@ export function App() {
     setSensors(imported.sensors);
     setSelectedSensorId(imported.sensors[0]?.id ?? initialSensors[0]?.id ?? "rgb");
     setSensorCaptures(imported.sensorCaptures);
+    setCaptureCompareIds([]);
     setEpisodeExportText(text);
     setEpisodeSaveStatus(`loaded ${compactPath(sourceLabel)}${imported.worldName ? ` · ${imported.worldName}` : ""}`);
     setEpisodeProvenance({ ...imported.provenance, loadedFrom: sourceLabel });
@@ -1524,6 +1574,81 @@ export function App() {
                           <span className="ws-row-name">no capture artifact for selected event</span>
                         </div>
                       )}
+                    </div>
+                  ) : null}
+                  {sensorCaptures.length ? (
+                    <div className="ws-capture-compare" data-testid="episode-capture-compare">
+                      <div className="ws-detail-heading">
+                        <span>Capture Compare</span>
+                        <b>{captureComparison.length}/2 selected</b>
+                      </div>
+                      <div className="ws-compare-grid">
+                        {captureComparison.map((capture) => (
+                          <div className={`ws-compare-card ${capture.assetStatus}`} key={capture.id}>
+                            {capture.previewDataUrl ? (
+                              <img
+                                alt={`Compare capture ${capture.eventId}`}
+                                className="ws-capture-preview"
+                                src={capture.previewDataUrl}
+                              />
+                            ) : (
+                              <div className="ws-capture-missing">
+                                <span className="ws-frame-thumb" />
+                                <span className="ws-row-name">missing capture asset</span>
+                              </div>
+                            )}
+                            <div className="ws-kv">
+                              <span>frame</span>
+                              <b>{capture.eventId} · {capture.frame}</b>
+                            </div>
+                            <div className="ws-kv">
+                              <span>sensor</span>
+                              <b>{capture.sensorLabel} · {capture.sensorKind}</b>
+                            </div>
+                            <div className={`ws-kv ws-capture-asset-validation ${capture.assetStatus}`}>
+                              <span>integrity</span>
+                              <b>{formatSensorCaptureAssetStatus(capture)}</b>
+                            </div>
+                          </div>
+                        ))}
+                        {captureComparison.length < 2 ? (
+                          <div className="ws-compare-empty">
+                            <span className="ws-frame-thumb" />
+                            <span className="ws-row-name">select another capture</span>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="ws-capture-list">
+                        {captureCompareCandidates.slice(0, 6).map((capture) => {
+                          const selectedForCompare = captureCompareIds.includes(capture.id);
+                          return (
+                            <button
+                              aria-label={`${selectedForCompare ? "Remove" : "Add"} capture ${capture.eventId} comparison`}
+                              className={`ws-capture-row ${selectedForCompare ? "selected" : ""}`}
+                              key={capture.id}
+                              onClick={() => toggleCaptureComparison(capture.id)}
+                              type="button"
+                            >
+                              <span>{String(capture.frame).padStart(3, "0")}</span>
+                              <b>{capture.sensorLabel}</b>
+                              <span>{selectedForCompare ? "selected" : capture.assetStatus}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="ws-btn-row">
+                        {selectedEpisodeCapture ? (
+                          <WSButton onClick={() => toggleCaptureComparison(selectedEpisodeCapture.id)}>
+                            {captureCompareIds.includes(selectedEpisodeCapture.id) ? "Remove Selected" : "Add Selected to Compare"}
+                          </WSButton>
+                        ) : null}
+                        <WSButton accent disabled={!captureComparison.length} onClick={() => void exportSensorCaptureManifest()}>
+                          Export Captures
+                        </WSButton>
+                        <WSButton disabled={!captureComparison.length} onClick={clearCaptureComparison}>
+                          Clear
+                        </WSButton>
+                      </div>
                     </div>
                   ) : null}
                   <div className="ws-btn-row">
@@ -3138,6 +3263,71 @@ function buildEpisodeManifest({
   };
 }
 
+function buildSensorCaptureManifest({
+  session,
+  captures,
+  events
+}: {
+  session: WorldSession | null;
+  captures: SensorCaptureArtifact[];
+  events: EpisodeEvent[];
+}) {
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  return {
+    schema: "world-studio.sensor_capture_manifest.v0.1",
+    createdAt: new Date().toISOString(),
+    world: session
+      ? {
+          id: session.id,
+          name: session.name,
+          version: session.version ?? null,
+          units: session.units,
+          upAxis: session.upAxis,
+          provenance: session.provenance
+        }
+      : null,
+    selection: {
+      captureCount: captures.length,
+      frames: captures.map((capture) => capture.frame),
+      eventIds: captures.map((capture) => capture.eventId)
+    },
+    captures: captures.map((capture) => {
+      const event = eventById.get(capture.eventId);
+      return {
+        id: capture.id,
+        eventId: capture.eventId,
+        eventLabel: event?.label ?? null,
+        eventStatus: event?.status ?? null,
+        frame: capture.frame,
+        sensor: {
+          id: capture.sensorId,
+          label: capture.sensorLabel,
+          kind: capture.sensorKind,
+          spec: capture.sensorSpec
+        },
+        capturedAt: capture.capturedAt,
+        renderMode: capture.renderMode,
+        rendererStatus: capture.rendererStatus,
+        asset: {
+          path: capture.assetPath ?? null,
+          status: capture.assetStatus,
+          mimeType: capture.mimeType,
+          sizeBytes: capture.sizeBytes,
+          checksum: capture.checksum
+        },
+        image: capture.size,
+        camera: capture.camera,
+        provenance: {
+          worldName: capture.worldName,
+          sourcePath: capture.sourcePath,
+          loadedVia: capture.loadedVia
+        }
+      };
+    }),
+    notes: ["Capture previews are not embedded; use asset.path plus checksum/size for relink validation."]
+  };
+}
+
 function buildEpisodeBundle({
   episodeManifest,
   session,
@@ -3224,6 +3414,12 @@ function episodeBundleFileName(session: WorldSession | null): string {
   const name = session?.name ?? "untitled";
   const safeName = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
   return `world-studio-episode-${safeName}.world-episode.json`;
+}
+
+function sensorCaptureManifestFileName(session: WorldSession | null): string {
+  const name = session?.name ?? "untitled";
+  const safeName = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+  return `world-studio-captures-${safeName}.sensor-captures.json`;
 }
 
 function downloadTextFile(fileName: string, text: string, type: string): void {

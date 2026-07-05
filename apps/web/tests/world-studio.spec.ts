@@ -813,6 +813,47 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(captureArtifacts.getByAltText("Latest sensor capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
 });
 
+test("compares sensor captures and exports a capture manifest", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Sensors" }).click();
+
+  const editor = page.getByTestId("sensor-editor");
+  await editor.getByLabel("Sensor label").fill("NavCam");
+  await editor.getByRole("button", { name: "Capture Frame" }).click();
+  await editor.getByLabel("Sensor spec").fill("comparison pass");
+  await editor.getByRole("button", { name: "Capture Frame" }).click();
+
+  await page.getByRole("button", { name: "Episode" }).click();
+  const compare = page.getByTestId("episode-capture-compare");
+  await expect(compare).toContainText("0/2 selected");
+  await page.getByRole("button", { name: "Add Selected to Compare" }).click();
+  await expect(compare).toContainText("1/2 selected");
+  await expect(compare.getByAltText("Compare capture event-2")).toHaveAttribute("src", /^data:image\/png;base64,/);
+
+  await page.locator(".ws-episode-row.capture", { hasText: "001" }).click();
+  await page.getByRole("button", { name: "Add Selected to Compare" }).click();
+  await expect(compare).toContainText("2/2 selected");
+  await expect(compare.getByAltText("Compare capture event-1")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(compare).toContainText("event-1");
+  await expect(compare).toContainText("event-2");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export Captures" }).click()
+  ]);
+  expect(download.suggestedFilename()).toBe("world-studio-captures-loft_04.sensor-captures.json");
+  await expect(page.getByTestId("episode-save-status")).toContainText("downloaded captures world-studio-captures-loft_04.sensor-captures.json");
+
+  const exportPreview = page.getByTestId("episode-export-preview");
+  await expect(exportPreview).toContainText("world-studio.sensor_capture_manifest.v0.1");
+  await expect(exportPreview).toContainText("\"captureCount\": 2");
+  await expect(exportPreview).toContainText("\"eventId\": \"event-1\"");
+  await expect(exportPreview).toContainText("\"eventId\": \"event-2\"");
+  await expect(exportPreview).toContainText("\"checksum\": \"fnv1a32:");
+  await expect(exportPreview).not.toContainText("previewDataUrl");
+});
+
 test("exports sensor captures as desktop bundle assets and flags missing external previews", async ({ page }) => {
   await page.addInitScript(() => {
     const bridgeWindow = window as Window & {
