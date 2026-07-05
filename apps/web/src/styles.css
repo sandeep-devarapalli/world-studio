@@ -180,6 +180,12 @@ body {
   margin: 3px 0;
 }
 
+.ws-kv .ws-source-chip {
+  display: inline-flex;
+  font-size: var(--fs-head);
+  padding: 1px 7px;
+}
+
 .ws-detail-panel {
   max-height: 292px;
 }

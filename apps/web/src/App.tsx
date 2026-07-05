@@ -478,6 +478,7 @@ export function App() {
     () => sensors.find((sensor) => sensor.id === selectedSensorId) ?? sensors[0] ?? null,
     [selectedSensorId, sensors]
   );
+  const cleanedPlyImport = session?.provenance.packageKind === "world-studio-cleaned-ply";
   const selectedSensorCaptures = useMemo(
     () => sensorCaptures.filter((capture) => capture.sensorId === selectedSensor?.id),
     [selectedSensor?.id, sensorCaptures]
@@ -3096,6 +3097,20 @@ export function App() {
     return (
       <div className="ws-row-stack">
         <WSPanel title="Provenance" meta={session?.provenance.packageKind ?? "none"}>
+          {cleanedPlyImport ? (
+            <>
+              <div className="ws-kv ws-cleaned-ply-row" data-testid="cleaned-ply-source-row">
+                <span>source type</span>
+                <b>
+                  <WSChip accent className="ws-source-chip">cleaned ordinary PLY</WSChip>
+                </b>
+              </div>
+              <div className="ws-kv" data-testid="cleaned-ply-boundary-row">
+                <span>boundary</span>
+                <b>ordinary PLY only</b>
+              </div>
+            </>
+          ) : null}
           <div className="ws-kv">
             <span>via</span>
             <b>{session?.provenance.loadedVia ?? "blank"}</b>
