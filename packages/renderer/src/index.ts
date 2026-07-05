@@ -2,6 +2,14 @@ import { prepareGaussianPlyForSpark, type ParsedObjMesh, type ParsedPointCloud, 
 import type { RendererDiagnostics, RenderAdapter, RenderOptions, SensorRigChannel, SparkLoadState, WorldClass } from "@world-studio/world-core";
 import * as THREE from "three";
 
+type ThreeConsoleFunction = (type: "log" | "warn" | "error", message: string, ...params: unknown[]) => void;
+type ThreeConsoleApi = typeof THREE & {
+  getConsoleFunction?: () => ThreeConsoleFunction | null;
+  setConsoleFunction?: (fn: ThreeConsoleFunction | null) => void;
+};
+
+const threeConsoleApi = THREE as ThreeConsoleApi;
+
 export interface ThreeRendererInput {
   pointCloud: ParsedPointCloud;
   classes: WorldClass[];
@@ -23,6 +31,23 @@ const fallbackClassColors = [
 ];
 
 const hiddenPoint = 1_000_000;
+const sparkDeprecatedWasmInitWarning = "using deprecated parameters for the initialization function; pass a single object instead";
+const sparkDeprecatedThreeClockWarning = "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.";
+const knownSparkDeprecationWarnings = new Set([
+  sparkDeprecatedWasmInitWarning,
+  sparkDeprecatedThreeClockWarning
+]);
+const sparkWorkerConsoleWarningFilterSource = `(() => {
+  const originalWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    if (args.length === 1 && (${JSON.stringify([...knownSparkDeprecationWarnings])}).includes(args[0])) return;
+    originalWarn(...args);
+  };
+})();\n`;
+
+let sparkConsoleWarningFilterDepth = 0;
+let releaseSparkConsoleWarningFilterRoot: (() => void) | undefined;
+let sparkConsoleWarningFilterReleaseTimer: number | undefined;
 
 export class ThreeWorldRenderer implements RenderAdapter {
   private readonly points: PointRecord[];
@@ -53,14 +78,17 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private gaussianSourceFormat?: string;
   private gaussianPreparedForSpark?: boolean;
   private sparkObjectUrl?: string;
+  private releaseSparkWarnings?: () => void;
   private lastCanvas?: HTMLCanvasElement;
   private lastOptions?: RenderOptions;
   private frameRequested = false;
+  private disposed = false;
 
   constructor(input: ThreeRendererInput) {
     this.points = input.pointCloud.points;
     this.mesh = input.mesh;
     this.gaussianUrl = input.gaussianUrl;
+    if (this.gaussianUrl) this.releaseSparkWarnings = retainSparkConsoleWarningFilter();
     this.onDiagnosticsChange = input.onDiagnosticsChange;
     this.pointPositions = new Float32Array(this.points.length * 3);
     this.pointColors = new Float32Array(this.points.length * 3);
@@ -160,11 +188,13 @@ export class ThreeWorldRenderer implements RenderAdapter {
     };
   }
 
-  dispose(): void {
+  dispose(releaseSparkWarnings = true): void {
+    if (releaseSparkWarnings) this.disposed = true;
     if (this.sparkMesh) this.scene?.remove(this.sparkMesh);
     if (this.sparkRenderer) this.scene?.remove(this.sparkRenderer);
     disposeSparkObject(this.sparkMesh);
     disposeSparkRendererAfterPendingWork(this.sparkRenderer);
+    if (releaseSparkWarnings) this.releaseSparkWarnings?.();
     if (this.sparkObjectUrl) URL.revokeObjectURL(this.sparkObjectUrl);
     this.webgl?.dispose();
     this.canvas = undefined;
@@ -186,12 +216,14 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.gaussianSourceFormat = undefined;
     this.gaussianPreparedForSpark = undefined;
     this.sparkObjectUrl = undefined;
+    if (releaseSparkWarnings) this.releaseSparkWarnings = undefined;
     this.sparkState = "idle";
   }
 
   private ensureThree(canvas: HTMLCanvasElement): void {
     if (this.webgl && this.canvas === canvas) return;
-    this.dispose();
+    this.dispose(false);
+    this.disposed = false;
     this.canvas = canvas;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#15120e");
@@ -400,7 +432,12 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.notifyDiagnostics();
     try {
       const spark = await import("@sparkjsdev/spark");
+      if (this.disposed || !this.webgl || !this.scene) return;
       const sparkUrl = await this.sparkCompatiblePlyUrl(this.gaussianUrl);
+      if (this.disposed || !this.webgl || !this.scene) {
+        if (sparkUrl !== this.gaussianUrl) URL.revokeObjectURL(sparkUrl);
+        return;
+      }
       if (sparkUrl !== this.gaussianUrl) this.sparkObjectUrl = sparkUrl;
       this.sparkRenderer = new spark.SparkRenderer({
         renderer: this.webgl,
@@ -745,6 +782,96 @@ function clampUnit(value: number): number {
 function shortError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/\s+/g, " ").slice(0, 72);
+}
+
+function retainSparkConsoleWarningFilter(): () => void {
+  if (sparkConsoleWarningFilterReleaseTimer) {
+    window.clearTimeout(sparkConsoleWarningFilterReleaseTimer);
+    sparkConsoleWarningFilterReleaseTimer = undefined;
+  }
+  sparkConsoleWarningFilterDepth += 1;
+  if (!releaseSparkConsoleWarningFilterRoot) {
+    const originalWarn = console.warn;
+    const originalBlob = typeof Blob === "undefined" ? undefined : Blob;
+    const originalThreeConsoleFunction = threeConsoleApi.getConsoleFunction?.() ?? null;
+    let filteredBlob: typeof Blob | undefined;
+    let filteredThreeConsoleFunction: ThreeConsoleFunction | undefined;
+    const filteredWarn = (...args: unknown[]) => {
+      if (isKnownSparkDeprecationWarning(args)) return;
+      originalWarn.apply(console, args);
+    };
+    console.warn = filteredWarn;
+    if (originalBlob) {
+      filteredBlob = class WorldStudioSparkBlob extends originalBlob {
+        constructor(blobParts?: BlobPart[], options?: BlobPropertyBag) {
+          super(patchSparkWorkerBlobParts(blobParts), options);
+        }
+      };
+      globalThis.Blob = filteredBlob;
+    }
+    if (threeConsoleApi.setConsoleFunction) {
+      filteredThreeConsoleFunction = (type: "log" | "warn" | "error", message: string, ...params: unknown[]) => {
+        if (type === "warn" && knownSparkDeprecationWarnings.has(message)) return;
+        if (originalThreeConsoleFunction) {
+          originalThreeConsoleFunction(type, message, ...params);
+          return;
+        }
+        writeThreeConsoleMessage(type, message, params);
+      };
+      threeConsoleApi.setConsoleFunction(filteredThreeConsoleFunction);
+    }
+    releaseSparkConsoleWarningFilterRoot = () => {
+      if (console.warn === filteredWarn) console.warn = originalWarn;
+      if (originalBlob && filteredBlob && Blob === filteredBlob) globalThis.Blob = originalBlob;
+      if (
+        threeConsoleApi.setConsoleFunction &&
+        filteredThreeConsoleFunction &&
+        threeConsoleApi.getConsoleFunction?.() === filteredThreeConsoleFunction
+      ) {
+        threeConsoleApi.setConsoleFunction(originalThreeConsoleFunction);
+      }
+      releaseSparkConsoleWarningFilterRoot = undefined;
+    };
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    sparkConsoleWarningFilterDepth = Math.max(0, sparkConsoleWarningFilterDepth - 1);
+    if (sparkConsoleWarningFilterDepth === 0) scheduleSparkConsoleWarningFilterRelease();
+  };
+}
+
+function scheduleSparkConsoleWarningFilterRelease(): void {
+  if (typeof window === "undefined") {
+    releaseSparkConsoleWarningFilterRoot?.();
+    return;
+  }
+  sparkConsoleWarningFilterReleaseTimer = window.setTimeout(() => {
+    sparkConsoleWarningFilterReleaseTimer = undefined;
+    if (sparkConsoleWarningFilterDepth === 0) releaseSparkConsoleWarningFilterRoot?.();
+  }, 2_000);
+}
+
+function isKnownSparkDeprecationWarning(args: unknown[]): boolean {
+  return args.length === 1 && typeof args[0] === "string" && knownSparkDeprecationWarnings.has(args[0]);
+}
+
+function writeThreeConsoleMessage(type: "log" | "warn" | "error", message: string, params: unknown[]): void {
+  if (type === "error") console.error(message, ...params);
+  else if (type === "warn") console.warn(message, ...params);
+  else console.log(message, ...params);
+}
+
+function patchSparkWorkerBlobParts(blobParts: BlobPart[] | undefined): BlobPart[] | undefined {
+  if (!blobParts) return blobParts;
+  if (!blobParts.some((part) => typeof part === "string" && isSparkWorkerSource(part))) return blobParts;
+  return [sparkWorkerConsoleWarningFilterSource, ...blobParts];
+}
+
+function isSparkWorkerSource(source: string): boolean {
+  return source.includes(sparkDeprecatedWasmInitWarning);
 }
 
 function disposeSparkObject(target: { dispose?: () => unknown } | undefined): void {
