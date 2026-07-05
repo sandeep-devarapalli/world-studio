@@ -45,6 +45,7 @@ try {
       main: "apps/desktop/dist/main.js"
     }, null, 2)}\n`
   );
+  await writeArtifactsRuntimePackage(payloadDir);
   await rm(path.join(stagingApp, "Contents", "Resources", "default_app.asar"), { force: true });
 
   const infoPlist = path.join(stagingApp, "Contents", "Info.plist");
@@ -71,6 +72,44 @@ function run(command, args, cwd) {
 
 function setPlistValue(file, key, value) {
   run("plutil", ["-replace", key, "-string", value, file], repoRoot);
+}
+
+async function writeArtifactsRuntimePackage(payloadDir) {
+  const packageDir = path.join(payloadDir, "node_modules", "@world-studio", "artifacts");
+  await mkdir(packageDir, { recursive: true });
+  run(
+    "pnpm",
+    [
+      "exec",
+      "tsc",
+      path.join(repoRoot, "packages", "artifacts", "src", "index.ts"),
+      "--target",
+      "ES2022",
+      "--module",
+      "ESNext",
+      "--moduleResolution",
+      "Bundler",
+      "--skipLibCheck",
+      "--strict",
+      "--outDir",
+      path.join(packageDir, "dist"),
+      "--declaration",
+      "false"
+    ],
+    repoRoot
+  );
+  await writeFile(
+    path.join(packageDir, "package.json"),
+    `${JSON.stringify({
+      name: "@world-studio/artifacts",
+      version: rootPackageJson.version,
+      type: "module",
+      main: "./dist/index.js",
+      exports: {
+        ".": "./dist/index.js"
+      }
+    }, null, 2)}\n`
+  );
 }
 
 function removePlistValue(file, key) {

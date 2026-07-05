@@ -568,12 +568,14 @@ export function App() {
   );
 
   const loadFixture = useCallback(async () => {
-    const base = "/fixtures/loft_04";
+    const fixtureLabel = "/fixtures/loft_04";
+    const fixtureUrl = new URL("./fixtures/loft_04/", window.location.href);
+    const fixtureAsset = (name: string) => new URL(name, fixtureUrl).href;
     const [sceneResponse, pointsResponse, gaussiansResponse, objResponse] = await Promise.all([
-      fetch(`${base}/scene.json`),
-      fetch(`${base}/points.ply`),
-      fetch(`${base}/gaussians.ply`),
-      fetch(`${base}/collision_mesh.obj`)
+      fetch(fixtureAsset("scene.json")),
+      fetch(fixtureAsset("points.ply")),
+      fetch(fixtureAsset("gaussians.ply")),
+      fetch(fixtureAsset("collision_mesh.obj"))
     ]);
     if (!sceneResponse.ok || !pointsResponse.ok || !gaussiansResponse.ok || !objResponse.ok) {
       throw new Error("Failed to load loft_04 fixture");
@@ -590,10 +592,10 @@ export function App() {
       scene,
       pointsText,
       gaussianHeaderText: gaussiansText,
-      gaussianUrl: `${base}/gaussians.ply`,
+      gaussianUrl: fixtureAsset("gaussians.ply"),
       objText,
-      loadedVia: base,
-      sourcePath: base,
+      loadedVia: fixtureLabel,
+      sourcePath: fixtureLabel,
       sourceKind: "world-studio.fixture.loft_04",
       packageKind: "fixture",
       primaryArtifact: "gaussians.ply",
