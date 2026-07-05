@@ -377,6 +377,8 @@ export function App() {
     () => captureCompareIds.flatMap((id) => sensorCaptures.find((capture) => capture.id === id) ?? []),
     [captureCompareIds, sensorCaptures]
   );
+  const simulateCompareCaptures = captureComparison.length ? captureComparison : captureCompareCandidates;
+  const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
     [episodeProvenance, session]
@@ -1302,17 +1304,31 @@ export function App() {
           <div className="ws-overlay">
             {mode === "simulate" ? (
               <>
-                <div className="ws-dual-left">
-                  <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
+                <div className={`ws-dual-left ${simulateComparisonCapture?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
+                  {simulateComparisonCapture?.previewDataUrl ? (
+                    <img
+                      alt="Selected comparison capture evidence"
+                      className="ws-sim-comparison-preview"
+                      src={simulateComparisonCapture.previewDataUrl}
+                    />
+                  ) : (
+                    <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
+                  )}
                   <div className="ws-view-tag">
-                    <span className="ws-head">Sensor feed</span>
-                    <WSChip>{captureFrames.length ? `${captureFrames.length} frames` : "cam_front · synthetic"}</WSChip>
+                    <span className="ws-head">{simulateComparisonCapture ? "Source evidence" : "Sensor feed"}</span>
+                    <WSChip>
+                      {simulateComparisonCapture
+                        ? `frame ${simulateComparisonCapture.frame}`
+                        : captureFrames.length
+                          ? `${captureFrames.length} frames`
+                          : "cam_front · synthetic"}
+                    </WSChip>
                   </div>
                 </div>
                 <div className="ws-dual-split" />
                 <div className="ws-view-tag metric">
-                  <span className="ws-head">Metric view</span>
-                  <WSChip>{session ? `aligned · ${session.pointCount} pts` : "no world"}</WSChip>
+                  <span className="ws-head">3DGS visual proxy</span>
+                  <WSChip>{session ? `loaded · ${session.pointCount} pts` : "load splat package"}</WSChip>
                 </div>
               </>
             ) : null}
@@ -1825,7 +1841,7 @@ export function App() {
               </div>
             )}
 
-            {!session ? (
+            {!session && !(mode === "simulate" && simulateComparisonCapture) ? (
               <div className="ws-empty-state">
                 <WSPanel title="Open World" meta="explicit">
                   <div className="ws-row-stack">
@@ -2122,6 +2138,65 @@ export function App() {
   }
 
   function renderRightPanel() {
+    if (mode === "simulate") {
+      return (
+        <WSPanel
+          title="3DGS Compare"
+          meta={simulateComparisonCapture ? "visual proxy" : "no episode"}
+          className="ws-sim-comparison-panel"
+          data-testid="simulate-comparison-panel"
+        >
+          <div className="ws-kv">
+            <span>left</span>
+            <b>{simulateComparisonCapture ? "source/render evidence" : "synthetic sensor feed"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>right</span>
+            <b>{session ? `${renderMode} · ${assetSummary?.gaussianKind ?? "world asset"}` : "3DGS package not loaded"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>authority</span>
+            <b>{episodeProvenance?.authorityStatus ?? "visual proxy · not collision authority"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>decision</span>
+            <b>{simulateComparisonCapture?.rendererStatus ?? episodeProvenance?.rendererStatus ?? "no QA summary loaded"}</b>
+          </div>
+          {simulateComparisonCapture ? (
+            <>
+              <div className="ws-kv">
+                <span>frame</span>
+                <b>{simulateComparisonCapture.eventId} · {simulateComparisonCapture.sensorLabel}</b>
+              </div>
+              <div className={`ws-kv ws-capture-asset-validation ${simulateComparisonCapture.assetStatus}`}>
+                <span>asset</span>
+                <b>{formatSensorCaptureAssetStatus(simulateComparisonCapture)}</b>
+              </div>
+            </>
+          ) : null}
+          {simulateCompareCaptures.length ? (
+            <div className="ws-sim-frame-picks" data-testid="simulate-comparison-frames">
+              {simulateCompareCaptures.slice(0, 8).map((capture) => (
+                <button
+                  aria-label={`Show comparison frame ${capture.frame}`}
+                  className={`ws-sim-frame-pick ${capture.id === simulateComparisonCapture?.id ? "on" : ""}`.trim()}
+                  key={capture.id}
+                  onClick={() => {
+                    setSelectedEpisodeEventId(capture.eventId);
+                    setCaptureCompareIds([capture.id]);
+                  }}
+                  type="button"
+                >
+                  <span>{String(capture.frame).padStart(3, "0")}</span>
+                  <b>{capture.sensorLabel}</b>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </WSPanel>
+      );
+    }
+
     if (mode === "edit") {
       return (
         <WSPanel title="Optimize" meta="local">
