@@ -1384,6 +1384,35 @@ test("selects with the rect tool, deletes, and undoes", async ({ page }) => {
   await expect(statusbar).toContainText("0 hidden");
 });
 
+test("crops point cloud with the crop box and undo", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "points" }).click();
+  await page.getByRole("button", { name: "crop box" }).click();
+
+  await expect(page.getByTestId("crop-readout")).toContainText("draw box");
+
+  const canvas = page.locator("[data-testid='world-canvas']");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("canvas missing");
+
+  await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.46);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.58, box.y + box.height * 0.64);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("crop-overlay")).toBeVisible();
+  await expect(page.getByTestId("crop-readout")).toContainText(/\d+ points/);
+  await expect(page.getByTestId("crop-readout").locator("b")).not.toHaveText("0 points");
+  await expect(page.locator(".ws-statusbar")).toContainText(/crop \d+/);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByTestId("crop-readout")).toContainText("draw box");
+  await expect(page.getByTestId("crop-overlay")).toHaveCount(0);
+  await expect(page.locator(".ws-statusbar")).toContainText("0 hidden");
+});
+
 test("measures ground-plane distance in Edit mode", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();

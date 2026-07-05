@@ -17,6 +17,7 @@ import type {
   AgentState,
   AuthorityStatus,
   CameraState,
+  CropBounds,
   LocalPackageInsight,
   LocalPackageIssue,
   LocalWorldPackagePayload,
@@ -169,12 +170,35 @@ interface LoadedWorldOptions {
   preserveEpisode?: boolean;
 }
 
-interface HistoryItem {
+interface StageRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+interface CropRegion {
+  bounds: CropBounds;
+  stage: StageRect;
+  hiddenCount: number;
+}
+
+interface SelectionHistoryItem {
   id: string;
   type: "select" | "delete";
   count: number;
   indices: number[];
 }
+
+interface CropHistoryItem {
+  id: string;
+  type: "crop";
+  count: number;
+  previousCrop: CropRegion | null;
+  nextCrop: CropRegion | null;
+}
+
+type HistoryItem = SelectionHistoryItem | CropHistoryItem;
 
 const initialCamera: CameraState = {
   yaw: 0.62,
@@ -282,9 +306,32 @@ const defaultProps: SimulatedPropState[] = [
   { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
 ];
 
+function normalizeStageRect(rect: StageRect): StageRect {
+  return {
+    x0: Math.min(rect.x0, rect.x1),
+    y0: Math.min(rect.y0, rect.y1),
+    x1: Math.max(rect.x0, rect.x1),
+    y1: Math.max(rect.y0, rect.y1)
+  };
+}
+
+function stageRectStyle(rect: StageRect): React.CSSProperties {
+  const normalized = normalizeStageRect(rect);
+  return {
+    left: normalized.x0,
+    top: normalized.y0,
+    width: normalized.x1 - normalized.x0,
+    height: normalized.y1 - normalized.y0
+  };
+}
+
+function pointInsideCrop(point: PointRecord, bounds: CropBounds): boolean {
+  return point.x >= bounds.minX && point.x <= bounds.maxX && point.z >= bounds.minZ && point.z <= bounds.maxZ;
+}
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect"; x: number; y: number } | null>(null);
+  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect" | "crop"; x: number; y: number } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const simulationRef = useRef<RapierSimulation | null>(null);
   const simulationTokenRef = useRef(0);
@@ -314,6 +361,8 @@ export function App() {
   const [showDeleted, setShowDeleted] = useState(true);
   const [isolatedClass, setIsolatedClass] = useState<number | undefined>(undefined);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [cropRegion, setCropRegion] = useState<CropRegion | null>(null);
+  const [cropDraft, setCropDraft] = useState<StageRect | null>(null);
   const [measurePoints, setMeasurePoints] = useState<MeasurePoint[]>([]);
   const [agent, setAgent] = useState<AgentState>(defaultSpawn);
   const [spawn, setSpawn] = useState<AgentState>(defaultSpawn);
@@ -438,9 +487,10 @@ export function App() {
       selectedSensorId: mode === "sensors" ? selectedSensorId : undefined,
       debugCollision,
       agentBodyRadius: bodyPreset?.radius,
-      grid: true
+      grid: true,
+      cropBounds: cropRegion?.bounds
     }),
-    [accent, agent, bodyPreset?.radius, camera, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, spawn, trajectory]
+    [accent, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
@@ -549,6 +599,8 @@ export function App() {
     setSelected(new Set());
     setDeleted(new Set());
     setHistory([]);
+    setCropRegion(null);
+    setCropDraft(null);
     setMeasurePoints([]);
     setStepCount(0);
     setLastAction("idle");
@@ -767,6 +819,54 @@ export function App() {
     [options, renderer, toStage]
   );
 
+  const countPointsOutsideCrop = useCallback(
+    (bounds: CropBounds) => worldPoints.reduce((count, point) => (pointInsideCrop(point, bounds) ? count : count + 1), 0),
+    [worldPoints]
+  );
+
+  const applyCropFromDrag = useCallback(
+    (startX: number, startY: number, endX: number, endY: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !renderer?.projectToGround) {
+        setLastAction("crop unavailable");
+        return;
+      }
+      const startStage = toStage(startX, startY);
+      const endStage = toStage(endX, endY);
+      const stage = normalizeStageRect({ x0: startStage.x, y0: startStage.y, x1: endStage.x, y1: endStage.y });
+      if (stage.x1 - stage.x0 < 12 || stage.y1 - stage.y0 < 12) {
+        setLastAction("crop too small");
+        return;
+      }
+      const start = renderer.projectToGround(canvas, options, startX, startY);
+      const end = renderer.projectToGround(canvas, options, endX, endY);
+      if (!start || !end) {
+        setLastAction("crop missed ground");
+        return;
+      }
+      const bounds: CropBounds = {
+        minX: Math.min(start[0], end[0]),
+        maxX: Math.max(start[0], end[0]),
+        minZ: Math.min(start[2], end[2]),
+        maxZ: Math.max(start[2], end[2])
+      };
+      if (bounds.maxX - bounds.minX < 0.05 || bounds.maxZ - bounds.minZ < 0.05) {
+        setLastAction("crop too small");
+        return;
+      }
+      const nextCrop: CropRegion = {
+        bounds,
+        stage,
+        hiddenCount: countPointsOutsideCrop(bounds)
+      };
+      setCropRegion(nextCrop);
+      const entry: HistoryItem = { id: crypto.randomUUID(), type: "crop", count: nextCrop.hiddenCount, previousCrop: cropRegion, nextCrop };
+      setHistory((current) => [entry, ...current].slice(0, 10));
+      setLastAction(`crop ${nextCrop.hiddenCount} hidden`);
+    },
+    [countPointsOutsideCrop, cropRegion, options, renderer, toStage]
+  );
+
   const deleteSelected = useCallback(() => {
     if (!selected.size) return;
     const indices = [...selected];
@@ -784,7 +884,10 @@ export function App() {
     setHistory((current) => {
       const [last, ...rest] = current;
       if (!last) return current;
-      if (last.type === "delete") {
+      if (last.type === "crop") {
+        setCropRegion(last.previousCrop);
+        setCropDraft(null);
+      } else if (last.type === "delete") {
         setDeleted((deletedSet) => {
           const next = new Set(deletedSet);
           for (const index of last.indices) next.delete(index);
@@ -802,6 +905,15 @@ export function App() {
   }, []);
 
   const clearSelected = () => setSelected(new Set());
+
+  const clearCrop = useCallback(() => {
+    if (!cropRegion) return;
+    setCropRegion(null);
+    setCropDraft(null);
+    const entry: HistoryItem = { id: crypto.randomUUID(), type: "crop", count: cropRegion.hiddenCount, previousCrop: cropRegion, nextCrop: null };
+    setHistory((current) => [entry, ...current].slice(0, 10));
+    setLastAction("crop clear");
+  }, [cropRegion]);
 
   const updateSensor = useCallback((sensorId: string, patch: Partial<SensorRigChannel>) => {
     setSensors((items) => items.map((item) => (item.id === sensorId ? { ...item, ...patch } : item)));
@@ -1226,6 +1338,10 @@ export function App() {
       interactionRef.current = { kind: "rect", x: event.clientX, y: event.clientY };
       const start = toStage(event.clientX, event.clientY);
       setSelectRect({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
+    } else if (mode === "edit" && renderer && tool === "crop") {
+      interactionRef.current = { kind: "crop", x: event.clientX, y: event.clientY };
+      const start = toStage(event.clientX, event.clientY);
+      setCropDraft({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
     } else if (mode === "edit" && renderer && tool === "ruler") {
       interactionRef.current = null;
       measureAt(event);
@@ -1247,6 +1363,11 @@ export function App() {
     if (interaction.kind === "rect") {
       const point = toStage(event.clientX, event.clientY);
       setSelectRect((current) => (current ? { ...current, x1: point.x, y1: point.y } : current));
+      return;
+    }
+    if (interaction.kind === "crop") {
+      const point = toStage(event.clientX, event.clientY);
+      setCropDraft((current) => (current ? { ...current, x1: point.x, y1: point.y } : current));
       return;
     }
     const dx = event.clientX - interaction.x;
@@ -1282,6 +1403,10 @@ export function App() {
         setHistory((current) => [entry, ...current].slice(0, 10));
       }
       setSelectRect(null);
+    }
+    if (interaction?.kind === "crop") {
+      applyCropFromDrag(interaction.x, interaction.y, event.clientX, event.clientY);
+      setCropDraft(null);
     }
     interactionRef.current = null;
     brushStrokeRef.current = new Set();
@@ -1325,7 +1450,7 @@ export function App() {
           <canvas
             ref={canvasRef}
             className={`ws-canvas ${mode === "simulate" ? "dual-right" : ""} ${
-              mode === "edit" && (tool === "brush" || tool === "rect" || tool === "ruler") ? "edit-tool" : ""
+              mode === "edit" && (tool === "brush" || tool === "rect" || tool === "crop" || tool === "ruler") ? "edit-tool" : ""
             }`.trim()}
             data-testid="world-canvas"
             onPointerDown={onPointerDown}
@@ -1351,6 +1476,12 @@ export function App() {
                 height: Math.abs(selectRect.y1 - selectRect.y0)
               }}
             />
+          ) : null}
+          {mode === "edit" && (cropRegion || cropDraft) ? (
+            <div className="ws-crop-overlay">
+              {cropRegion ? <div className="ws-crop-rect active" data-testid="crop-overlay" style={stageRectStyle(cropRegion.stage)} /> : null}
+              {cropDraft ? <div className="ws-crop-rect draft" data-testid="crop-draft" style={stageRectStyle(cropDraft)} /> : null}
+            </div>
           ) : null}
           {mode === "edit" && measurePoints.length ? (
             <div className="ws-measure-overlay" data-testid="measure-overlay">
@@ -1940,7 +2071,7 @@ export function App() {
             items={[
               { label: session ? `${session.name} · ${session.provenance.authorityStatus}` : "startup blank" },
               { label: `${renderMode} · ${Math.round(density * 100)}% density` },
-              { label: `${selected.size} selected · ${deleted.size} hidden` },
+              { label: cropRegion ? `${selected.size} selected · ${deleted.size} deleted · crop ${cropRegion.hiddenCount}` : `${selected.size} selected · ${deleted.size} hidden` },
               mode === "pilot"
                 ? { label: `physics ${physicsDiagnostics.backend} · step ${stepCount}`, accent: true }
                 : mode === "simulate"
@@ -1976,6 +2107,29 @@ export function App() {
               <button className="ws-node click" onClick={() => setShowDeleted((value) => !value)}>
                 {showDeleted ? "visible" : "hidden"}
               </button>
+            </div>
+          </WSPanel>
+          <WSPanel title="Crop Box" meta={cropRegion ? "active" : "drag"} data-testid="crop-panel">
+            <div className="ws-kv" data-testid="crop-readout">
+              <span>outside</span>
+              <b>{cropRegion ? `${cropRegion.hiddenCount} points` : "draw box"}</b>
+            </div>
+            <div className="ws-kv">
+              <span>x range</span>
+              <b>{cropRegion ? `${cropRegion.bounds.minX.toFixed(2)} … ${cropRegion.bounds.maxX.toFixed(2)} m` : "unset"}</b>
+            </div>
+            <div className="ws-kv">
+              <span>z range</span>
+              <b>{cropRegion ? `${cropRegion.bounds.minZ.toFixed(2)} … ${cropRegion.bounds.maxZ.toFixed(2)} m` : "unset"}</b>
+            </div>
+            <div className="ws-kv">
+              <span>path</span>
+              <b>point cloud</b>
+            </div>
+            <div className="ws-btn-row">
+              <WSButton disabled={!cropRegion} onClick={clearCrop}>
+                Clear Crop
+              </WSButton>
             </div>
           </WSPanel>
           <WSPanel title="Measure" meta={measurementDistance === null ? "two clicks" : "ground plane"} data-testid="measure-panel">
