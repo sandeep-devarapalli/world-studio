@@ -1,4 +1,4 @@
-import type { LocalWorldPackagePayload } from "@world-studio/world-core";
+import type { LocalWorldPackagePayload, SaveEpisodeBundleInput } from "@world-studio/world-core";
 
 export {};
 
@@ -8,7 +8,7 @@ declare global {
       pickFolder?: () => Promise<string | null>;
       openLocalPackage?: () => Promise<LocalWorldPackagePayload | null>;
       saveEpisodeManifest?: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
-      saveEpisodeBundle?: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
+      saveEpisodeBundle?: (input: SaveEpisodeBundleInput) => Promise<{ path: string } | null>;
       openEpisodeManifest?: () => Promise<{ path: string; text: string } | null>;
     };
   }

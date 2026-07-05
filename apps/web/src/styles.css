@@ -476,6 +476,20 @@ body {
   width: 100%;
 }
 
+.ws-capture-missing {
+  align-items: center;
+  aspect-ratio: 16 / 9;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px dashed color-mix(in srgb, #d9a35f, transparent 34%);
+  border-radius: 6px;
+  color: var(--ink-mut);
+  display: grid;
+  font-family: var(--mono);
+  gap: 8px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  padding: 10px;
+}
+
 .ws-capture-list {
   display: flex;
   flex-direction: column;
@@ -515,6 +529,19 @@ body {
 
 .ws-capture-empty {
   grid-template-columns: 32px minmax(0, 1fr);
+}
+
+.ws-capture-asset-validation.validated b,
+.ws-capture-asset-validation.resolved b,
+.ws-capture-asset-validation.embedded b {
+  color: #8fcb9b;
+}
+
+.ws-capture-asset-validation.missing b,
+.ws-capture-asset-validation.mismatch b,
+.ws-capture-asset-validation.metadata_mismatch b,
+.ws-capture-asset-validation.external b {
+  color: #d9a35f;
 }
 
 .ws-root.mode-sensors .ws-bottom-left {

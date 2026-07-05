@@ -218,6 +218,20 @@ export interface LocalWorldPackagePayload {
   packageIssues?: LocalPackageIssue[];
 }
 
+export interface EpisodeBundleAsset {
+  relativePath: string;
+  dataUrl: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  checksum?: string;
+}
+
+export interface SaveEpisodeBundleInput {
+  suggestedName: string;
+  text: string;
+  assets?: EpisodeBundleAsset[];
+}
+
 export interface BudoMediaFrame {
   display_name?: string;
   rgb_path?: string;

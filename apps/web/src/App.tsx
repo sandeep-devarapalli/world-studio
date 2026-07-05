@@ -20,6 +20,7 @@ import type {
   LocalPackageInsight,
   LocalPackageIssue,
   LocalWorldPackagePayload,
+  EpisodeBundleAsset,
   PhysicsDiagnostics,
   RendererDiagnostics,
   RenderAdapter,
@@ -128,6 +129,8 @@ interface SensorCaptureArtifact {
   sensorSpec: string;
   capturedAt: string;
   previewDataUrl: string;
+  assetPath?: string;
+  assetStatus: "embedded" | "external" | "resolved" | "missing" | "metadata_mismatch";
   mimeType: "image/png";
   renderMode: RenderMode;
   rendererStatus: string;
@@ -137,6 +140,8 @@ interface SensorCaptureArtifact {
   camera: CameraState;
   size: { width: number; height: number };
   bytes: number;
+  sizeBytes: number;
+  checksum: string;
 }
 
 interface LoadedWorldInput {
@@ -370,6 +375,10 @@ export function App() {
   const episodeIntegrityRows = useMemo(
     () => (episodeProvenance && episodeSourceMatch ? buildEpisodeIntegrityRows(episodeProvenance, session, episodeSourceMatch.status) : []),
     [episodeProvenance, episodeSourceMatch, session]
+  );
+  const sensorCaptureAssetValidation = useMemo(
+    () => describeSensorCaptureAssetValidation(sensorCaptures),
+    [sensorCaptures]
   );
   const timelineTotal = Math.max(captureFrames.length, session ? 292 : 0, 1);
   const episodeTotalFrames = Math.max(totalSteps, episodeTimeline.at(-1)?.frame ?? 0, 1);
@@ -784,6 +793,8 @@ export function App() {
         targetId: selectedSensor.id,
         status: `${selectedSensor.kind} · ${renderMode}`
       });
+      const bytes = dataUrlToBytes(previewDataUrl);
+      const assetPath = sensorCaptureAssetPath(event.frame, selectedSensor.id);
       const artifact: SensorCaptureArtifact = {
         id: `sensor-capture-${event.frame}`,
         eventId: event.id,
@@ -794,6 +805,8 @@ export function App() {
         sensorSpec: selectedSensor.spec,
         capturedAt: new Date().toISOString(),
         previewDataUrl,
+        assetPath,
+        assetStatus: "embedded",
         mimeType: "image/png",
         renderMode,
         rendererStatus: rendererStatusLabel(renderMode, rendererDiagnostics),
@@ -802,7 +815,9 @@ export function App() {
         loadedVia: session.provenance.loadedVia,
         camera,
         size: { width: canvas.width, height: canvas.height },
-        bytes: estimateDataUrlBytes(previewDataUrl)
+        bytes: bytes.byteLength,
+        sizeBytes: bytes.byteLength,
+        checksum: checksumBytes(bytes)
       };
       setSensorCaptures((current) => [artifact, ...current].slice(0, 24));
       setEpisodeSaveStatus(`captured ${selectedSensor.label}`);
@@ -829,7 +844,7 @@ export function App() {
     [episodeTimeline, selectEpisodeEvent, selectedEpisodeEvent?.id]
   );
 
-  const createEpisodeManifest = useCallback(() => {
+  const createEpisodeManifest = useCallback((options?: { includeCapturePreviews?: boolean }) => {
     return buildEpisodeManifest({
       session,
       events: episodeTimeline,
@@ -838,7 +853,8 @@ export function App() {
       trajectory,
       props,
       sensors,
-      sensorCaptures
+      sensorCaptures,
+      includeCapturePreviews: options?.includeCapturePreviews ?? true
     });
   }, [episodeTimeline, playhead, props, selectedEpisodeEvent?.id, sensorCaptures, sensors, session, trajectory]);
 
@@ -847,16 +863,22 @@ export function App() {
     return JSON.stringify(manifest, null, 2);
   }, [createEpisodeManifest]);
 
-  const createEpisodeBundleText = useCallback(() => {
+  const createEpisodeBundlePayload = useCallback((options?: { externalizeCapturePreviews?: boolean }) => {
+    const externalizeCapturePreviews = options?.externalizeCapturePreviews ?? false;
     const bundle = buildEpisodeBundle({
-      episodeManifest: createEpisodeManifest(),
+      episodeManifest: createEpisodeManifest({ includeCapturePreviews: !externalizeCapturePreviews }),
       session,
       renderMode,
       rendererStatus: rendererStatusLabel(renderMode, rendererDiagnostics),
       rendererDiagnostics
     });
-    return JSON.stringify(bundle, null, 2);
-  }, [createEpisodeManifest, renderMode, rendererDiagnostics, session]);
+    return {
+      text: JSON.stringify(bundle, null, 2),
+      assets: externalizeCapturePreviews ? sensorCaptureBundleAssets(sensorCaptures) : []
+    };
+  }, [createEpisodeManifest, renderMode, rendererDiagnostics, sensorCaptures, session]);
+
+  const createEpisodeBundleText = useCallback(() => createEpisodeBundlePayload().text, [createEpisodeBundlePayload]);
 
   const exportEpisodeManifest = useCallback(() => {
     setEpisodeExportText(createEpisodeManifestText());
@@ -880,18 +902,18 @@ export function App() {
 
   const saveEpisodeBundle = useCallback(async () => {
     if (!episodeTimeline.length) return;
-    const text = createEpisodeBundleText();
     const suggestedName = episodeBundleFileName(session);
-    setEpisodeExportText(text);
     const desktopSave = getDesktopApi()?.saveEpisodeBundle;
+    const payload = createEpisodeBundlePayload({ externalizeCapturePreviews: Boolean(desktopSave) });
+    setEpisodeExportText(payload.text);
     if (desktopSave) {
-      const result = await desktopSave({ suggestedName, text });
+      const result = await desktopSave({ suggestedName, text: payload.text, assets: payload.assets });
       setEpisodeSaveStatus(result?.path ? `saved package ${compactPath(result.path)}` : "package save canceled");
       return;
     }
-    downloadTextFile(suggestedName, text, "application/json");
+    downloadTextFile(suggestedName, payload.text, "application/json");
     setEpisodeSaveStatus(`downloaded package ${suggestedName}`);
-  }, [createEpisodeBundleText, episodeTimeline.length, session]);
+  }, [createEpisodeBundlePayload, episodeTimeline.length, session]);
 
   const applyEpisodeManifestText = useCallback((text: string, sourceLabel: string) => {
     const imported = parseEpisodeManifestText(text);
@@ -1506,6 +1528,12 @@ export function App() {
                           <b>{episodeAssetValidation.status} · {episodeAssetValidation.detail}</b>
                         </div>
                       ) : null}
+                      {sensorCaptureAssetValidation ? (
+                        <div className={`ws-kv ws-capture-asset-validation ${sensorCaptureAssetValidation.status}`}>
+                          <span>capture assets</span>
+                          <b>{sensorCaptureAssetValidation.status} · {sensorCaptureAssetValidation.detail}</b>
+                        </div>
+                      ) : null}
                       {episodeIntegrityRows.length ? (
                         <div className="ws-integrity-block">
                           <div className="ws-btn-row">
@@ -2087,7 +2115,14 @@ export function App() {
           >
             {latestSensorCapture ? (
               <>
-                <img alt="Latest sensor capture preview" className="ws-capture-preview" src={latestSensorCapture.previewDataUrl} />
+                {latestSensorCapture.previewDataUrl ? (
+                  <img alt="Latest sensor capture preview" className="ws-capture-preview" src={latestSensorCapture.previewDataUrl} />
+                ) : (
+                  <div className="ws-capture-missing">
+                    <span className="ws-frame-thumb" />
+                    <span className="ws-row-name">missing capture asset</span>
+                  </div>
+                )}
                 <div className="ws-kv">
                   <span>sensor</span>
                   <b>{latestSensorCapture.sensorLabel} · {latestSensorCapture.sensorKind}</b>
@@ -2102,14 +2137,22 @@ export function App() {
                 </div>
                 <div className="ws-kv">
                   <span>bytes</span>
-                  <b>{latestSensorCapture.bytes.toLocaleString()}</b>
+                  <b>{latestSensorCapture.sizeBytes.toLocaleString()}</b>
+                </div>
+                <div className="ws-kv">
+                  <span>asset</span>
+                  <b>{latestSensorCapture.assetPath ?? "embedded"}</b>
+                </div>
+                <div className={`ws-kv ws-capture-asset-validation ${latestSensorCapture.assetStatus}`}>
+                  <span>integrity</span>
+                  <b>{formatSensorCaptureAssetStatus(latestSensorCapture)}</b>
                 </div>
                 <div className="ws-capture-list">
                   {selectedSensorCaptures.slice(0, 4).map((capture) => (
                     <div className="ws-capture-row" key={capture.id}>
                       <span>{String(capture.frame).padStart(3, "0")}</span>
                       <b>{capture.sensorLabel}</b>
-                      <span>{capture.renderMode}</span>
+                      <span>{capture.assetStatus}</span>
                     </div>
                   ))}
                 </div>
@@ -2673,10 +2716,85 @@ function checksumBytes(bytes: Uint8Array): string {
   return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }
 
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return new Uint8Array();
+  const payload = dataUrl.slice(comma + 1);
+  const binary = dataUrl.includes(";base64,") ? window.atob(payload) : decodeURIComponent(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 function estimateDataUrlBytes(dataUrl: string): number {
   const [, payload = ""] = dataUrl.split(",", 2);
   const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor((payload.length * 3) / 4) - padding);
+}
+
+function checksumDataUrl(dataUrl: string): string {
+  return checksumBytes(dataUrlToBytes(dataUrl));
+}
+
+function sensorCaptureAssetPath(frame: number, sensorId: string): string {
+  return `captures/event-${String(frame).padStart(4, "0")}-${safePathPart(sensorId)}.png`;
+}
+
+function safePathPart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "sensor";
+}
+
+function sensorCaptureBundleAssets(captures: SensorCaptureArtifact[]): EpisodeBundleAsset[] {
+  return captures.flatMap((capture) => {
+    if (!capture.previewDataUrl || !capture.assetPath) return [];
+    return [{
+      relativePath: capture.assetPath,
+      dataUrl: capture.previewDataUrl,
+      mimeType: capture.mimeType,
+      sizeBytes: capture.sizeBytes,
+      checksum: capture.checksum
+    }];
+  });
+}
+
+function sensorCaptureAssetStatus({
+  assetPath,
+  assetStatus,
+  checksum,
+  previewDataUrl,
+  sizeBytes
+}: {
+  assetPath?: string;
+  assetStatus?: string;
+  checksum?: string;
+  previewDataUrl: string;
+  sizeBytes: number;
+}): SensorCaptureArtifact["assetStatus"] {
+  if (!previewDataUrl) return assetPath ? "missing" : "missing";
+  const actualSize = estimateDataUrlBytes(previewDataUrl);
+  if (sizeBytes > 0 && actualSize !== sizeBytes) return "metadata_mismatch";
+  if (checksum && checksumDataUrl(previewDataUrl) !== checksum) return "metadata_mismatch";
+  if (assetPath && assetStatus === "external") return "resolved";
+  return "embedded";
+}
+
+function describeSensorCaptureAssetValidation(captures: SensorCaptureArtifact[]): { status: string; detail: string } | null {
+  if (!captures.length) return null;
+  const external = captures.filter((capture) => capture.assetPath);
+  const missing = captures.filter((capture) => capture.assetStatus === "missing");
+  const mismatched = captures.filter((capture) => capture.assetStatus === "metadata_mismatch");
+  if (mismatched.length) return { status: "mismatch", detail: `${mismatched.length}/${captures.length} checksum or size mismatch` };
+  if (missing.length) return { status: "missing", detail: `${missing.length}/${captures.length} companion PNG missing` };
+  if (external.length) return { status: "validated", detail: `${external.length}/${external.length} capture assets resolved` };
+  return { status: "embedded", detail: `${captures.length} embedded previews` };
+}
+
+function formatSensorCaptureAssetStatus(capture: SensorCaptureArtifact): string {
+  if (capture.assetStatus === "metadata_mismatch") return "metadata mismatch";
+  if (capture.assetStatus === "missing") return "missing asset";
+  if (capture.assetStatus === "resolved") return `${capture.assetPath ?? "asset"} · resolved`;
+  if (capture.assetStatus === "external") return `${capture.assetPath ?? "asset"} · external`;
+  return `${capture.assetPath ?? "embedded"} · ready`;
 }
 
 function uniqueStrings(values: Array<string | null>): string[] {
@@ -2737,9 +2855,24 @@ function parseEpisodeSensorCapture(value: unknown, index: number): SensorCapture
   const previewDataUrl = typeof value.previewDataUrl === "string" && value.previewDataUrl.startsWith("data:image/")
     ? value.previewDataUrl
     : "";
-  if (!previewDataUrl) throw new Error(`invalid sensor capture ${index + 1} preview`);
+  const assetPath = typeof value.assetPath === "string" && value.assetPath ? value.assetPath : undefined;
+  if (!previewDataUrl && !assetPath) throw new Error(`invalid sensor capture ${index + 1} preview`);
   const size = isRecord(value.size) ? value.size : {};
   const renderMode = isRenderMode(value.renderMode) ? value.renderMode : "splat";
+  const sizeBytes = readOptionalFiniteNumber(
+    value.sizeBytes,
+    readOptionalFiniteNumber(value.bytes, estimateDataUrlBytes(previewDataUrl), 0, 100_000_000),
+    0,
+    100_000_000
+  );
+  const checksum = typeof value.checksum === "string" && value.checksum ? value.checksum : (previewDataUrl ? checksumDataUrl(previewDataUrl) : "");
+  const assetStatus = sensorCaptureAssetStatus({
+    assetPath,
+    assetStatus: typeof value.assetStatus === "string" ? value.assetStatus : undefined,
+    checksum,
+    previewDataUrl,
+    sizeBytes
+  });
   return {
     id: typeof value.id === "string" && value.id ? value.id : `sensor-capture-${index + 1}`,
     eventId: typeof value.eventId === "string" && value.eventId ? value.eventId : `event-${index + 1}`,
@@ -2750,6 +2883,8 @@ function parseEpisodeSensorCapture(value: unknown, index: number): SensorCapture
     sensorSpec: typeof value.sensorSpec === "string" ? value.sensorSpec : fallback.spec,
     capturedAt: typeof value.capturedAt === "string" && value.capturedAt ? value.capturedAt : new Date(0).toISOString(),
     previewDataUrl,
+    assetPath,
+    assetStatus,
     mimeType: "image/png",
     renderMode,
     rendererStatus: typeof value.rendererStatus === "string" ? value.rendererStatus : "unknown",
@@ -2761,7 +2896,9 @@ function parseEpisodeSensorCapture(value: unknown, index: number): SensorCapture
       width: readOptionalFiniteNumber(size.width, 0, 0, 10000),
       height: readOptionalFiniteNumber(size.height, 0, 0, 10000)
     },
-    bytes: readOptionalFiniteNumber(value.bytes, estimateDataUrlBytes(previewDataUrl), 0, 100_000_000)
+    bytes: readOptionalFiniteNumber(value.bytes, sizeBytes, 0, 100_000_000),
+    sizeBytes,
+    checksum
   };
 }
 
@@ -2843,7 +2980,8 @@ function buildEpisodeManifest({
   trajectory,
   props,
   sensors,
-  sensorCaptures
+  sensorCaptures,
+  includeCapturePreviews
 }: {
   session: WorldSession | null;
   events: EpisodeEvent[];
@@ -2853,6 +2991,7 @@ function buildEpisodeManifest({
   props: SimulatedPropState[];
   sensors: SensorRigChannel[];
   sensorCaptures: SensorCaptureArtifact[];
+  includeCapturePreviews: boolean;
 }) {
   return {
     schema: "world-studio.episode.v0.1",
@@ -2901,26 +3040,32 @@ function buildEpisodeManifest({
       rangeM: sensor.rangeM,
       resolution: sensor.resolution
     })),
-    sensorCaptures: sensorCaptures.map((capture) => ({
-      id: capture.id,
-      eventId: capture.eventId,
-      frame: capture.frame,
-      sensorId: capture.sensorId,
-      sensorLabel: capture.sensorLabel,
-      sensorKind: capture.sensorKind,
-      sensorSpec: capture.sensorSpec,
-      capturedAt: capture.capturedAt,
-      previewDataUrl: capture.previewDataUrl,
-      mimeType: capture.mimeType,
-      renderMode: capture.renderMode,
-      rendererStatus: capture.rendererStatus,
-      worldName: capture.worldName,
-      sourcePath: capture.sourcePath,
-      loadedVia: capture.loadedVia,
-      camera: capture.camera,
-      size: capture.size,
-      bytes: capture.bytes
-    }))
+    sensorCaptures: sensorCaptures.map((capture) => {
+      const serialized = {
+        id: capture.id,
+        eventId: capture.eventId,
+        frame: capture.frame,
+        sensorId: capture.sensorId,
+        sensorLabel: capture.sensorLabel,
+        sensorKind: capture.sensorKind,
+        sensorSpec: capture.sensorSpec,
+        capturedAt: capture.capturedAt,
+        assetPath: capture.assetPath ?? null,
+        assetStatus: includeCapturePreviews ? capture.assetStatus : "external",
+        mimeType: capture.mimeType,
+        renderMode: capture.renderMode,
+        rendererStatus: capture.rendererStatus,
+        worldName: capture.worldName,
+        sourcePath: capture.sourcePath,
+        loadedVia: capture.loadedVia,
+        camera: capture.camera,
+        size: capture.size,
+        bytes: capture.bytes,
+        sizeBytes: capture.sizeBytes,
+        checksum: capture.checksum
+      };
+      return includeCapturePreviews ? { ...serialized, previewDataUrl: capture.previewDataUrl } : serialized;
+    })
   };
 }
 

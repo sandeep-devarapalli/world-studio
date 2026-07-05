@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LocalWorldPackagePayload, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
@@ -745,6 +745,8 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   const captureArtifacts = page.getByTestId("sensor-capture-artifacts");
   await expect(captureArtifacts).toContainText("NavCam · depth");
   await expect(captureArtifacts).toContainText("splat");
+  await expect(captureArtifacts).toContainText("captures/event-0001-rgb.png");
+  await expect(captureArtifacts).toContainText("ready");
   await expect(captureArtifacts.getByAltText("Latest sensor capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
 
   await editor.getByRole("button", { name: "Record Rig" }).click();
@@ -763,6 +765,9 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(exportPreview).toContainText("\"sensorCaptures\"");
   await expect(exportPreview).toContainText("\"sensorId\": \"rgb\"");
   await expect(exportPreview).toContainText("\"sensorLabel\": \"NavCam\"");
+  await expect(exportPreview).toContainText("\"assetPath\": \"captures/event-0001-rgb.png\"");
+  await expect(exportPreview).toContainText("\"sizeBytes\"");
+  await expect(exportPreview).toContainText("\"checksum\": \"fnv1a32:");
   await expect(exportPreview).toContainText("\"previewDataUrl\": \"data:image/png;base64,");
   const exported = (await exportPreview.textContent()) ?? "";
 
@@ -790,16 +795,72 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(captureArtifacts.getByAltText("Latest sensor capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
 });
 
+test("exports sensor captures as desktop bundle assets and flags missing external previews", async ({ page }) => {
+  await page.addInitScript(() => {
+    const bridgeWindow = window as Window & {
+      __savedBundle?: SaveEpisodeBundleInput;
+      worldStudioDesktop?: {
+        saveEpisodeBundle: (input: SaveEpisodeBundleInput) => Promise<{ path: string } | null>;
+        openEpisodeManifest: () => Promise<{ path: string; text: string } | null>;
+      };
+    };
+    bridgeWindow.worldStudioDesktop = {
+      saveEpisodeBundle: async (input) => {
+        bridgeWindow.__savedBundle = input;
+        return { path: `/tmp/${input.suggestedName}` };
+      },
+      openEpisodeManifest: async () => ({
+        path: "/tmp/externalized-captures.world-episode.json",
+        text: bridgeWindow.__savedBundle?.text ?? ""
+      })
+    };
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Sensors" }).click();
+  const editor = page.getByTestId("sensor-editor");
+  await editor.getByLabel("Sensor label").fill("NavCam");
+  await editor.getByRole("button", { name: "Capture Frame" }).click();
+  await page.getByRole("button", { name: "Episode" }).click();
+  await page.getByRole("button", { name: "Export Package" }).click();
+
+  const savedBundle = await page.evaluate(() => {
+    const bridgeWindow = window as Window & { __savedBundle?: SaveEpisodeBundleInput };
+    return bridgeWindow.__savedBundle ?? null;
+  });
+  expect(savedBundle?.suggestedName).toBe("world-studio-episode-loft_04.world-episode.json");
+  expect(savedBundle?.assets).toHaveLength(1);
+  expect(savedBundle?.assets?.[0]?.relativePath).toBe("captures/event-0001-rgb.png");
+  expect(savedBundle?.assets?.[0]?.dataUrl).toMatch(/^data:image\/png;base64,/);
+  expect(savedBundle?.assets?.[0]?.checksum).toContain("fnv1a32:");
+  expect(savedBundle?.text).toContain("\"assetPath\": \"captures/event-0001-rgb.png\"");
+  expect(savedBundle?.text).toContain("\"assetStatus\": \"external\"");
+  expect(savedBundle?.text).not.toContain("\"previewDataUrl\": \"data:image/png;base64,");
+
+  await page.getByRole("button", { name: "Load Episode" }).click();
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded");
+  await expect(page.getByTestId("episode-save-status")).toContainText("world-episode.json");
+  const provenance = page.getByTestId("episode-provenance");
+  await expect(provenance).toContainText("capture assets");
+  await expect(provenance).toContainText("missing · 1/1 companion PNG missing");
+
+  await page.getByRole("button", { name: "Sensors" }).click();
+  const captureArtifacts = page.getByTestId("sensor-capture-artifacts");
+  await expect(captureArtifacts).toContainText("missing capture asset");
+  await expect(captureArtifacts).toContainText("missing asset");
+});
+
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
   await page.addInitScript((input: { payload: LocalWorldPackagePayload; episodeText: string }) => {
     const { payload, episodeText } = input;
     const bridgeWindow = window as Window & {
       __savedEpisode?: { suggestedName: string; text: string };
-      __savedBundle?: { suggestedName: string; text: string };
+      __savedBundle?: SaveEpisodeBundleInput;
       worldStudioDesktop?: {
         openLocalPackage: () => Promise<LocalWorldPackagePayload | null>;
         saveEpisodeManifest: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
-        saveEpisodeBundle: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
+        saveEpisodeBundle: (input: SaveEpisodeBundleInput) => Promise<{ path: string } | null>;
         openEpisodeManifest: () => Promise<{ path: string; text: string } | null>;
       };
     };
@@ -840,7 +901,7 @@ test("saves and loads Episode manifests through the desktop bridge", async ({ pa
   await expect(page.getByTestId("episode-save-status")).toContainText("saved package");
   await expect(page.getByTestId("episode-save-status")).toContainText("world-episode.json");
   const savedBundle = await page.evaluate(() => {
-    const bridgeWindow = window as Window & { __savedBundle?: { suggestedName: string; text: string } };
+    const bridgeWindow = window as Window & { __savedBundle?: SaveEpisodeBundleInput };
     return bridgeWindow.__savedBundle ?? null;
   });
   expect(savedBundle?.suggestedName).toBe("world-studio-episode-loft_04.world-episode.json");
