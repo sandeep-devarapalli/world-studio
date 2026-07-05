@@ -1413,6 +1413,39 @@ test("crops point cloud with the crop box and undo", async ({ page }) => {
   await expect(page.locator(".ws-statusbar")).toContainText("0 hidden");
 });
 
+test("moves selected points with the transform tool and undo", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "points" }).click();
+  await page.getByRole("button", { name: "rect select" }).click();
+
+  const canvas = page.locator("[data-testid='world-canvas']");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("canvas missing");
+
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.65);
+  await page.mouse.up();
+  await expect(page.getByTestId("transform-readout")).not.toContainText("0 points");
+  await expect(page.getByTestId("transform-moved-readout")).toContainText("0 points");
+
+  await page.getByRole("button", { name: "transform" }).click();
+  await page.mouse.move(box.x + box.width * 0.50, box.y + box.height * 0.56);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.58, box.y + box.height * 0.56);
+  await page.mouse.up();
+
+  await expect(page.getByTestId("transform-moved-readout")).not.toContainText("0 points");
+  await expect(page.getByTestId("transform-delta-readout")).toContainText(/-?\d+\.\d{2} · -?\d+\.\d{2} m/);
+  await expect(page.locator(".ws-hist-row", { hasText: "transform" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByTestId("transform-moved-readout")).toContainText("0 points");
+  await expect(page.getByTestId("transform-delta-readout")).toContainText("0.00 · 0.00 m");
+});
+
 test("measures ground-plane distance in Edit mode", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
