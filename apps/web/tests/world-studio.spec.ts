@@ -741,8 +741,15 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(page.locator(".ws-sensor-list")).toContainText("stereo depth");
   await expect(editor).toContainText("86° · 12.5m");
 
+  await editor.getByRole("button", { name: "Capture Frame" }).click();
+  const captureArtifacts = page.getByTestId("sensor-capture-artifacts");
+  await expect(captureArtifacts).toContainText("NavCam · depth");
+  await expect(captureArtifacts).toContainText("splat");
+  await expect(captureArtifacts.getByAltText("Latest sensor capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
+
   await editor.getByRole("button", { name: "Record Rig" }).click();
   await page.getByRole("button", { name: "Episode" }).click();
+  await expect(page.getByTestId("episode-event-list")).toContainText("sensor capture · NavCam");
   await expect(page.getByTestId("episode-event-list")).toContainText("sensor rig update");
   await expect(page.getByTestId("episode-selected-event")).toContainText("sensor rig update");
 
@@ -753,6 +760,10 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(exportPreview).toContainText("\"fovDeg\": 86");
   await expect(exportPreview).toContainText("\"rangeM\": 12.5");
   await expect(exportPreview).toContainText("\"resolution\": \"1280x720\"");
+  await expect(exportPreview).toContainText("\"sensorCaptures\"");
+  await expect(exportPreview).toContainText("\"sensorId\": \"rgb\"");
+  await expect(exportPreview).toContainText("\"sensorLabel\": \"NavCam\"");
+  await expect(exportPreview).toContainText("\"previewDataUrl\": \"data:image/png;base64,");
   const exported = (await exportPreview.textContent()) ?? "";
 
   await page.getByRole("button", { name: "Sensors" }).click();
@@ -775,6 +786,8 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(editor.getByLabel("Sensor range")).toHaveValue("12.5");
   await expect(editor.getByLabel("Sensor resolution")).toHaveValue("1280x720");
   await expect(editor).toContainText("86° · 12.5m");
+  await expect(captureArtifacts).toContainText("NavCam · depth");
+  await expect(captureArtifacts.getByAltText("Latest sensor capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
 });
 
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {

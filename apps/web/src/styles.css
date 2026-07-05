@@ -460,6 +460,63 @@ body {
   text-align: left;
 }
 
+.ws-root.mode-sensors .ws-capture-artifacts .ws-panel-body {
+  gap: 7px;
+  padding: 10px 14px 12px;
+}
+
+.ws-capture-preview {
+  aspect-ratio: 16 / 9;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  display: block;
+  height: auto;
+  object-fit: cover;
+  width: 100%;
+}
+
+.ws-capture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 104px;
+  overflow: auto;
+  padding-top: 2px;
+}
+
+.ws-capture-row,
+.ws-capture-empty {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink-mut);
+  display: grid;
+  font-family: var(--mono);
+  font-size: var(--fs-head);
+  gap: 7px;
+  grid-template-columns: 42px minmax(0, 1fr) 58px;
+  min-height: 30px;
+  padding: 5px 7px;
+}
+
+.ws-capture-row b,
+.ws-capture-row span,
+.ws-capture-empty span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-capture-row b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.ws-capture-empty {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+
 .ws-root.mode-sensors .ws-bottom-left {
   bottom: 64px;
 }

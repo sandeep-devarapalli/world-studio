@@ -118,6 +118,27 @@ interface CaptureFrame {
   path: string;
 }
 
+interface SensorCaptureArtifact {
+  id: string;
+  eventId: string;
+  frame: number;
+  sensorId: string;
+  sensorLabel: string;
+  sensorKind: SensorRigChannel["kind"];
+  sensorSpec: string;
+  capturedAt: string;
+  previewDataUrl: string;
+  mimeType: "image/png";
+  renderMode: RenderMode;
+  rendererStatus: string;
+  worldName: string;
+  sourcePath: string;
+  loadedVia: string;
+  camera: CameraState;
+  size: { width: number; height: number };
+  bytes: number;
+}
+
 interface LoadedWorldInput {
   name: string;
   scene?: LoftSceneManifest;
@@ -205,6 +226,7 @@ interface ImportedEpisodeManifest {
   trajectory: Array<[number, number]>;
   props: SimulatedPropState[];
   sensors: SensorRigChannel[];
+  sensorCaptures: SensorCaptureArtifact[];
   provenance: EpisodeProvenanceSummary;
 }
 
@@ -303,6 +325,7 @@ export function App() {
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
   const [captureFrames, setCaptureFrames] = useState<CaptureFrame[]>([]);
+  const [sensorCaptures, setSensorCaptures] = useState<SensorCaptureArtifact[]>([]);
   const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
   const [stepCount, setStepCount] = useState(0);
   const [lastAction, setLastAction] = useState("idle");
@@ -322,6 +345,15 @@ export function App() {
     () => props.find((prop) => prop.id === selectedPropId) ?? props[0] ?? null,
     [props, selectedPropId]
   );
+  const selectedSensor = useMemo(
+    () => sensors.find((sensor) => sensor.id === selectedSensorId) ?? sensors[0] ?? null,
+    [selectedSensorId, sensors]
+  );
+  const selectedSensorCaptures = useMemo(
+    () => sensorCaptures.filter((capture) => capture.sensorId === selectedSensor?.id),
+    [selectedSensor?.id, sensorCaptures]
+  );
+  const latestSensorCapture = selectedSensorCaptures[0] ?? null;
   const episodeTimeline = useMemo(() => [...episodeEvents].sort((a, b) => a.frame - b.frame), [episodeEvents]);
   const selectedEpisodeEvent = useMemo(
     () => episodeTimeline.find((event) => event.id === selectedEpisodeEventId) ?? episodeTimeline.at(-1) ?? null,
@@ -489,6 +521,7 @@ export function App() {
     setEpisodeSaveStatus(null);
     setEpisodeProvenance(null);
     setEpisodeIntegrityOpen(false);
+    setSensorCaptures([]);
     propSeqRef.current = defaultProps.length;
     episodeFrameRef.current = 0;
     setPhysicsDiagnostics(unavailablePhysicsDiagnostics());
@@ -725,13 +758,58 @@ export function App() {
     episodeFrameRef.current += 1;
     const frame = episodeFrameRef.current;
     const id = `event-${frame}`;
-    setEpisodeEvents((current) => [{ ...event, id, frame }, ...current].slice(0, 80));
+    const nextEvent = { ...event, id, frame };
+    setEpisodeEvents((current) => [nextEvent, ...current].slice(0, 80));
     setSelectedEpisodeEventId(id);
     setEpisodeExportText(null);
     setEpisodeSaveStatus(null);
     setEpisodeProvenance(null);
     setEpisodeIntegrityOpen(false);
+    return nextEvent;
   }, []);
+
+  const captureSensorFrame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !selectedSensor || !session) return;
+    if (!selectedSensor.enabled) {
+      setEpisodeSaveStatus("capture blocked · sensor off");
+      return;
+    }
+
+    try {
+      const previewDataUrl = renderer?.capture(canvas) ?? canvas.toDataURL("image/png");
+      const event = recordEpisodeEvent({
+        lane: "capture",
+        label: `sensor capture · ${selectedSensor.label}`,
+        targetId: selectedSensor.id,
+        status: `${selectedSensor.kind} · ${renderMode}`
+      });
+      const artifact: SensorCaptureArtifact = {
+        id: `sensor-capture-${event.frame}`,
+        eventId: event.id,
+        frame: event.frame,
+        sensorId: selectedSensor.id,
+        sensorLabel: selectedSensor.label,
+        sensorKind: selectedSensor.kind,
+        sensorSpec: selectedSensor.spec,
+        capturedAt: new Date().toISOString(),
+        previewDataUrl,
+        mimeType: "image/png",
+        renderMode,
+        rendererStatus: rendererStatusLabel(renderMode, rendererDiagnostics),
+        worldName: session.name,
+        sourcePath: session.provenance.sourcePath,
+        loadedVia: session.provenance.loadedVia,
+        camera,
+        size: { width: canvas.width, height: canvas.height },
+        bytes: estimateDataUrlBytes(previewDataUrl)
+      };
+      setSensorCaptures((current) => [artifact, ...current].slice(0, 24));
+      setEpisodeSaveStatus(`captured ${selectedSensor.label}`);
+    } catch (error) {
+      setEpisodeSaveStatus(error instanceof Error ? `capture failed · ${error.message}` : "capture failed");
+    }
+  }, [camera, recordEpisodeEvent, renderMode, renderer, rendererDiagnostics, selectedSensor, session]);
 
   const selectEpisodeEvent = useCallback(
     (event: EpisodeEvent) => {
@@ -759,9 +837,10 @@ export function App() {
       playhead,
       trajectory,
       props,
-      sensors
+      sensors,
+      sensorCaptures
     });
-  }, [episodeTimeline, playhead, props, selectedEpisodeEvent?.id, sensors, session, trajectory]);
+  }, [episodeTimeline, playhead, props, selectedEpisodeEvent?.id, sensorCaptures, sensors, session, trajectory]);
 
   const createEpisodeManifestText = useCallback(() => {
     const manifest = createEpisodeManifest();
@@ -830,6 +909,7 @@ export function App() {
     setSelectedPropId(imported.props[0]?.id ?? null);
     setSensors(imported.sensors);
     setSelectedSensorId(imported.sensors[0]?.id ?? initialSensors[0]?.id ?? "rgb");
+    setSensorCaptures(imported.sensorCaptures);
     setEpisodeExportText(text);
     setEpisodeSaveStatus(`loaded ${compactPath(sourceLabel)}${imported.worldName ? ` · ${imported.worldName}` : ""}`);
     setEpisodeProvenance({ ...imported.provenance, loadedFrom: sourceLabel });
@@ -1846,7 +1926,6 @@ export function App() {
     }
 
     if (mode === "sensors") {
-      const selectedSensor = sensors.find((sensor) => sensor.id === selectedSensorId) ?? sensors[0];
       return (
         <>
           <WSPanel
@@ -1978,6 +2057,12 @@ export function App() {
               <div className="ws-btn-row">
                 <WSButton
                   accent
+                  disabled={!selectedSensor.enabled || !session}
+                  onClick={captureSensorFrame}
+                >
+                  Capture Frame
+                </WSButton>
+                <WSButton
                   onClick={() =>
                     recordEpisodeEvent({
                       lane: "capture",
@@ -1994,6 +2079,48 @@ export function App() {
               <WSSliderRow label="Blur" value="off" pct={0} />
             </WSPanel>
           ) : null}
+          <WSPanel
+            title="Capture Artifact"
+            meta={selectedSensorCaptures.length ? `${selectedSensorCaptures.length} records` : "no records"}
+            className="ws-capture-artifacts"
+            data-testid="sensor-capture-artifacts"
+          >
+            {latestSensorCapture ? (
+              <>
+                <img alt="Latest sensor capture preview" className="ws-capture-preview" src={latestSensorCapture.previewDataUrl} />
+                <div className="ws-kv">
+                  <span>sensor</span>
+                  <b>{latestSensorCapture.sensorLabel} · {latestSensorCapture.sensorKind}</b>
+                </div>
+                <div className="ws-kv">
+                  <span>event</span>
+                  <b>{latestSensorCapture.eventId} · frame {latestSensorCapture.frame}</b>
+                </div>
+                <div className="ws-kv">
+                  <span>source</span>
+                  <b>{latestSensorCapture.rendererStatus}</b>
+                </div>
+                <div className="ws-kv">
+                  <span>bytes</span>
+                  <b>{latestSensorCapture.bytes.toLocaleString()}</b>
+                </div>
+                <div className="ws-capture-list">
+                  {selectedSensorCaptures.slice(0, 4).map((capture) => (
+                    <div className="ws-capture-row" key={capture.id}>
+                      <span>{String(capture.frame).padStart(3, "0")}</span>
+                      <b>{capture.sensorLabel}</b>
+                      <span>{capture.renderMode}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="ws-capture-empty">
+                <span className="ws-frame-thumb" />
+                <span className="ws-row-name">no sensor captures yet</span>
+              </div>
+            )}
+          </WSPanel>
         </>
       );
     }
@@ -2272,6 +2399,9 @@ function parseEpisodePayload(parsed: unknown): ImportedEpisodeManifest {
     : [];
   const props = Array.isArray(episode.props) ? episode.props.map(parseEpisodeProp) : defaultProps;
   const sensors = Array.isArray(episode.sensors) ? episode.sensors.map(parseEpisodeSensor) : initialSensors;
+  const sensorCaptures = Array.isArray(episode.sensorCaptures)
+    ? episode.sensorCaptures.map(parseEpisodeSensorCapture)
+    : [];
   const selectedEventId = typeof playback.selectedEventId === "string" ? playback.selectedEventId : null;
   const world = isRecord(episode.world) ? episode.world : null;
   const worldName = world && typeof world.name === "string" ? world.name : null;
@@ -2284,6 +2414,7 @@ function parseEpisodePayload(parsed: unknown): ImportedEpisodeManifest {
     trajectory: trajectory.length ? trajectory : [[defaultSpawn.x, defaultSpawn.z]],
     props,
     sensors,
+    sensorCaptures,
     provenance: isBundle && isRecord(parsed)
       ? parseEpisodeBundleProvenance(parsed, worldName)
       : parseStandaloneEpisodeProvenance(episode, worldName)
@@ -2542,6 +2673,12 @@ function checksumBytes(bytes: Uint8Array): string {
   return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }
 
+function estimateDataUrlBytes(dataUrl: string): number {
+  const [, payload = ""] = dataUrl.split(",", 2);
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((payload.length * 3) / 4) - padding);
+}
+
 function uniqueStrings(values: Array<string | null>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
@@ -2594,6 +2731,56 @@ function parseEpisodeSensor(value: unknown, index: number): SensorRigChannel {
   };
 }
 
+function parseEpisodeSensorCapture(value: unknown, index: number): SensorCaptureArtifact {
+  if (!isRecord(value)) throw new Error(`invalid sensor capture ${index + 1}`);
+  const fallback = initialSensors.find((sensor) => sensor.id === value.sensorId) ?? initialSensors[index] ?? initialSensors[0]!;
+  const previewDataUrl = typeof value.previewDataUrl === "string" && value.previewDataUrl.startsWith("data:image/")
+    ? value.previewDataUrl
+    : "";
+  if (!previewDataUrl) throw new Error(`invalid sensor capture ${index + 1} preview`);
+  const size = isRecord(value.size) ? value.size : {};
+  const renderMode = isRenderMode(value.renderMode) ? value.renderMode : "splat";
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : `sensor-capture-${index + 1}`,
+    eventId: typeof value.eventId === "string" && value.eventId ? value.eventId : `event-${index + 1}`,
+    frame: readOptionalFiniteNumber(value.frame, index + 1, 0, 1_000_000),
+    sensorId: typeof value.sensorId === "string" && value.sensorId ? value.sensorId : fallback.id,
+    sensorLabel: typeof value.sensorLabel === "string" && value.sensorLabel ? value.sensorLabel : fallback.label,
+    sensorKind: parseSensorKind(value.sensorKind, fallback.kind),
+    sensorSpec: typeof value.sensorSpec === "string" ? value.sensorSpec : fallback.spec,
+    capturedAt: typeof value.capturedAt === "string" && value.capturedAt ? value.capturedAt : new Date(0).toISOString(),
+    previewDataUrl,
+    mimeType: "image/png",
+    renderMode,
+    rendererStatus: typeof value.rendererStatus === "string" ? value.rendererStatus : "unknown",
+    worldName: typeof value.worldName === "string" ? value.worldName : "unknown",
+    sourcePath: typeof value.sourcePath === "string" ? value.sourcePath : "unknown",
+    loadedVia: typeof value.loadedVia === "string" ? value.loadedVia : "unknown",
+    camera: parseEpisodeCamera(value.camera),
+    size: {
+      width: readOptionalFiniteNumber(size.width, 0, 0, 10000),
+      height: readOptionalFiniteNumber(size.height, 0, 0, 10000)
+    },
+    bytes: readOptionalFiniteNumber(value.bytes, estimateDataUrlBytes(previewDataUrl), 0, 100_000_000)
+  };
+}
+
+function parseEpisodeCamera(value: unknown): CameraState {
+  if (!isRecord(value)) return initialCamera;
+  const target = Array.isArray(value.target) ? value.target : [];
+  return {
+    yaw: readOptionalFiniteNumber(value.yaw, initialCamera.yaw, -360, 360),
+    pitch: readOptionalFiniteNumber(value.pitch, initialCamera.pitch, -360, 360),
+    distance: readOptionalFiniteNumber(value.distance, initialCamera.distance, 0, 1000),
+    target: [
+      readOptionalFiniteNumber(target[0], initialCamera.target[0], -1000, 1000),
+      readOptionalFiniteNumber(target[1], initialCamera.target[1], -1000, 1000),
+      readOptionalFiniteNumber(target[2], initialCamera.target[2], -1000, 1000)
+    ],
+    fov: readOptionalFiniteNumber(value.fov, initialCamera.fov, 1, 179)
+  };
+}
+
 function parseTrajectoryPoint(value: unknown): [number, number] | null {
   if (!isRecord(value) || typeof value.x !== "number" || typeof value.z !== "number") return null;
   if (!Number.isFinite(value.x) || !Number.isFinite(value.z)) return null;
@@ -2608,6 +2795,10 @@ function parseEpisodeLane(value: unknown, index: number): EpisodeLane {
 function parseSensorKind(value: unknown, fallback: SensorRigChannel["kind"]): SensorRigChannel["kind"] {
   if (value === "rgb" || value === "depth" || value === "segmentation" || value === "lidar" || value === "imu") return value;
   return fallback;
+}
+
+function isRenderMode(value: unknown): value is RenderMode {
+  return value === "splat" || value === "points" || value === "mesh" || value === "semantic" || value === "depth";
 }
 
 function clampNumberInput(event: ChangeEvent<HTMLInputElement>, fallback: number, min: number, max: number): number {
@@ -2651,7 +2842,8 @@ function buildEpisodeManifest({
   playhead,
   trajectory,
   props,
-  sensors
+  sensors,
+  sensorCaptures
 }: {
   session: WorldSession | null;
   events: EpisodeEvent[];
@@ -2660,6 +2852,7 @@ function buildEpisodeManifest({
   trajectory: Array<[number, number]>;
   props: SimulatedPropState[];
   sensors: SensorRigChannel[];
+  sensorCaptures: SensorCaptureArtifact[];
 }) {
   return {
     schema: "world-studio.episode.v0.1",
@@ -2707,6 +2900,26 @@ function buildEpisodeManifest({
       fovDeg: sensor.fovDeg,
       rangeM: sensor.rangeM,
       resolution: sensor.resolution
+    })),
+    sensorCaptures: sensorCaptures.map((capture) => ({
+      id: capture.id,
+      eventId: capture.eventId,
+      frame: capture.frame,
+      sensorId: capture.sensorId,
+      sensorLabel: capture.sensorLabel,
+      sensorKind: capture.sensorKind,
+      sensorSpec: capture.sensorSpec,
+      capturedAt: capture.capturedAt,
+      previewDataUrl: capture.previewDataUrl,
+      mimeType: capture.mimeType,
+      renderMode: capture.renderMode,
+      rendererStatus: capture.rendererStatus,
+      worldName: capture.worldName,
+      sourcePath: capture.sourcePath,
+      loadedVia: capture.loadedVia,
+      camera: capture.camera,
+      size: capture.size,
+      bytes: capture.bytes
     }))
   };
 }
