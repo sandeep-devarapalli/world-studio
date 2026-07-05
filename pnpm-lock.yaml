@@ -32,6 +32,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@world-studio/artifacts':
+        specifier: workspace:*
+        version: link:../../packages/artifacts
       '@world-studio/world-core':
         specifier: workspace:*
         version: link:../../packages/world-core

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
+  buildGaussianPreviewPointCloudPly,
   createLoftWorldSession,
   detectPlyKind,
   parseObjMesh,
@@ -58,6 +59,29 @@ describe("World Studio artifact loaders", () => {
     expect(binaryPrepared.converted).toBe(false);
     expect(binaryPrepared.sourceFormat).toBe("binary_little_endian");
     expect(binaryPrepared.bytes).toBe(asciiPrepared.bytes);
+  });
+
+  it("builds ordinary preview points from Gaussian PLYs", async () => {
+    const gaussians = await readFile(fixture("gaussians.ply"));
+    const preview = buildGaussianPreviewPointCloudPly(gaussians, { maxPoints: 64 });
+    const parsed = parsePointCloudPly(preview);
+
+    expect(detectPlyKind(preview)).toBe("ordinary-ply");
+    expect(parsed.points.length).toBeLessThanOrEqual(64);
+    expect(parsed.points.length).toBeGreaterThan(10);
+    expect(parsed.bounds.max[1]).toBeGreaterThan(parsed.bounds.min[1]);
+  });
+
+  it("builds ordinary preview points from binary Gaussian PLYs", async () => {
+    const gaussians = await readFile(fixture("gaussians.ply"));
+    const binary = prepareGaussianPlyForSpark(gaussians).bytes;
+    const preview = buildGaussianPreviewPointCloudPly(binary, { maxPoints: 32 });
+    const parsed = parsePointCloudPly(preview);
+
+    expect(detectPlyKind(preview)).toBe("ordinary-ply");
+    expect(parsed.points.length).toBeLessThanOrEqual(32);
+    expect(parsed.points[0]?.red).toBeGreaterThanOrEqual(0);
+    expect(parsed.points[0]?.red).toBeLessThanOrEqual(255);
   });
 
   it("rejects ordinary point-cloud PLYs for Spark Gaussian loading", async () => {

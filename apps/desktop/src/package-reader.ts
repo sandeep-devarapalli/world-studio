@@ -1,17 +1,23 @@
+import { buildGaussianPreviewPointCloudPly } from "@world-studio/artifacts";
 import type { AuthorityStatus, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 const maxTextBytes = 64 * 1024 * 1024;
-const maxBinaryBytes = 96 * 1024 * 1024;
+const maxBinaryBytes = 256 * 1024 * 1024;
+const maxGaussianPreviewPoints = 50_000;
 const maxPreviewChars = 8_000;
 
 export async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayload> {
   const sourcePath = path.resolve(folder);
   const packageIssues: LocalPackageIssue[] = [];
   const sceneFile = await readOptionalText(sourcePath, "scene.json", packageIssues);
-  const pointsPly = await readFirstText(sourcePath, ["points.ply", "point_cloud.ply", "cloud.ply"], packageIssues);
+  const sourcePointsPly = await readFirstText(sourcePath, ["points.ply", "point_cloud.ply", "cloud.ply"], packageIssues);
   const gaussianPly = await readFirstBinary(sourcePath, ["gaussians.ply", "splats.ply", "splat.ply"], packageIssues);
+  const generatedPointsPly = !sourcePointsPly && gaussianPly
+    ? await readGaussianPreviewPointCloud(sourcePath, gaussianPly.relativePath, packageIssues)
+    : undefined;
+  const pointsPly = sourcePointsPly ?? generatedPointsPly;
   const objMesh = await readFirstText(sourcePath, ["collision_mesh.obj", "mesh.obj", "model.obj"], packageIssues);
   const budoMediaFrames = await readOptionalText(sourcePath, "budo.media_frames.v0.8.json", packageIssues);
   const articleFigureViews = await readOptionalText(sourcePath, "budo.article_figure_3d_views.v0.1.json", packageIssues);
@@ -30,7 +36,7 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
   }
   const companionArtifacts = [...new Set([
     sceneFile?.relativePath,
-    pointsPly?.relativePath,
+    sourcePointsPly?.relativePath,
     gaussianPly?.relativePath,
     objMesh?.relativePath,
     budoMediaFrames?.relativePath,
@@ -40,7 +46,7 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
   ].filter((entry): entry is string => Boolean(entry)))];
   const assetManifest = buildAssetManifest([
     sceneFile,
-    pointsPly,
+    sourcePointsPly,
     gaussianPly,
     objMesh,
     budoMediaFrames,
@@ -49,7 +55,7 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     ...jsonManifests
   ]);
 
-  const packageKind = classifyPackage({ articleFigureViews, budoMediaFrames, pointsPly, sceneFile, verifiedExport });
+  const packageKind = classifyPackage({ articleFigureViews, budoMediaFrames, pointsPly: sourcePointsPly, sceneFile, verifiedExport });
   const authorityStatus = classifyAuthority(packageKind);
   const primaryArtifact =
     verifiedExport?.relativePath ??
@@ -68,7 +74,7 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
     jsonManifests,
     objMesh,
     packageIssues,
-    pointsPly,
+    pointsPly: sourcePointsPly,
     sceneFile,
     verifiedExport
   });
@@ -222,6 +228,36 @@ async function readOptionalBinary(root: string, relativePath: string, packageIss
   }
 }
 
+async function readGaussianPreviewPointCloud(
+  root: string,
+  gaussianRelativePath: string,
+  packageIssues?: LocalPackageIssue[]
+): Promise<LocalWorldPackageTextFile | undefined> {
+  const filePath = resolveInside(root, gaussianRelativePath);
+  try {
+    const bytes = await readFile(filePath);
+    const text = buildGaussianPreviewPointCloudPly(bytes, { maxPoints: maxGaussianPreviewPoints });
+    const textBytes = Buffer.from(text, "utf8");
+    return {
+      relativePath: `${gaussianRelativePath}#preview-points`,
+      text,
+      sizeBytes: textBytes.byteLength,
+      checksum: checksumBytes(textBytes)
+    };
+  } catch (error) {
+    pushIssue(packageIssues, {
+      artifact: gaussianRelativePath,
+      code: "unsupported_layout",
+      message: error instanceof Error
+        ? `Could not derive preview points from Gaussian PLY: ${error.message}`
+        : "Could not derive preview points from Gaussian PLY.",
+      severity: "warning",
+      title: "Gaussian preview unavailable"
+    });
+    return undefined;
+  }
+}
+
 function buildAssetManifest(files: Array<LocalWorldPackageTextFile | LocalWorldPackageBinaryFile | undefined>): WorldAssetManifestEntry[] {
   const seen = new Set<string>();
   return files.flatMap((file) => {
@@ -266,6 +302,7 @@ function buildPackageInsights(input: {
 }, packageIssues: LocalPackageIssue[] = []): LocalPackageInsight[] {
   const insights: LocalPackageInsight[] = [];
   const handled = new Set<string>();
+  const hasGeneratedPreviewPoints = input.pointsPly?.relativePath.endsWith("#preview-points") ?? false;
 
   if (input.pointsPly || input.gaussianPly || input.objMesh) {
     insights.push({
@@ -273,13 +310,17 @@ function buildPackageInsights(input: {
       kind: "asset-set",
       title: "Asset Set",
       artifact: "local files",
-      summary: "Renderable package assets detected in the selected folder.",
+      summary: hasGeneratedPreviewPoints
+        ? "Renderable Gaussian source detected; preview points were generated for bounds only."
+        : "Renderable package assets detected in the selected folder.",
       metrics: [
         { label: "points", value: input.pointsPly ? input.pointsPly.relativePath : "missing" },
         { label: "gaussian", value: input.gaussianPly ? input.gaussianPly.relativePath : "missing" },
         { label: "mesh", value: input.objMesh ? input.objMesh.relativePath : "missing" }
       ],
-      details: [],
+      details: hasGeneratedPreviewPoints
+        ? [{ label: "points source", value: "generated preview, not a package file" }]
+        : [],
       sections: [
         {
           title: "Renderable Assets",
