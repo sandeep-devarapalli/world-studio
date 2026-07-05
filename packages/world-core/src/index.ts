@@ -121,6 +121,14 @@ export interface RenderOptions {
   debugCollision: boolean;
   agentBodyRadius?: number;
   grid: boolean;
+  cropBounds?: CropBounds;
+}
+
+export interface CropBounds {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
 }
 
 export type SparkLoadState = "unavailable" | "idle" | "loading" | "ready" | "failed";

@@ -336,7 +336,12 @@ export class ThreeWorldRenderer implements RenderAdapter {
       const offset = index * 3;
       const deleted = options.deleted.has(index);
       const densitySkipped = index % stride !== 0 && !options.selected.has(index);
-      if (!point || densitySkipped || (deleted && !options.showDeleted)) {
+      const cropBounds = options.cropBounds;
+      const cropHidden =
+        cropBounds !== undefined &&
+        point !== undefined &&
+        (point.x < cropBounds.minX || point.x > cropBounds.maxX || point.z < cropBounds.minZ || point.z > cropBounds.maxZ);
+      if (!point || densitySkipped || cropHidden || (deleted && !options.showDeleted)) {
         this.pointPositions[offset] = hiddenPoint;
         this.pointPositions[offset + 1] = hiddenPoint;
         this.pointPositions[offset + 2] = hiddenPoint;
