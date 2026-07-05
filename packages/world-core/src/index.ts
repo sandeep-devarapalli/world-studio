@@ -142,6 +142,7 @@ export interface RenderAdapter {
   render(canvas: HTMLCanvasElement, options: RenderOptions): void;
   collectInRadius(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number, radius: number): number[];
   collectInRect?(canvas: HTMLCanvasElement, options: RenderOptions, x0: number, y0: number, x1: number, y1: number): number[];
+  projectToGround?(canvas: HTMLCanvasElement, options: RenderOptions, x: number, y: number): [number, number, number] | null;
   capture(canvas: HTMLCanvasElement): string;
   getDiagnostics?(): RendererDiagnostics;
   dispose?(): void;

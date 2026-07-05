@@ -1384,6 +1384,31 @@ test("selects with the rect tool, deletes, and undoes", async ({ page }) => {
   await expect(statusbar).toContainText("0 hidden");
 });
 
+test("measures ground-plane distance in Edit mode", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "measure", exact: true }).click();
+
+  await expect(page.getByTestId("measure-readout")).toContainText("pick start");
+
+  const canvas = page.locator("[data-testid='world-canvas']");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("canvas missing");
+
+  await page.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.56);
+  await expect(page.getByTestId("measure-readout")).toContainText("pick end");
+
+  await page.mouse.click(box.x + box.width * 0.62, box.y + box.height * 0.56);
+  await expect(page.getByTestId("measure-readout")).toContainText(/\d+\.\d{2} m/);
+  await expect(page.getByTestId("measure-overlay-label")).toContainText(/\d+\.\d{2} m/);
+  await expect(page.getByTestId("measure-overlay")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear Measure" }).click();
+  await expect(page.getByTestId("measure-readout")).toContainText("pick start");
+  await expect(page.getByTestId("measure-overlay")).toHaveCount(0);
+});
+
 test("keeps the stage centered and chrome visible across window resizes", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
