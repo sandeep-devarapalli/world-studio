@@ -191,7 +191,7 @@ export interface LocalPackageInsightSection {
 
 export interface LocalPackageInsight {
   id: string;
-  kind: "asset-set" | "scene-manifest" | "media-frames" | "figure-views" | "verified-export" | "json-manifest";
+  kind: "asset-set" | "scene-manifest" | "media-frames" | "figure-views" | "verified-export" | "json-manifest" | "capture-splat-manifest";
   title: string;
   artifact: string;
   summary: string;

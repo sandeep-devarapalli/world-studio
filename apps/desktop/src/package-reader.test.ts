@@ -306,6 +306,95 @@ end_header
     expect(payload.packageIssues).toEqual([]);
   });
 
+  it("loads explicit Capture Splat handoff manifests with source frames and renderable artifacts", async () => {
+    const root = await makePackage("capture-splat-handoff");
+    await mkdir(join(root, "rgb"), { recursive: true });
+    await mkdir(join(root, "exports"), { recursive: true });
+    await mkdir(join(root, "renders"), { recursive: true });
+    await mkdir(join(root, "colmap"), { recursive: true });
+    await writeFile(join(root, "rgb", "frame_000001.png"), onePixelPng);
+    await writeFile(join(root, "rgb", "frame_000002.png"), onePixelPng);
+    await writeFile(join(root, "exports", "points.ply"), `ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+end_header
+0 0 0`);
+    await writeFile(join(root, "renders", "splat.ply"), `ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`);
+    await writeFile(join(root, "exports", "collision_mesh.obj"), "o fixture\nv 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n");
+    await writeJson(root, "capture.json", { schema: "capture_splat.v0.1", accepted_keyframes: 2 });
+    await writeJson(root, "colmap/transforms.json", { schema: "capture_splat.transforms.v0.1", frames: [] });
+    await writeJson(root, "capture-splat.world-studio.json", {
+      schema: "capture_splat.world_studio_handoff.v0.1",
+      status: "visual_evidence_with_3dgs_proposal",
+      source_frames: [{ path: "rgb/frame_000001.png" }, { path: "rgb/frame_000002.png" }],
+      assets: {
+        points: "exports/points.ply",
+        gaussian: "renders/splat.ply",
+        capture_manifest: "capture.json",
+        transforms: "colmap/transforms.json",
+        spz: "exports/scene.spz"
+      },
+      artifacts: [
+        { kind: "mesh", path: "exports/collision_mesh.obj" }
+      ]
+    });
+
+    const payload = await readLocalPackage(root);
+    const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ rgb_path?: string; preview_data_url?: string }>;
+      source_kind?: string;
+    };
+
+    expect(payload.packageKind).toBe("capture-splat-local-folder");
+    expect(payload.sourceKind).toBe("capture_splat.local_folder");
+    expect(payload.authorityStatus).toBe("visual_evidence");
+    expect(payload.primaryArtifact).toBe("renders/splat.ply");
+    expect(payload.pointsPly?.relativePath).toBe("exports/points.ply");
+    expect(payload.gaussianPly?.relativePath).toBe("renders/splat.ply");
+    expect(payload.objMesh?.relativePath).toBe("exports/collision_mesh.obj");
+    expect(mediaFrames.source_kind).toBe("capture_splat.world_studio_handoff");
+    expect(mediaFrames.frames).toHaveLength(2);
+    expect(mediaFrames.frames?.[0]?.rgb_path).toBe("rgb/frame_000001.png");
+    expect(mediaFrames.frames?.[0]?.preview_data_url).toMatch(/^data:image\/png;base64,/);
+    expect(payload.companionArtifacts).toEqual(
+      expect.arrayContaining(["capture-splat.world-studio.json", "exports/points.ply", "renders/splat.ply", "capture-splat.media_frames.generated.json", "exports/collision_mesh.obj", "capture.json"])
+    );
+    expect(payload.packageInsights).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "capture-splat-manifest",
+          kind: "capture-splat-manifest",
+          artifact: "capture-splat.world-studio.json",
+          status: "visual_evidence_with_3dgs_proposal"
+        }),
+        expect.objectContaining({ id: "media-frames", status: "capture_splat.world_studio_handoff" }),
+        expect.objectContaining({ id: "assets" })
+      ])
+    );
+    expect(payload.packageIssues).toEqual([]);
+  });
+
   it("keeps generic JSON folders external and proposal-scoped", async () => {
     const root = await makePackage("generic-json-compat");
     await writeJson(root, "manifest.json", {
