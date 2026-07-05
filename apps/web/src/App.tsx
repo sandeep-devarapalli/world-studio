@@ -11,6 +11,7 @@ import {
 } from "@world-studio/artifacts";
 import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel, WSPill, WSRamp, WSSliderRow, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
+import { buildCleanedPointCloudPly, cleanedPointRows } from "./edit-ply-export";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
 import { RapierSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
 import type {
@@ -1123,6 +1124,37 @@ export function App() {
     setPublishStatus("exported");
     setEditPublishMessage(`downloaded ${suggestedName}`);
   }, [createEditPublishText, publishFormat, session]);
+
+  const exportCleanedPointCloud = useCallback(async () => {
+    if (!session) {
+      setEditPublishMessage("load a world first");
+      return;
+    }
+    if (publishFormat !== "ply") {
+      setEditPublishMessage("clean PLY requires .ply format");
+      return;
+    }
+    const ply = buildCleanedPointCloudPly({
+      points: worldPoints,
+      deleted,
+      cropBounds: cropRegion?.bounds,
+      pointTransforms,
+      session
+    });
+    const suggestedName = cleanedPlyFileName(session);
+    const desktopSave = getDesktopApi()?.saveEpisodeManifest;
+    if (desktopSave) {
+      const result = await desktopSave({ suggestedName, text: ply.text });
+      setPublishStatus(result?.path ? "exported" : "preview");
+      setEditPublishMessage(result?.path ? `saved cleaned PLY ${compactPath(result.path)}` : "clean PLY export canceled");
+      if (result?.path) setLastAction(`clean PLY ${ply.rowCount} points`);
+      return;
+    }
+    downloadTextFile(suggestedName, ply.text, "model/ply;charset=utf-8");
+    setPublishStatus("exported");
+    setEditPublishMessage(`downloaded cleaned PLY ${suggestedName}`);
+    setLastAction(`clean PLY ${ply.rowCount} points`);
+  }, [cropRegion, deleted, pointTransforms, publishFormat, session, worldPoints]);
 
   const updateSensor = useCallback((sensorId: string, patch: Partial<SensorRigChannel>) => {
     setSensors((items) => items.map((item) => (item.id === sensorId ? { ...item, ...patch } : item)));
@@ -2811,6 +2843,10 @@ export function App() {
               <span>est. size</span>
               <b>{formatBytes(editOptimizeStats.estimatedSizeBytes)}</b>
             </div>
+            <div className="ws-kv" data-testid="publish-payload-readout">
+              <span>payload</span>
+              <b>{publishFormat === "ply" ? "cleaned ordinary PLY" : "manifest only"}</b>
+            </div>
             <div className="ws-kv">
               <span>authority</span>
               <b>proposal</b>
@@ -2825,6 +2861,9 @@ export function App() {
               </WSButton>
               <WSButton accent disabled={!session} onClick={() => void exportEditPublish()}>
                 Export Manifest
+              </WSButton>
+              <WSButton disabled={!session || publishFormat !== "ply"} onClick={() => void exportCleanedPointCloud()}>
+                Export Clean PLY
               </WSButton>
             </div>
             {editPublishText ? (
@@ -3169,14 +3208,8 @@ function buildEditOptimizeStats(
   format: PublishFormat,
   shDegree: number
 ): EditOptimizeStats {
-  let cropHiddenCount = 0;
-  for (let index = 0; index < points.length; index += 1) {
-    if (deleted.has(index)) continue;
-    const point = points[index];
-    if (!point) continue;
-    if (cropRegion && !pointInsideCropPosition(editPointPosition(point, index, pointTransforms), cropRegion.bounds)) cropHiddenCount += 1;
-  }
-  const exportPointCount = Math.max(0, points.length - deleted.size - cropHiddenCount);
+  const exportPointCount = cleanedPointRows({ points, deleted, cropBounds: cropRegion?.bounds, pointTransforms }).length;
+  const cropHiddenCount = Math.max(0, points.length - deleted.size - exportPointCount);
   return {
     totalPoints: points.length,
     exportPointCount,
@@ -3201,37 +3234,19 @@ function formatBytes(value: number): string {
   return `${value} B`;
 }
 
-function editPointPosition(point: PointRecord, index: number, pointTransforms: ReadonlyMap<number, PointTransform>) {
-  const transform = pointTransforms.get(index);
-  return {
-    x: point.x + (transform?.dx ?? 0),
-    y: point.y + (transform?.dy ?? 0),
-    z: point.z + (transform?.dz ?? 0)
-  };
-}
-
-function pointInsideCropPosition(point: { x: number; z: number }, bounds: CropBounds): boolean {
-  return point.x >= bounds.minX && point.x <= bounds.maxX && point.z >= bounds.minZ && point.z <= bounds.maxZ;
-}
-
 function findOutlierIndices(
   points: PointRecord[],
   deleted: ReadonlySet<number>,
   cropRegion: CropRegion | null,
   pointTransforms: ReadonlyMap<number, PointTransform>
 ): number[] {
-  const visible = points.flatMap((point, index) => {
-    if (deleted.has(index)) return [];
-    const position = editPointPosition(point, index, pointTransforms);
-    if (cropRegion && !pointInsideCropPosition(position, cropRegion.bounds)) return [];
-    return [{ index, position }];
-  });
+  const visible = cleanedPointRows({ points, deleted, cropBounds: cropRegion?.bounds, pointTransforms });
   if (visible.length < 50) return [];
   const center = visible.reduce(
     (sum, entry) => ({
-      x: sum.x + entry.position.x,
-      y: sum.y + entry.position.y,
-      z: sum.z + entry.position.z
+      x: sum.x + entry.x,
+      y: sum.y + entry.y,
+      z: sum.z + entry.z
     }),
     { x: 0, y: 0, z: 0 }
   );
@@ -3241,7 +3256,7 @@ function findOutlierIndices(
   const scored = visible
     .map((entry) => ({
       index: entry.index,
-      distance: Math.hypot(entry.position.x - center.x, entry.position.y - center.y, entry.position.z - center.z)
+      distance: Math.hypot(entry.x - center.x, entry.y - center.y, entry.z - center.z)
     }))
     .sort((a, b) => a.distance - b.distance);
   const q1 = scored[Math.floor(scored.length * 0.25)]?.distance ?? 0;
@@ -3299,7 +3314,18 @@ function buildEditPublishManifest({
       estimatedSizeBytes: stats.estimatedSizeBytes,
       estimatedSizeLabel: formatBytes(stats.estimatedSizeBytes),
       readiness: "manifest_preview",
-      boundary: "proposal export manifest; cleaned splat/mesh bytes are not written by v1"
+      ordinaryPly:
+        stats.format === "ply" && session
+          ? {
+              status: "available",
+              suggestedName: cleanedPlyFileName(session),
+              pointCount: stats.exportPointCount
+            }
+          : {
+              status: "manifest_only",
+              reason: "cleaned payload export is only implemented for ordinary .ply"
+            },
+      boundary: "proposal export manifest; cleaned ordinary PLY is separate from Gaussian/splat payloads"
     },
     renderer: {
       status: rendererStatus,
@@ -4278,6 +4304,11 @@ function episodeBundleFileName(session: WorldSession | null): string {
 function editPublishFileName(session: WorldSession, format: PublishFormat): string {
   const safeName = safePathPart(session.name);
   return `world-studio-edit-publish-${safeName}-${format}.json`;
+}
+
+function cleanedPlyFileName(session: WorldSession): string {
+  const safeName = safePathPart(session.name);
+  return `world-studio-cleaned-${safeName}.ply`;
 }
 
 function sensorCaptureManifestFileName(session: WorldSession | null): string {
