@@ -1446,6 +1446,36 @@ test("moves selected points with the transform tool and undo", async ({ page }) 
   await expect(page.getByTestId("transform-delta-readout")).toContainText("0.00 · 0.00 m");
 });
 
+test("optimizes points and stages an Edit publish manifest", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+
+  await expect(page.getByTestId("optimize-panel")).toBeVisible();
+  await expect(page.getByTestId("publish-panel")).toBeVisible();
+  await expect(page.getByTestId("optimize-outlier-readout")).toContainText("0 points");
+
+  await page.getByRole("button", { name: "SH degree 1" }).click();
+  await expect(page.getByTestId("sh-degree-readout")).toContainText("1");
+
+  await page.getByRole("button", { name: "Remove outliers" }).click();
+  await expect(page.getByTestId("optimize-outlier-readout")).not.toContainText("0 points");
+  await expect(page.locator(".ws-hist-row", { hasText: "optimize" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByTestId("optimize-outlier-readout")).toContainText("0 points");
+
+  await page.getByRole("button", { name: "Export format .sogs" }).click();
+  await page.getByRole("button", { name: "Preview Publish" }).click();
+  const preview = page.getByTestId("edit-publish-preview");
+  await expect(preview).toContainText("world-studio.edit_publish.v0.1");
+  await expect(preview).toContainText("\"authorityStatus\": \"proposal\"");
+  await expect(preview).toContainText("\"format\": \".sogs\"");
+  await expect(preview).toContainText("\"shDegree\": 1");
+  await expect(preview).toContainText("manifest_preview");
+  await expect(page.getByTestId("publish-status-readout")).toContainText("publish preview ready");
+});
+
 test("measures ground-plane distance in Edit mode", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();

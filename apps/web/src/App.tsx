@@ -208,7 +208,18 @@ interface TransformHistoryItem {
   previousTransforms: Map<number, PointTransform>;
 }
 
-type HistoryItem = SelectionHistoryItem | CropHistoryItem | TransformHistoryItem;
+interface OptimizeHistoryItem {
+  id: string;
+  type: "optimize";
+  count: number;
+  indices: number[];
+  label: string;
+}
+
+type PublishFormat = "ply" | "splat" | "sogs";
+type PublishStatus = "idle" | "preview" | "exported";
+
+type HistoryItem = SelectionHistoryItem | CropHistoryItem | TransformHistoryItem | OptimizeHistoryItem;
 
 interface TransformDraft {
   dx: number;
@@ -221,6 +232,17 @@ interface TransformDrag {
   startWorld: [number, number, number];
   indices: number[];
   baseTransforms: Map<number, PointTransform>;
+}
+
+interface EditOptimizeStats {
+  totalPoints: number;
+  exportPointCount: number;
+  deletedCount: number;
+  cropHiddenCount: number;
+  movedCount: number;
+  shDegree: number;
+  format: PublishFormat;
+  estimatedSizeBytes: number;
 }
 
 const initialCamera: CameraState = {
@@ -392,6 +414,11 @@ export function App() {
   const [camera, setCamera] = useState(initialCamera);
   const [density, setDensity] = useState(0.9);
   const [exposure, setExposure] = useState(1);
+  const [shDegree, setShDegree] = useState(3);
+  const [publishFormat, setPublishFormat] = useState<PublishFormat>("ply");
+  const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle");
+  const [editPublishText, setEditPublishText] = useState<string | null>(null);
+  const [editPublishMessage, setEditPublishMessage] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [deleted, setDeleted] = useState<Set<number>>(new Set());
   const [showDeleted, setShowDeleted] = useState(true);
@@ -453,6 +480,10 @@ export function App() {
   const selectedSensorCaptures = useMemo(
     () => sensorCaptures.filter((capture) => capture.sensorId === selectedSensor?.id),
     [selectedSensor?.id, sensorCaptures]
+  );
+  const editOptimizeStats = useMemo(
+    () => buildEditOptimizeStats(worldPoints, deleted, cropRegion, pointTransforms, publishFormat, shDegree),
+    [cropRegion, deleted, pointTransforms, publishFormat, shDegree, worldPoints]
   );
   const measurementDistance = useMemo(() => {
     if (measurePoints.length < 2) return null;
@@ -561,6 +592,12 @@ export function App() {
   useEffect(() => () => simulationRef.current?.dispose(), []);
 
   useEffect(() => {
+    setPublishStatus("idle");
+    setEditPublishText(null);
+    setEditPublishMessage(null);
+  }, [density, editOptimizeStats, exposure, history]);
+
+  useEffect(() => {
     if (!playing) return;
     const id = window.setInterval(() => {
       setPlayhead((value) => (value >= 1 ? 0 : Math.min(1, value + 0.012)));
@@ -645,6 +682,9 @@ export function App() {
     setTransformDraft(null);
     setLastTransformDelta(null);
     transformDragRef.current = null;
+    setPublishStatus("idle");
+    setEditPublishText(null);
+    setEditPublishMessage(null);
     setMeasurePoints([]);
     setStepCount(0);
     setLastAction("idle");
@@ -988,6 +1028,12 @@ export function App() {
           for (const index of last.indices) next.delete(index);
           return next;
         });
+      } else if (last.type === "optimize") {
+        setDeleted((deletedSet) => {
+          const next = new Set(deletedSet);
+          for (const index of last.indices) next.delete(index);
+          return next;
+        });
       } else {
         setSelected((selectedSet) => {
           const next = new Set(selectedSet);
@@ -1009,6 +1055,74 @@ export function App() {
     setHistory((current) => [entry, ...current].slice(0, 10));
     setLastAction("crop clear");
   }, [cropRegion]);
+
+  const removeOutliers = useCallback(() => {
+    const indices = findOutlierIndices(worldPoints, deleted, cropRegion, pointTransforms);
+    if (!indices.length) {
+      setLastAction("no outliers found");
+      return;
+    }
+    setDeleted((current) => {
+      const next = new Set(current);
+      for (const index of indices) next.add(index);
+      return next;
+    });
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const index of indices) next.delete(index);
+      return next;
+    });
+    const entry: HistoryItem = { id: crypto.randomUUID(), type: "optimize", count: indices.length, indices, label: "remove outliers" };
+    setHistory((current) => [entry, ...current].slice(0, 10));
+    setPublishStatus("idle");
+    setEditPublishText(null);
+    setEditPublishMessage(null);
+    setLastAction(`outliers ${indices.length} removed`);
+  }, [cropRegion, deleted, pointTransforms, worldPoints]);
+
+  const createEditPublishText = useCallback(() => {
+    const manifest = buildEditPublishManifest({
+      session,
+      stats: editOptimizeStats,
+      density,
+      exposure,
+      rendererStatus: rendererStatusLabel(renderMode, rendererDiagnostics),
+      rendererDiagnostics,
+      history
+    });
+    return JSON.stringify(manifest, null, 2);
+  }, [density, editOptimizeStats, exposure, history, renderMode, rendererDiagnostics, session]);
+
+  const previewEditPublish = useCallback(() => {
+    if (!session) {
+      setEditPublishMessage("load a world first");
+      return;
+    }
+    setEditPublishText(createEditPublishText());
+    setPublishStatus("preview");
+    setEditPublishMessage("publish preview ready");
+    setLastAction("publish preview");
+  }, [createEditPublishText, session]);
+
+  const exportEditPublish = useCallback(async () => {
+    if (!session) {
+      setEditPublishMessage("load a world first");
+      return;
+    }
+    const text = createEditPublishText();
+    const suggestedName = editPublishFileName(session, publishFormat);
+    setEditPublishText(text);
+    const desktopSave = getDesktopApi()?.saveEpisodeManifest;
+    if (desktopSave) {
+      const result = await desktopSave({ suggestedName, text });
+      setPublishStatus(result?.path ? "exported" : "preview");
+      setEditPublishMessage(result?.path ? `saved ${compactPath(result.path)}` : "export canceled");
+      return;
+    }
+    downloadTextFile(suggestedName, text, "application/json");
+    setPublishStatus("exported");
+    setEditPublishMessage(`downloaded ${suggestedName}`);
+  }, [createEditPublishText, publishFormat, session]);
 
   const updateSensor = useCallback((sensorId: string, patch: Partial<SensorRigChannel>) => {
     setSensors((items) => items.map((item) => (item.id === sensorId ? { ...item, ...patch } : item)));
@@ -2626,22 +2740,100 @@ export function App() {
 
     if (mode === "edit") {
       return (
-        <WSPanel title="Optimize" meta="local">
-          <div className="ws-slider-row">
-            <span className="ws-head">density</span>
-            <input type="range" min="0.15" max="1" step="0.05" value={density} onChange={(event) => setDensity(Number(event.target.value))} />
-            <span className="ws-mono-val">{Math.round(density * 100)}%</span>
-          </div>
-          <div className="ws-slider-row">
-            <span className="ws-head">expose</span>
-            <input type="range" min="0.5" max="1.8" step="0.05" value={exposure} onChange={(event) => setExposure(Number(event.target.value))} />
-            <span className="ws-mono-val">{exposure.toFixed(2)}</span>
-          </div>
-          <div className="ws-kv">
-            <span>export</span>
-            <b>.ply · .splat · .sog stub</b>
-          </div>
-        </WSPanel>
+        <div className="ws-row-stack">
+          <WSPanel title="Optimize" meta={`SH ${shDegree} · ${editOptimizeStats.exportPointCount} pts`} data-testid="optimize-panel">
+            <div className="ws-kv" data-testid="optimize-counts-readout">
+              <span>export points</span>
+              <b>{editOptimizeStats.exportPointCount} / {editOptimizeStats.totalPoints}</b>
+            </div>
+            <div className="ws-kv" data-testid="optimize-outlier-readout">
+              <span>removed</span>
+              <b>{editOptimizeStats.deletedCount} points</b>
+            </div>
+            <div className="ws-kv">
+              <span>cropped</span>
+              <b>{editOptimizeStats.cropHiddenCount} hidden</b>
+            </div>
+            <div className="ws-kv">
+              <span>moved</span>
+              <b>{editOptimizeStats.movedCount} points</b>
+            </div>
+            <div className="ws-slider-row">
+              <span className="ws-head">density</span>
+              <input type="range" min="0.15" max="1" step="0.05" value={density} onChange={(event) => setDensity(Number(event.target.value))} />
+              <span className="ws-mono-val">{Math.round(density * 100)}%</span>
+            </div>
+            <div className="ws-slider-row">
+              <span className="ws-head">expose</span>
+              <input type="range" min="0.5" max="1.8" step="0.05" value={exposure} onChange={(event) => setExposure(Number(event.target.value))} />
+              <span className="ws-mono-val">{exposure.toFixed(2)}</span>
+            </div>
+            <div className="ws-kv" data-testid="sh-degree-readout">
+              <span>SH degree</span>
+              <b>{shDegree}</b>
+            </div>
+            <div className="ws-btn-row" role="group" aria-label="SH degree">
+              {[0, 1, 2, 3].map((degree) => (
+                <WSButton accent={degree === shDegree} aria-label={`SH degree ${degree}`} key={degree} onClick={() => setShDegree(degree)}>
+                  SH {degree}
+                </WSButton>
+              ))}
+            </div>
+            <div className="ws-btn-row">
+              <WSButton disabled={!editOptimizeStats.exportPointCount} onClick={removeOutliers}>
+                Remove outliers
+              </WSButton>
+            </div>
+          </WSPanel>
+          <WSPanel title="Publish" meta={`${formatBytes(editOptimizeStats.estimatedSizeBytes)} est`} data-testid="publish-panel">
+            <div className="ws-kv">
+              <span>format</span>
+              <b>.{publishFormat}</b>
+            </div>
+            <div className="ws-btn-row" role="group" aria-label="Publish format">
+              {(["ply", "splat", "sogs"] as const).map((format) => (
+                <WSButton
+                  accent={format === publishFormat}
+                  aria-label={`Export format .${format}`}
+                  key={format}
+                  onClick={() => {
+                    setPublishFormat(format);
+                    setPublishStatus("idle");
+                    setEditPublishText(null);
+                    setEditPublishMessage(null);
+                  }}
+                >
+                  .{format}
+                </WSButton>
+              ))}
+            </div>
+            <div className="ws-kv" data-testid="publish-size-readout">
+              <span>est. size</span>
+              <b>{formatBytes(editOptimizeStats.estimatedSizeBytes)}</b>
+            </div>
+            <div className="ws-kv">
+              <span>authority</span>
+              <b>proposal</b>
+            </div>
+            <div className="ws-kv" data-testid="publish-status-readout">
+              <span>status</span>
+              <b>{editPublishMessage ?? (publishStatus === "idle" ? "not staged" : publishStatus)}</b>
+            </div>
+            <div className="ws-btn-row">
+              <WSButton disabled={!session} onClick={previewEditPublish}>
+                Preview Publish
+              </WSButton>
+              <WSButton accent disabled={!session} onClick={() => void exportEditPublish()}>
+                Export Manifest
+              </WSButton>
+            </div>
+            {editPublishText ? (
+              <pre className="ws-episode-export" data-testid="edit-publish-preview">
+                {editPublishText}
+              </pre>
+            ) : null}
+          </WSPanel>
+        </div>
       );
     }
 
@@ -2967,6 +3159,166 @@ function rendererPreparationLabel(diagnostics: RendererDiagnostics | null): stri
   if (!diagnostics?.hasGaussianSource) return "none";
   if (diagnostics.gaussianPreparedForSpark === undefined) return "pending";
   return diagnostics.gaussianPreparedForSpark ? "converted" : "native";
+}
+
+function buildEditOptimizeStats(
+  points: PointRecord[],
+  deleted: ReadonlySet<number>,
+  cropRegion: CropRegion | null,
+  pointTransforms: ReadonlyMap<number, PointTransform>,
+  format: PublishFormat,
+  shDegree: number
+): EditOptimizeStats {
+  let cropHiddenCount = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    if (deleted.has(index)) continue;
+    const point = points[index];
+    if (!point) continue;
+    if (cropRegion && !pointInsideCropPosition(editPointPosition(point, index, pointTransforms), cropRegion.bounds)) cropHiddenCount += 1;
+  }
+  const exportPointCount = Math.max(0, points.length - deleted.size - cropHiddenCount);
+  return {
+    totalPoints: points.length,
+    exportPointCount,
+    deletedCount: deleted.size,
+    cropHiddenCount,
+    movedCount: pointTransforms.size,
+    shDegree,
+    format,
+    estimatedSizeBytes: estimateEditPublishBytes(exportPointCount, format, shDegree)
+  };
+}
+
+function estimateEditPublishBytes(pointCount: number, format: PublishFormat, shDegree: number): number {
+  const perPoint = format === "ply" ? 32 + shDegree * 10 : format === "splat" ? 48 + shDegree * 18 : 20 + shDegree * 6;
+  const overhead = format === "ply" ? 1800 : format === "splat" ? 4096 : 8192;
+  return Math.max(0, Math.round(overhead + pointCount * perPoint));
+}
+
+function formatBytes(value: number): string {
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${value} B`;
+}
+
+function editPointPosition(point: PointRecord, index: number, pointTransforms: ReadonlyMap<number, PointTransform>) {
+  const transform = pointTransforms.get(index);
+  return {
+    x: point.x + (transform?.dx ?? 0),
+    y: point.y + (transform?.dy ?? 0),
+    z: point.z + (transform?.dz ?? 0)
+  };
+}
+
+function pointInsideCropPosition(point: { x: number; z: number }, bounds: CropBounds): boolean {
+  return point.x >= bounds.minX && point.x <= bounds.maxX && point.z >= bounds.minZ && point.z <= bounds.maxZ;
+}
+
+function findOutlierIndices(
+  points: PointRecord[],
+  deleted: ReadonlySet<number>,
+  cropRegion: CropRegion | null,
+  pointTransforms: ReadonlyMap<number, PointTransform>
+): number[] {
+  const visible = points.flatMap((point, index) => {
+    if (deleted.has(index)) return [];
+    const position = editPointPosition(point, index, pointTransforms);
+    if (cropRegion && !pointInsideCropPosition(position, cropRegion.bounds)) return [];
+    return [{ index, position }];
+  });
+  if (visible.length < 50) return [];
+  const center = visible.reduce(
+    (sum, entry) => ({
+      x: sum.x + entry.position.x,
+      y: sum.y + entry.position.y,
+      z: sum.z + entry.position.z
+    }),
+    { x: 0, y: 0, z: 0 }
+  );
+  center.x /= visible.length;
+  center.y /= visible.length;
+  center.z /= visible.length;
+  const scored = visible
+    .map((entry) => ({
+      index: entry.index,
+      distance: Math.hypot(entry.position.x - center.x, entry.position.y - center.y, entry.position.z - center.z)
+    }))
+    .sort((a, b) => a.distance - b.distance);
+  const q1 = scored[Math.floor(scored.length * 0.25)]?.distance ?? 0;
+  const q3 = scored[Math.floor(scored.length * 0.75)]?.distance ?? q1;
+  const threshold = q3 + Math.max(0.15, 1.5 * (q3 - q1));
+  const limit = Math.max(1, Math.min(512, Math.ceil(visible.length * 0.01)));
+  const outliers = scored.filter((entry) => entry.distance > threshold).slice(-limit);
+  const candidates = outliers.length ? outliers : scored.slice(-Math.max(1, Math.ceil(visible.length * 0.004)));
+  return candidates.map((entry) => entry.index);
+}
+
+function buildEditPublishManifest({
+  session,
+  stats,
+  density,
+  exposure,
+  rendererStatus,
+  rendererDiagnostics,
+  history
+}: {
+  session: WorldSession | null;
+  stats: EditOptimizeStats;
+  density: number;
+  exposure: number;
+  rendererStatus: string;
+  rendererDiagnostics: RendererDiagnostics | null;
+  history: HistoryItem[];
+}) {
+  return {
+    schema: "world-studio.edit_publish.v0.1",
+    createdAt: new Date().toISOString(),
+    authorityStatus: "proposal",
+    world: session
+      ? {
+          id: session.id,
+          name: session.name,
+          version: session.version ?? null,
+          units: session.units,
+          upAxis: session.upAxis,
+          provenance: session.provenance
+        }
+      : null,
+    edit: {
+      totalPoints: stats.totalPoints,
+      exportPointCount: stats.exportPointCount,
+      deletedPoints: stats.deletedCount,
+      cropHiddenPoints: stats.cropHiddenCount,
+      movedPoints: stats.movedCount,
+      shDegree: stats.shDegree,
+      exposure,
+      previewDensity: density
+    },
+    publish: {
+      format: `.${stats.format}`,
+      estimatedSizeBytes: stats.estimatedSizeBytes,
+      estimatedSizeLabel: formatBytes(stats.estimatedSizeBytes),
+      readiness: "manifest_preview",
+      boundary: "proposal export manifest; cleaned splat/mesh bytes are not written by v1"
+    },
+    renderer: {
+      status: rendererStatus,
+      sparkState: rendererDiagnostics?.sparkState ?? "unavailable",
+      splatRenderPath: rendererDiagnostics?.splatRenderPath ?? "point-fallback",
+      hasGaussianSource: rendererDiagnostics?.hasGaussianSource ?? false,
+      gaussianSplatCount: rendererDiagnostics?.gaussianSplatCount ?? null
+    },
+    operations: history.map((entry) => ({
+      type: entry.type,
+      count: entry.count,
+      ...(entry.type === "transform" ? { delta: entry.delta } : {}),
+      ...(entry.type === "optimize" ? { label: entry.label } : {})
+    })),
+    notes: [
+      "This manifest records the Edit-mode cleanup proposal and publish settings.",
+      "Use verified export manifests for human-verified semantic boundaries."
+    ]
+  };
 }
 
 function createPointCloudSession(input: LoadedWorldInput, pointCount: number, classes: WorldClass[]): WorldSession {
@@ -3921,6 +4273,11 @@ function episodeBundleFileName(session: WorldSession | null): string {
   const name = session?.name ?? "untitled";
   const safeName = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
   return `world-studio-episode-${safeName}.world-episode.json`;
+}
+
+function editPublishFileName(session: WorldSession, format: PublishFormat): string {
+  const safeName = safePathPart(session.name);
+  return `world-studio-edit-publish-${safeName}-${format}.json`;
 }
 
 function sensorCaptureManifestFileName(session: WorldSession | null): string {
