@@ -10,6 +10,8 @@
     "desktop:setup": "pnpm --filter @world-studio/desktop run setup",
     "desktop:dev": "pnpm --filter @world-studio/desktop dev",
     "desktop:package": "pnpm build && pnpm --filter @world-studio/desktop run package",
+    "desktop:smoke": "pnpm --filter @world-studio/desktop run smoke",
+    "desktop:package:smoke": "pnpm desktop:package && pnpm desktop:smoke",
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:ui": "playwright test",
