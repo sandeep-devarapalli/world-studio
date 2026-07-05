@@ -1466,6 +1466,7 @@ test("optimizes points and stages an Edit publish manifest", async ({ page }) =>
   await expect(page.getByTestId("optimize-outlier-readout")).toContainText("0 points");
 
   await page.getByRole("button", { name: "Export format .sogs" }).click();
+  await expect(page.getByTestId("publish-payload-readout")).toContainText("manifest only");
   await page.getByRole("button", { name: "Preview Publish" }).click();
   const preview = page.getByTestId("edit-publish-preview");
   await expect(preview).toContainText("world-studio.edit_publish.v0.1");
@@ -1473,7 +1474,69 @@ test("optimizes points and stages an Edit publish manifest", async ({ page }) =>
   await expect(preview).toContainText("\"format\": \".sogs\"");
   await expect(preview).toContainText("\"shDegree\": 1");
   await expect(preview).toContainText("manifest_preview");
+  await expect(preview).toContainText("\"status\": \"manifest_only\"");
   await expect(page.getByTestId("publish-status-readout")).toContainText("publish preview ready");
+
+  await page.getByRole("button", { name: "Export format .ply" }).click();
+  await expect(page.getByTestId("publish-payload-readout")).toContainText("cleaned ordinary PLY");
+  await page.getByRole("button", { name: "Preview Publish" }).click();
+  await expect(preview).toContainText("\"ordinaryPly\"");
+  await expect(preview).toContainText("\"status\": \"available\"");
+  await expect(preview).toContainText("\"suggestedName\": \"world-studio-cleaned-loft_04.ply\"");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export Clean PLY" }).click()
+  ]);
+  expect(download.suggestedFilename()).toBe("world-studio-cleaned-loft_04.ply");
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const plyText = readFileSync(downloadPath!, "utf8");
+  expect(plyText).toContain("format ascii 1.0");
+  expect(plyText).toContain("element vertex 16060");
+  expect(plyText).toContain("property int semantic_label");
+  expect(plyText).toContain("ordinary point-cloud PLY only");
+  expect(plyText).not.toContain("scale_0");
+  expect(plyText).not.toContain("f_dc_0");
+  await expect(page.getByTestId("publish-status-readout")).toContainText("downloaded cleaned PLY world-studio-cleaned-loft_04.ply");
+});
+
+test("saves cleaned ordinary PLY through the desktop bridge", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    const bridgeWindow = window as Window & {
+      __savedCleanPly?: { suggestedName: string; text: string };
+      worldStudioDesktop?: {
+        openLocalPackage: () => Promise<LocalWorldPackagePayload | null>;
+        saveEpisodeManifest: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
+      };
+    };
+    bridgeWindow.worldStudioDesktop = {
+      openLocalPackage: async () => payload,
+      saveEpisodeManifest: async (input) => {
+        bridgeWindow.__savedCleanPly = input;
+        return { path: `/tmp/${input.suggestedName}` };
+      }
+    };
+  }, localPackagePayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByTestId("publish-payload-readout")).toContainText("cleaned ordinary PLY");
+  await page.getByRole("button", { name: "Export Clean PLY" }).click();
+  await expect(page.getByTestId("publish-status-readout")).toContainText("saved cleaned PLY /tmp/world-studio-cleaned-local_lab.ply");
+
+  const saved = await page.evaluate(() => {
+    const bridgeWindow = window as Window & { __savedCleanPly?: { suggestedName: string; text: string } };
+    return bridgeWindow.__savedCleanPly ?? null;
+  });
+  expect(saved?.suggestedName).toBe("world-studio-cleaned-local_lab.ply");
+  expect(saved?.text).toContain("format ascii 1.0");
+  expect(saved?.text).toContain("element vertex 12");
+  expect(saved?.text).toContain("property int semantic_label");
+  expect(saved?.text).toContain("ordinary point-cloud PLY only");
+  expect(saved?.text).not.toContain("scale_0");
+  expect(saved?.text).not.toContain("f_dc_0");
 });
 
 test("measures ground-plane distance in Edit mode", async ({ page }) => {
