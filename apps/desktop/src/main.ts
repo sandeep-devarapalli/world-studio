@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import type { EpisodeBundleAsset, LocalWorldPackagePayload, SaveEpisodeBundleInput } from "@world-studio/world-core";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readLocalPackage } from "./package-reader.js";
@@ -49,8 +49,7 @@ ipcMain.handle("world-studio:open-local-package", async (): Promise<LocalWorldPa
   if (result.canceled) return null;
   const selectedPath = result.filePaths[0];
   if (!selectedPath) return null;
-  const info = await stat(selectedPath);
-  return readLocalPackage(info.isDirectory() ? selectedPath : path.dirname(selectedPath));
+  return readLocalPackage(selectedPath);
 });
 
 ipcMain.handle(

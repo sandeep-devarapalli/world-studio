@@ -117,6 +117,45 @@ const localPackagePayload: LocalWorldPackagePayload = {
   ]
 };
 
+const cleanedPlyFile = "world-studio-cleaned-loft_04.ply";
+const cleanedPlyText = localPoints.replace(
+  "format ascii 1.0\n",
+  [
+    "format ascii 1.0",
+    "comment generated_by World Studio cleaned ordinary PLY export v0.1",
+    "comment authority proposal",
+    "comment boundary ordinary point-cloud PLY only; Gaussian/splat payloads are not written here",
+    ""
+  ].join("\n")
+);
+const cleanedPlyPayload: LocalWorldPackagePayload = {
+  kind: "world-studio.local-package",
+  name: "world-studio-cleaned-loft_04",
+  sourcePath: `/tmp/${cleanedPlyFile}`,
+  loadedVia: "electron-picker",
+  sourceKind: "world-studio.cleaned_ply",
+  packageKind: "world-studio-cleaned-ply",
+  primaryArtifact: cleanedPlyFile,
+  companionArtifacts: [cleanedPlyFile],
+  assetManifest: [{ relativePath: cleanedPlyFile, sizeBytes: Buffer.byteLength(cleanedPlyText) }],
+  authorityStatus: "proposal_not_ground_truth",
+  pointsPly: { relativePath: cleanedPlyFile, text: cleanedPlyText, sizeBytes: Buffer.byteLength(cleanedPlyText) },
+  packageInsights: [{
+    id: "assets",
+    kind: "asset-set",
+    title: "Asset Set",
+    artifact: "local files",
+    summary: "Cleaned ordinary PLY export detected; Gaussian/splat payloads are not part of this artifact.",
+    metrics: [
+      { label: "points", value: cleanedPlyFile },
+      { label: "gaussian", value: "missing" },
+      { label: "mesh", value: "missing" }
+    ],
+    details: [{ label: "boundary", value: "ordinary point-cloud PLY only" }]
+  }],
+  packageIssues: []
+};
+
 const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
   ...localPackagePayload,
   name: "capture_splat_7k",
@@ -1499,6 +1538,25 @@ test("optimizes points and stages an Edit publish manifest", async ({ page }) =>
   expect(plyText).not.toContain("scale_0");
   expect(plyText).not.toContain("f_dc_0");
   await expect(page.getByTestId("publish-status-readout")).toContainText("downloaded cleaned PLY world-studio-cleaned-loft_04.ply");
+});
+
+test("re-imports cleaned ordinary PLY through the desktop bridge", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      openLocalPackage: async () => payload
+    };
+  }, cleanedPlyPayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+
+  await expect(page.locator(".ws-logo-sub", { hasText: "world-studio-cleaned-loft_04 · loaded" })).toBeVisible();
+  await expect(page.getByText("world-studio-cleaned-ply")).toBeVisible();
+  await expect(page.getByText("proposal_not_ground_truth", { exact: true })).toBeVisible();
+  await expect(page.getByText(cleanedPlyFile).first()).toBeVisible();
+  await expect(page.getByText("Cleaned ordinary PLY export detected")).toBeVisible();
+  await page.getByRole("button", { name: "points" }).click();
+  await expect(page.locator(".ws-statusbar")).toContainText("three.js · ordinary PLY");
 });
 
 test("saves cleaned ordinary PLY through the desktop bridge", async ({ page }) => {
