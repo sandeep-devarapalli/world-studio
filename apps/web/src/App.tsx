@@ -364,6 +364,10 @@ export function App() {
     () => episodeTimeline.find((event) => event.id === selectedEpisodeEventId) ?? episodeTimeline.at(-1) ?? null,
     [episodeTimeline, selectedEpisodeEventId]
   );
+  const selectedEpisodeCapture = useMemo(
+    () => sensorCaptures.find((capture) => capture.eventId === selectedEpisodeEvent?.id) ?? null,
+    [selectedEpisodeEvent?.id, sensorCaptures]
+  );
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
     [episodeProvenance, session]
@@ -1461,6 +1465,67 @@ export function App() {
                       </div>
                     )}
                   </div>
+                  {selectedEpisodeEvent?.lane === "capture" ? (
+                    <div className="ws-episode-capture-detail" data-testid="episode-capture-detail">
+                      <div className="ws-detail-heading">
+                        <span>Capture Detail</span>
+                        <b>{selectedEpisodeCapture ? selectedEpisodeCapture.assetStatus : "event only"}</b>
+                      </div>
+                      {selectedEpisodeCapture ? (
+                        <>
+                          {selectedEpisodeCapture.previewDataUrl ? (
+                            <img
+                              alt="Selected episode capture preview"
+                              className="ws-capture-preview"
+                              src={selectedEpisodeCapture.previewDataUrl}
+                            />
+                          ) : (
+                            <div className="ws-capture-missing">
+                              <span className="ws-frame-thumb" />
+                              <span className="ws-row-name">missing capture asset</span>
+                            </div>
+                          )}
+                          <div className="ws-kv">
+                            <span>event</span>
+                            <b>{selectedEpisodeCapture.eventId} · frame {selectedEpisodeCapture.frame}</b>
+                          </div>
+                          <div className="ws-kv">
+                            <span>sensor</span>
+                            <b>{selectedEpisodeCapture.sensorLabel} · {selectedEpisodeCapture.sensorKind}</b>
+                          </div>
+                          <div className="ws-kv">
+                            <span>source</span>
+                            <b>{selectedEpisodeCapture.rendererStatus}</b>
+                          </div>
+                          <div className="ws-kv">
+                            <span>asset</span>
+                            <b>{selectedEpisodeCapture.assetPath ?? "embedded preview"}</b>
+                          </div>
+                          <div className="ws-kv">
+                            <span>bytes</span>
+                            <b>{selectedEpisodeCapture.sizeBytes.toLocaleString()}</b>
+                          </div>
+                          <div className="ws-kv">
+                            <span>checksum</span>
+                            <b>{selectedEpisodeCapture.checksum}</b>
+                          </div>
+                          <div className={`ws-kv ws-capture-asset-validation ${selectedEpisodeCapture.assetStatus}`}>
+                            <span>integrity</span>
+                            <b>{formatSensorCaptureAssetStatus(selectedEpisodeCapture)}</b>
+                          </div>
+                          <div className="ws-kv">
+                            <span>camera</span>
+                            <b>{formatCaptureCamera(selectedEpisodeCapture.camera)}</b>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="ws-capture-empty">
+                          <span className="ws-frame-thumb" />
+                          <span className="ws-row-name">no capture artifact for selected event</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                   <div className="ws-btn-row">
                     <WSButton onClick={() => void loadEpisodeManifest()}>Load Episode</WSButton>
                     <WSButton accent disabled={!episodeTimeline.length} onClick={exportEpisodeManifest}>
@@ -2795,6 +2860,10 @@ function formatSensorCaptureAssetStatus(capture: SensorCaptureArtifact): string 
   if (capture.assetStatus === "resolved") return `${capture.assetPath ?? "asset"} · resolved`;
   if (capture.assetStatus === "external") return `${capture.assetPath ?? "asset"} · external`;
   return `${capture.assetPath ?? "embedded"} · ready`;
+}
+
+function formatCaptureCamera(camera: CameraState): string {
+  return `yaw ${camera.yaw.toFixed(2)} · pitch ${camera.pitch.toFixed(2)} · fov ${camera.fov.toFixed(0)}°`;
 }
 
 function uniqueStrings(values: Array<string | null>): string[] {
