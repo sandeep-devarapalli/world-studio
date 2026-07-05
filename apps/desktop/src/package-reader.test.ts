@@ -182,6 +182,48 @@ end_header
     expect(payload.packageIssues).toEqual([]);
   });
 
+  it("re-imports a selected World Studio cleaned ordinary PLY export", async () => {
+    const root = await makePackage("cleaned-ply");
+    const cleanedFile = "world-studio-cleaned-loft_04.ply";
+    const cleanedPath = join(root, cleanedFile);
+    await writeFile(cleanedPath, `ply
+format ascii 1.0
+comment generated_by World Studio cleaned ordinary PLY export v0.1
+comment authority proposal
+comment boundary ordinary point-cloud PLY only; Gaussian/splat payloads are not written here
+element vertex 2
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+property int semantic_label
+end_header
+0 0 0 255 255 255 1
+1 0 0 200 150 100 2`);
+
+    const payload = await readLocalPackage(cleanedPath);
+
+    expect(payload.name).toBe("world-studio-cleaned-loft_04");
+    expect(payload.sourcePath).toBe(cleanedPath);
+    expect(payload.sourceKind).toBe("world-studio.cleaned_ply");
+    expect(payload.packageKind).toBe("world-studio-cleaned-ply");
+    expect(payload.authorityStatus).toBe("proposal_not_ground_truth");
+    expect(payload.primaryArtifact).toBe(cleanedFile);
+    expect(payload.companionArtifacts).toEqual([cleanedFile]);
+    expect(payload.pointsPly?.relativePath).toBe(cleanedFile);
+    expect(payload.gaussianPly).toBeUndefined();
+    expect(payload.objMesh).toBeUndefined();
+    expect(payload.assetManifest).toEqual([expect.objectContaining({ relativePath: cleanedFile })]);
+    expect(payload.packageInsights).toContainEqual(expect.objectContaining({
+      id: "assets",
+      summary: "Cleaned ordinary PLY export detected; Gaussian/splat payloads are not part of this artifact.",
+      details: [{ label: "boundary", value: "ordinary point-cloud PLY only" }]
+    }));
+    expect(payload.packageIssues).toEqual([]);
+  });
+
   it("derives preview points for Gaussian-only folders", async () => {
     const root = await makePackage("gaussian-only");
     await writeFile(join(root, "splat.ply"), `ply

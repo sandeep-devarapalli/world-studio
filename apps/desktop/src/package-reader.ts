@@ -12,23 +12,34 @@ const maxPreviewChars = 8_000;
 const captureFrameDirs = ["source", "images", "rgb", "frames", "renders"];
 const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
-export async function readLocalPackage(folder: string): Promise<LocalWorldPackagePayload> {
-  const sourcePath = path.resolve(folder);
+export async function readLocalPackage(inputPath: string): Promise<LocalWorldPackagePayload> {
+  const selectedPath = path.resolve(inputPath);
+  const selectedInfo = await stat(selectedPath);
+  const sourceRoot = selectedInfo.isDirectory() ? selectedPath : path.dirname(selectedPath);
+  const selectedFile = selectedInfo.isFile() ? path.basename(selectedPath) : undefined;
   const packageIssues: LocalPackageIssue[] = [];
-  const sceneFile = await readOptionalText(sourcePath, "scene.json", packageIssues);
-  const sourcePointsPly = await readFirstText(sourcePath, ["points.ply", "point_cloud.ply", "cloud.ply"], packageIssues);
-  const gaussianPly = await readFirstBinary(sourcePath, ["gaussians.ply", "splats.ply", "splat.ply"], packageIssues);
+  const selectedTextPly = selectedFile && isPlyFileName(selectedFile)
+    ? await readOptionalText(sourceRoot, selectedFile, packageIssues)
+    : undefined;
+  const selectedCleanedPly = isWorldStudioCleanedPly(selectedTextPly) ? selectedTextPly : undefined;
+  const payloadSourcePath = selectedCleanedPly ? selectedPath : sourceRoot;
+  const cleanedFolderCandidates = selectedCleanedPly ? [] : await findCleanedPlyCandidates(sourceRoot);
+  const sceneFile = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "scene.json", packageIssues);
+  const sourcePointsPly = selectedCleanedPly
+    ?? await readFirstText(sourceRoot, ["points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates], packageIssues);
+  const cleanedPointPly = isWorldStudioCleanedPly(sourcePointsPly);
+  const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, ["gaussians.ply", "splats.ply", "splat.ply"], packageIssues);
   const generatedPointsPly = !sourcePointsPly && gaussianPly
-    ? await readGaussianPreviewPointCloud(sourcePath, gaussianPly.relativePath, packageIssues)
+    ? await readGaussianPreviewPointCloud(sourceRoot, gaussianPly.relativePath, packageIssues)
     : undefined;
   const pointsPly = sourcePointsPly ?? generatedPointsPly;
-  const objMesh = await readFirstText(sourcePath, ["collision_mesh.obj", "mesh.obj", "model.obj"], packageIssues);
-  const sourceBudoMediaFrames = await readOptionalText(sourcePath, "budo.media_frames.v0.8.json", packageIssues);
-  const generatedCaptureFrames = sourceBudoMediaFrames ? undefined : await readCaptureFrameManifest(sourcePath, packageIssues);
+  const objMesh = selectedCleanedPly ? undefined : await readFirstText(sourceRoot, ["collision_mesh.obj", "mesh.obj", "model.obj"], packageIssues);
+  const sourceBudoMediaFrames = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues);
+  const generatedCaptureFrames = sourceBudoMediaFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifest(sourceRoot, packageIssues);
   const budoMediaFrames = sourceBudoMediaFrames ?? generatedCaptureFrames;
-  const articleFigureViews = await readOptionalText(sourcePath, "budo.article_figure_3d_views.v0.1.json", packageIssues);
-  const verifiedExport = await readOptionalText(sourcePath, "verified_export/manifest.json", packageIssues);
-  const jsonManifests = await readPackageJsonManifests(sourcePath, packageIssues);
+  const articleFigureViews = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.article_figure_3d_views.v0.1.json", packageIssues);
+  const verifiedExport = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "verified_export/manifest.json", packageIssues);
+  const jsonManifests = selectedCleanedPly ? [] : await readPackageJsonManifests(sourceRoot, packageIssues);
   const parsedSceneJson = sceneFile ? parseJsonRecord(sceneFile.text, sceneFile.relativePath, packageIssues) : undefined;
   const sceneJson = parsedSceneJson && isSceneManifestRecord(parsedSceneJson) ? parsedSceneJson : undefined;
   if (sceneFile && parsedSceneJson && !sceneJson) {
@@ -63,10 +74,11 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
 
   const packageKind = generatedCaptureFrames
     ? "capture-splat-local-folder"
-    : classifyPackage({ articleFigureViews, budoMediaFrames, pointsPly: sourcePointsPly, sceneFile, verifiedExport });
+    : classifyPackage({ articleFigureViews, budoMediaFrames, cleanedPointPly, pointsPly: sourcePointsPly, sceneFile, verifiedExport });
   const authorityStatus = classifyAuthority(packageKind);
   const primaryArtifact =
     verifiedExport?.relativePath ??
+    (cleanedPointPly ? sourcePointsPly?.relativePath : undefined) ??
     gaussianPly?.relativePath ??
     pointsPly?.relativePath ??
     budoMediaFrames?.relativePath ??
@@ -89,8 +101,8 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
 
   return {
     kind: "world-studio.local-package",
-    name: path.basename(sourcePath),
-    sourcePath,
+    name: selectedCleanedPly ? path.basename(payloadSourcePath, path.extname(payloadSourcePath)) : path.basename(sourceRoot),
+    sourcePath: payloadSourcePath,
     loadedVia: "electron-picker",
     sourceKind:
       packageKind === "capture-splat-local-folder"
@@ -99,6 +111,8 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
         ? "budo.local_folder"
         : packageKind === "external-local-folder"
           ? "external.local_folder"
+          : packageKind === "world-studio-cleaned-ply"
+            ? "world-studio.cleaned_ply"
           : "world-studio.local_folder",
     packageKind,
     primaryArtifact,
@@ -117,6 +131,7 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
       articleFigureViews,
       budoMediaFrames,
       gaussianPly,
+      cleanedPointPly,
       jsonManifests,
       objMesh,
       pointsPly,
@@ -130,20 +145,50 @@ export async function readLocalPackage(folder: string): Promise<LocalWorldPackag
 function classifyPackage(input: {
   articleFigureViews?: LocalWorldPackageTextFile;
   budoMediaFrames?: LocalWorldPackageTextFile;
+  cleanedPointPly: boolean;
   pointsPly?: LocalWorldPackageTextFile;
   sceneFile?: LocalWorldPackageTextFile;
   verifiedExport?: LocalWorldPackageTextFile;
 }): string {
   if (input.verifiedExport) return "verified-semantic-export";
   if (input.budoMediaFrames || input.articleFigureViews) return "budo-media-bundle";
+  if (input.cleanedPointPly) return "world-studio-cleaned-ply";
   if (input.sceneFile && input.pointsPly) return "world-studio-local-folder";
   return "external-local-folder";
 }
 
 function classifyAuthority(packageKind: string): AuthorityStatus {
   if (packageKind === "verified-semantic-export") return "human_verified_semantic_labels";
+  if (packageKind === "world-studio-cleaned-ply") return "proposal_not_ground_truth";
   if (packageKind === "external-local-folder") return "proposal_not_ground_truth";
   return "visual_evidence";
+}
+
+async function findCleanedPlyCandidates(root: string): Promise<string[]> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && isCleanedPlyFileName(entry.name))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+function isPlyFileName(fileName: string): boolean {
+  return path.extname(fileName).toLowerCase() === ".ply";
+}
+
+function isCleanedPlyFileName(fileName: string): boolean {
+  return /^world-studio-cleaned-.+\.ply$/i.test(fileName);
+}
+
+function isWorldStudioCleanedPly(file?: LocalWorldPackageTextFile): boolean {
+  if (!file) return false;
+  return isCleanedPlyFileName(path.basename(file.relativePath))
+    || file.text.slice(0, 4096).includes("World Studio cleaned ordinary PLY export");
 }
 
 async function readFirstText(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile | undefined> {
@@ -419,6 +464,7 @@ function resolveInside(root: string, relativePath: string): string {
 function buildPackageInsights(input: {
   articleFigureViews?: LocalWorldPackageTextFile;
   budoMediaFrames?: LocalWorldPackageTextFile;
+  cleanedPointPly: boolean;
   gaussianPly?: { relativePath: string };
   jsonManifests: LocalWorldPackageTextFile[];
   objMesh?: LocalWorldPackageTextFile;
@@ -436,7 +482,9 @@ function buildPackageInsights(input: {
       kind: "asset-set",
       title: "Asset Set",
       artifact: "local files",
-      summary: hasGeneratedPreviewPoints
+      summary: input.cleanedPointPly
+        ? "Cleaned ordinary PLY export detected; Gaussian/splat payloads are not part of this artifact."
+        : hasGeneratedPreviewPoints
         ? "Renderable Gaussian source detected; preview points were generated for bounds only."
         : "Renderable package assets detected in the selected folder.",
       metrics: [
@@ -446,6 +494,8 @@ function buildPackageInsights(input: {
       ],
       details: hasGeneratedPreviewPoints
         ? [{ label: "points source", value: "generated preview, not a package file" }]
+        : input.cleanedPointPly
+          ? [{ label: "boundary", value: "ordinary point-cloud PLY only" }]
         : [],
       sections: [
         {
