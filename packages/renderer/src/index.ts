@@ -1,5 +1,5 @@
 import { prepareGaussianPlyForSpark, type ParsedObjMesh, type ParsedPointCloud, type PointRecord } from "@world-studio/artifacts";
-import type { RendererDiagnostics, RenderAdapter, RenderOptions, SparkLoadState, WorldClass } from "@world-studio/world-core";
+import type { RendererDiagnostics, RenderAdapter, RenderOptions, SensorRigChannel, SparkLoadState, WorldClass } from "@world-studio/world-core";
 import * as THREE from "three";
 
 export interface ThreeRendererInput {
@@ -40,7 +40,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private meshGroup?: THREE.Group;
   private collisionDebugGroup?: THREE.Group;
   private grid?: THREE.GridHelper;
-  private frustums?: THREE.LineSegments;
+  private frustums?: THREE.Group;
+  private frustumSignature?: string;
   private agentGroup?: THREE.Group;
   private spawnGroup?: THREE.Group;
   private trajectoryLine?: THREE.Line;
@@ -202,7 +203,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.grid.material.opacity = 0.34;
     this.scene.add(this.grid);
 
-    this.frustums = createFrustums();
+    this.frustums = new THREE.Group();
     this.scene.add(this.frustums);
 
     this.pointCloud = this.createPointCloud();
@@ -489,7 +490,35 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private syncWorldGuides(options: RenderOptions): void {
     if (this.grid) this.grid.visible = options.grid;
-    if (this.frustums) this.frustums.visible = options.grid;
+    this.syncFrustums(options);
+  }
+
+  private syncFrustums(options: RenderOptions): void {
+    if (!this.frustums) return;
+    this.frustums.visible = options.grid;
+    const sensors = options.sensors ?? [];
+    const signature = JSON.stringify({
+      selected: options.selectedSensorId ?? null,
+      sensors: sensors.map((sensor) => ({
+        id: sensor.id,
+        kind: sensor.kind,
+        enabled: sensor.enabled,
+        fovDeg: sensor.fovDeg,
+        rangeM: sensor.rangeM
+      })),
+      accent: options.accent
+    });
+    if (signature === this.frustumSignature) return;
+    this.frustumSignature = signature;
+    for (const child of this.frustums.children) {
+      const line = child as THREE.LineSegments;
+      line.geometry.dispose();
+      const material = line.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+      else material.dispose();
+    }
+    this.frustums.clear();
+    for (const frustum of createFrustums(sensors, options.selectedSensorId, options.accent)) this.frustums.add(frustum);
   }
 
   private syncDebugGuides(options: RenderOptions): void {
@@ -647,35 +676,44 @@ function meshBoundsByGroup(mesh: ParsedObjMesh) {
     });
 }
 
-function createFrustums(): THREE.LineSegments {
-  const positions: number[] = [];
+function createFrustums(sensors: SensorRigChannel[], selectedSensorId: string | undefined, accent: string): THREE.LineSegments[] {
   const placements = [
     [-2.4, 1.7, -1.8, 0.45],
     [0.2, 2.1, 2.1, -2.35],
-    [2.4, 1.5, -1.5, 2.62]
+    [2.4, 1.5, -1.5, 2.62],
+    [-1.0, 1.45, 2.35, -1.25],
+    [1.8, 1.05, 0.2, 1.75]
   ] as const;
 
-  for (const [x, y, z, yaw] of placements) {
-    const apex = new THREE.Vector3(x, y, z);
-    const corners = [
-      new THREE.Vector3(-0.36, -0.22, 0.72),
-      new THREE.Vector3(0.36, -0.22, 0.72),
-      new THREE.Vector3(0.36, 0.22, 0.72),
-      new THREE.Vector3(-0.36, 0.22, 0.72)
-    ].map((corner) => corner.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).add(apex));
-    for (const corner of corners) pushLine(positions, apex, corner);
-    pushLine(positions, corners[0], corners[1]);
-    pushLine(positions, corners[1], corners[2]);
-    pushLine(positions, corners[2], corners[3]);
-    pushLine(positions, corners[3], corners[0]);
-  }
+  return sensors
+    .filter((sensor) => sensor.enabled && sensor.rangeM > 0 && sensor.fovDeg > 0)
+    .map((sensor, index) => {
+      const positions: number[] = [];
+      const [x, y, z, yaw] = placements[index % placements.length]!;
+      const apex = new THREE.Vector3(x, y, z);
+      const range = Math.max(0.35, Math.min(sensor.rangeM / 12, 1.45));
+      const halfWidth = Math.tan(THREE.MathUtils.degToRad(Math.min(sensor.fovDeg, 140)) / 2) * range * 0.42;
+      const halfHeight = Math.max(0.14, halfWidth * 0.62);
+      const corners = [
+        new THREE.Vector3(-halfWidth, -halfHeight, range),
+        new THREE.Vector3(halfWidth, -halfHeight, range),
+        new THREE.Vector3(halfWidth, halfHeight, range),
+        new THREE.Vector3(-halfWidth, halfHeight, range)
+      ].map((corner) => corner.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).add(apex));
+      for (const corner of corners) pushLine(positions, apex, corner);
+      pushLine(positions, corners[0], corners[1]);
+      pushLine(positions, corners[1], corners[2]);
+      pushLine(positions, corners[2], corners[3]);
+      pushLine(positions, corners[3], corners[0]);
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  return new THREE.LineSegments(
-    geometry,
-    new THREE.LineBasicMaterial({ color: "#c7b69f", transparent: true, opacity: 0.24 })
-  );
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const selected = sensor.id === selectedSensorId;
+      return new THREE.LineSegments(
+        geometry,
+        new THREE.LineBasicMaterial({ color: selected ? accent : "#c7b69f", transparent: true, opacity: selected ? 0.82 : 0.28 })
+      );
+    });
 }
 
 function pushLine(out: number[], a: THREE.Vector3, b: THREE.Vector3): void {

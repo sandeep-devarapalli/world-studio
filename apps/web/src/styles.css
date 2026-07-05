@@ -412,6 +412,54 @@ body {
   padding: 3px 0;
 }
 
+.ws-root.mode-sensors .ws-field-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.ws-root.mode-sensors .ws-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 9px;
+}
+
+.ws-root.mode-sensors .ws-field span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ws-root.mode-sensors .ws-field input,
+.ws-root.mode-sensors .ws-field select {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  height: 31px;
+  min-width: 0;
+  outline: none;
+  padding: 0 9px;
+}
+
+.ws-root.mode-sensors .ws-field input:focus,
+.ws-root.mode-sensors .ws-field select:focus {
+  border-color: color-mix(in oklab, var(--acc) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--acc) 24%, transparent);
+}
+
+.ws-root.mode-sensors .ws-field .ws-node {
+  height: 31px;
+  padding: 0 9px;
+  text-align: left;
+}
+
 .ws-root.mode-sensors .ws-bottom-left {
   bottom: 64px;
 }

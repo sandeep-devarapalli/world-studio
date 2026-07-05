@@ -95,6 +95,8 @@ const sensorIcons: Record<SensorRigChannel["kind"], WSIconName> = {
   imu: "imu"
 };
 
+const sensorKindOptions: SensorRigChannel["kind"][] = ["rgb", "depth", "segmentation", "lidar", "imu"];
+
 const editTools: Array<{ id: string; icon: WSIconName; title: string }> = [
   { id: "orbit", icon: "orbit", title: "orbit" },
   { id: "brush", icon: "brush", title: "brush select" },
@@ -156,11 +158,11 @@ const initialCamera: CameraState = {
 };
 
 const initialSensors: SensorRigChannel[] = [
-  { id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "72° · 1920x1080" },
-  { id: "depth", label: "DEPTH", kind: "depth", enabled: true, spec: "linear · meters" },
-  { id: "seg", label: "SEG", kind: "segmentation", enabled: true, spec: "class id" },
-  { id: "lidar", label: "LIDAR", kind: "lidar", enabled: false, spec: "32 beam · 20hz" },
-  { id: "imu", label: "IMU", kind: "imu", enabled: true, spec: "200hz" }
+  { id: "rgb", label: "RGB", kind: "rgb", enabled: true, spec: "color stream", fovDeg: 72, rangeM: 18, resolution: "1920x1080" },
+  { id: "depth", label: "DEPTH", kind: "depth", enabled: true, spec: "linear · meters", fovDeg: 72, rangeM: 8, resolution: "640x480" },
+  { id: "seg", label: "SEG", kind: "segmentation", enabled: true, spec: "class id", fovDeg: 72, rangeM: 18, resolution: "1024x1024" },
+  { id: "lidar", label: "LIDAR", kind: "lidar", enabled: false, spec: "32 beam · 20hz", fovDeg: 360, rangeM: 32, resolution: "32 beam" },
+  { id: "imu", label: "IMU", kind: "imu", enabled: true, spec: "200hz", fovDeg: 0, rangeM: 0, resolution: "6-axis" }
 ];
 
 const brushRadius = 42;
@@ -362,11 +364,13 @@ export function App() {
       agent: mode === "simulate" || mode === "pilot" ? agent : mode === "episode" ? replayAgent : undefined,
       spawn,
       trajectory: mode === "simulate" || mode === "pilot" || mode === "episode" ? trajectory : undefined,
+      sensors,
+      selectedSensorId: mode === "sensors" ? selectedSensorId : undefined,
       debugCollision,
       agentBodyRadius: bodyPreset?.radius,
       grid: true
     }),
-    [accent, agent, bodyPreset?.radius, camera, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, showDeleted, spawn, trajectory]
+    [accent, agent, bodyPreset?.radius, camera, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
@@ -710,6 +714,12 @@ export function App() {
   }, []);
 
   const clearSelected = () => setSelected(new Set());
+
+  const updateSensor = useCallback((sensorId: string, patch: Partial<SensorRigChannel>) => {
+    setSensors((items) => items.map((item) => (item.id === sensorId ? { ...item, ...patch } : item)));
+    setEpisodeExportText(null);
+    setEpisodeSaveStatus(null);
+  }, []);
 
   const recordEpisodeEvent = useCallback((event: Omit<EpisodeEvent, "id" | "frame">) => {
     episodeFrameRef.current += 1;
@@ -1861,9 +1871,7 @@ export function App() {
                 <span
                   onClick={(event) => {
                     event.stopPropagation();
-                    setSensors((items) =>
-                      items.map((item) => (item.id === sensor.id ? { ...item, enabled: !item.enabled } : item))
-                    );
+                    updateSensor(sensor.id, { enabled: !sensor.enabled });
                   }}
                 >
                   <WSSwitch on={sensor.enabled} />
@@ -1882,18 +1890,105 @@ export function App() {
             </div>
           </WSPanel>
           {selectedSensor ? (
-            <WSPanel title={`${selectedSensor.label} — channel`} className="ws-intrinsics">
-              <div className="ws-kv">
-                <span>kind</span>
-                <b>{selectedSensor.kind}</b>
+            <WSPanel title={`${selectedSensor.label} — channel`} className="ws-intrinsics" data-testid="sensor-editor">
+              <label className="ws-field">
+                <span>label</span>
+                <input
+                  aria-label="Sensor label"
+                  value={selectedSensor.label}
+                  onChange={(event) => updateSensor(selectedSensor.id, { label: event.target.value })}
+                />
+              </label>
+              <div className="ws-field-grid">
+                <label className="ws-field">
+                  <span>kind</span>
+                  <select
+                    aria-label="Sensor kind"
+                    value={selectedSensor.kind}
+                    onChange={(event) =>
+                      updateSensor(selectedSensor.id, { kind: parseSensorKind(event.target.value, selectedSensor.kind) })
+                    }
+                  >
+                    {sensorKindOptions.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {kind}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="ws-field">
+                  <span>state</span>
+                  <button
+                    className={`ws-node click ${selectedSensor.enabled ? "on" : ""}`.trim()}
+                    onClick={() => updateSensor(selectedSensor.id, { enabled: !selectedSensor.enabled })}
+                    type="button"
+                  >
+                    {selectedSensor.enabled ? "streaming" : "off"}
+                  </button>
+                </label>
               </div>
-              <div className="ws-kv">
+              <label className="ws-field">
                 <span>spec</span>
-                <b>{selectedSensor.spec}</b>
+                <input
+                  aria-label="Sensor spec"
+                  value={selectedSensor.spec}
+                  onChange={(event) => updateSensor(selectedSensor.id, { spec: event.target.value })}
+                />
+              </label>
+              <div className="ws-field-grid">
+                <label className="ws-field">
+                  <span>FOV</span>
+                  <input
+                    aria-label="Sensor FOV"
+                    min="0"
+                    max="360"
+                    step="1"
+                    type="number"
+                    value={selectedSensor.fovDeg}
+                    onChange={(event) => updateSensor(selectedSensor.id, { fovDeg: clampNumberInput(event, selectedSensor.fovDeg, 0, 360) })}
+                  />
+                </label>
+                <label className="ws-field">
+                  <span>range</span>
+                  <input
+                    aria-label="Sensor range"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    type="number"
+                    value={selectedSensor.rangeM}
+                    onChange={(event) => updateSensor(selectedSensor.id, { rangeM: clampNumberInput(event, selectedSensor.rangeM, 0, 100) })}
+                  />
+                </label>
               </div>
+              <label className="ws-field">
+                <span>resolution</span>
+                <input
+                  aria-label="Sensor resolution"
+                  value={selectedSensor.resolution}
+                  onChange={(event) => updateSensor(selectedSensor.id, { resolution: event.target.value })}
+                />
+              </label>
               <div className="ws-kv">
-                <span>state</span>
-                <b>{selectedSensor.enabled ? "streaming" : "off"}</b>
+                <span>frustum</span>
+                <b>
+                  {selectedSensor.fovDeg.toFixed(0)}° · {selectedSensor.rangeM.toFixed(1)}m
+                </b>
+              </div>
+              <div className="ws-btn-row">
+                <WSButton
+                  accent
+                  onClick={() =>
+                    recordEpisodeEvent({
+                      lane: "capture",
+                      label: "sensor rig update",
+                      targetId: selectedSensor.id,
+                      status: `${selectedSensor.label} · ${selectedSensor.kind} · ${selectedSensor.fovDeg.toFixed(0)}° · ${selectedSensor.rangeM.toFixed(1)}m`
+                    })
+                  }
+                >
+                  Record Rig
+                </WSButton>
               </div>
               <WSSliderRow label="Noise σ" value="0.000" pct={0} />
               <WSSliderRow label="Blur" value="off" pct={0} />
@@ -2492,7 +2587,10 @@ function parseEpisodeSensor(value: unknown, index: number): SensorRigChannel {
     label: typeof value.label === "string" && value.label ? value.label : fallback.label,
     kind: parseSensorKind(value.kind, fallback.kind),
     enabled: typeof value.enabled === "boolean" ? value.enabled : fallback.enabled,
-    spec: typeof value.spec === "string" ? value.spec : fallback.spec
+    spec: typeof value.spec === "string" ? value.spec : fallback.spec,
+    fovDeg: readOptionalFiniteNumber(value.fovDeg, fallback.fovDeg, 0, 360),
+    rangeM: readOptionalFiniteNumber(value.rangeM, fallback.rangeM, 0, 100),
+    resolution: typeof value.resolution === "string" && value.resolution ? value.resolution : fallback.resolution
   };
 }
 
@@ -2512,6 +2610,12 @@ function parseSensorKind(value: unknown, fallback: SensorRigChannel["kind"]): Se
   return fallback;
 }
 
+function clampNumberInput(event: ChangeEvent<HTMLInputElement>, fallback: number, min: number, max: number): number {
+  const value = Number(event.target.value);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
 function readArray(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) throw new Error(`missing ${label}`);
   return value;
@@ -2520,6 +2624,11 @@ function readArray(value: unknown, label: string): unknown[] {
 function readFiniteNumber(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`invalid ${label}`);
   return value;
+}
+
+function readOptionalFiniteNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -2594,7 +2703,10 @@ function buildEpisodeManifest({
       label: sensor.label,
       kind: sensor.kind,
       enabled: sensor.enabled,
-      spec: sensor.spec
+      spec: sensor.spec,
+      fovDeg: sensor.fovDeg,
+      rangeM: sensor.rangeM,
+      resolution: sensor.resolution
     }))
   };
 }
