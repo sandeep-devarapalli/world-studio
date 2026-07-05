@@ -840,6 +840,65 @@ button.ws-episode-row {
   max-width: 196px;
 }
 
+.ws-capture-compare {
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 7px;
+}
+
+.ws-compare-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ws-compare-card,
+.ws-compare-empty {
+  background: color-mix(in srgb, #15110d, transparent 18%);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.ws-compare-card .ws-capture-preview,
+.ws-compare-card .ws-capture-missing {
+  max-height: 86px;
+}
+
+.ws-compare-card .ws-kv {
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.ws-compare-card .ws-kv b {
+  max-width: 96px;
+}
+
+.ws-compare-empty {
+  align-items: center;
+  color: var(--ink-mut);
+  display: grid;
+  font-family: var(--mono);
+  grid-template-columns: 32px minmax(0, 1fr);
+  min-height: 150px;
+}
+
+button.ws-capture-row {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+button.ws-capture-row.selected {
+  background: color-mix(in srgb, #d9a35f, transparent 88%);
+  border-color: color-mix(in srgb, #d9a35f, transparent 48%);
+}
+
 .ws-source-match.matched b {
   color: #8fcb9b;
 }
