@@ -133,7 +133,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
     for (let index = 0; index < this.points.length; index++) {
       const point = this.points[index];
       if (!point || options.deleted.has(index)) continue;
-      const projected = new THREE.Vector3(point.x, point.y, point.z).project(this.camera);
+      const [px, py, pz] = this.pointPosition(point, index, options);
+      const projected = new THREE.Vector3(px, py, pz).project(this.camera);
       const dx = projected.x - sx;
       const dy = projected.y - sy;
       if (projected.z <= 1 && dx * dx + dy * dy <= r2) out.push(index);
@@ -161,7 +162,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
     for (let index = 0; index < this.points.length; index++) {
       const point = this.points[index];
       if (!point || options.deleted.has(index)) continue;
-      const projected = new THREE.Vector3(point.x, point.y, point.z).project(this.camera);
+      const [px, py, pz] = this.pointPosition(point, index, options);
+      const projected = new THREE.Vector3(px, py, pz).project(this.camera);
       if (projected.z <= 1 && projected.x >= sx0 && projected.x <= sx1 && projected.y >= sy0 && projected.y <= sy1) {
         out.push(index);
       }
@@ -337,10 +339,11 @@ export class ThreeWorldRenderer implements RenderAdapter {
       const deleted = options.deleted.has(index);
       const densitySkipped = index % stride !== 0 && !options.selected.has(index);
       const cropBounds = options.cropBounds;
+      const [px, py, pz] = point ? this.pointPosition(point, index, options) : [hiddenPoint, hiddenPoint, hiddenPoint];
       const cropHidden =
         cropBounds !== undefined &&
         point !== undefined &&
-        (point.x < cropBounds.minX || point.x > cropBounds.maxX || point.z < cropBounds.minZ || point.z > cropBounds.maxZ);
+        (px < cropBounds.minX || px > cropBounds.maxX || pz < cropBounds.minZ || pz > cropBounds.maxZ);
       if (!point || densitySkipped || cropHidden || (deleted && !options.showDeleted)) {
         this.pointPositions[offset] = hiddenPoint;
         this.pointPositions[offset + 1] = hiddenPoint;
@@ -351,9 +354,9 @@ export class ThreeWorldRenderer implements RenderAdapter {
         continue;
       }
 
-      this.pointPositions[offset] = point.x;
-      this.pointPositions[offset + 1] = point.y;
-      this.pointPositions[offset + 2] = point.z;
+      this.pointPositions[offset] = px;
+      this.pointPositions[offset + 1] = py;
+      this.pointPositions[offset + 2] = pz;
 
       const color = this.colorForPoint(point, index, options, maxDistance);
       this.pointColors[offset] = color.r;
@@ -367,6 +370,11 @@ export class ThreeWorldRenderer implements RenderAdapter {
     positions.needsUpdate = true;
     colors.needsUpdate = true;
     geometry.computeBoundingSphere();
+  }
+
+  private pointPosition(point: PointRecord, index: number, options: RenderOptions): [number, number, number] {
+    const transform = options.pointTransforms?.get(index);
+    return [point.x + (transform?.dx ?? 0), point.y + (transform?.dy ?? 0), point.z + (transform?.dz ?? 0)];
   }
 
   private colorForPoint(point: PointRecord, index: number, options: RenderOptions, maxDistance: number): THREE.Color {

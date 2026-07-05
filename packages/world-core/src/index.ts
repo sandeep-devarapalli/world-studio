@@ -122,6 +122,7 @@ export interface RenderOptions {
   agentBodyRadius?: number;
   grid: boolean;
   cropBounds?: CropBounds;
+  pointTransforms?: ReadonlyMap<number, PointTransform>;
 }
 
 export interface CropBounds {
@@ -129,6 +130,12 @@ export interface CropBounds {
   maxX: number;
   minZ: number;
   maxZ: number;
+}
+
+export interface PointTransform {
+  dx: number;
+  dy: number;
+  dz: number;
 }
 
 export type SparkLoadState = "unavailable" | "idle" | "loading" | "ready" | "failed";

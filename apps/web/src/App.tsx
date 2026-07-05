@@ -23,6 +23,7 @@ import type {
   LocalWorldPackagePayload,
   EpisodeBundleAsset,
   PhysicsDiagnostics,
+  PointTransform,
   RendererDiagnostics,
   RenderAdapter,
   RenderMode,
@@ -198,7 +199,29 @@ interface CropHistoryItem {
   nextCrop: CropRegion | null;
 }
 
-type HistoryItem = SelectionHistoryItem | CropHistoryItem;
+interface TransformHistoryItem {
+  id: string;
+  type: "transform";
+  count: number;
+  indices: number[];
+  delta: PointTransform;
+  previousTransforms: Map<number, PointTransform>;
+}
+
+type HistoryItem = SelectionHistoryItem | CropHistoryItem | TransformHistoryItem;
+
+interface TransformDraft {
+  dx: number;
+  dz: number;
+  count: number;
+  stage: { x: number; y: number };
+}
+
+interface TransformDrag {
+  startWorld: [number, number, number];
+  indices: number[];
+  baseTransforms: Map<number, PointTransform>;
+}
 
 const initialCamera: CameraState = {
   yaw: 0.62,
@@ -329,10 +352,23 @@ function pointInsideCrop(point: PointRecord, bounds: CropBounds): boolean {
   return point.x >= bounds.minX && point.x <= bounds.maxX && point.z >= bounds.minZ && point.z <= bounds.maxZ;
 }
 
+function addPointTransform(base: PointTransform | undefined, delta: PointTransform): PointTransform {
+  return {
+    dx: (base?.dx ?? 0) + delta.dx,
+    dy: (base?.dy ?? 0) + delta.dy,
+    dz: (base?.dz ?? 0) + delta.dz
+  };
+}
+
+function isZeroTransform(transform: PointTransform): boolean {
+  return Math.hypot(transform.dx, transform.dy, transform.dz) < 0.0001;
+}
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect" | "crop"; x: number; y: number } | null>(null);
+  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect" | "crop" | "move"; x: number; y: number } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
+  const transformDragRef = useRef<TransformDrag | null>(null);
   const simulationRef = useRef<RapierSimulation | null>(null);
   const simulationTokenRef = useRef(0);
   const propSeqRef = useRef(defaultProps.length);
@@ -363,6 +399,9 @@ export function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [cropRegion, setCropRegion] = useState<CropRegion | null>(null);
   const [cropDraft, setCropDraft] = useState<StageRect | null>(null);
+  const [pointTransforms, setPointTransforms] = useState<Map<number, PointTransform>>(new Map());
+  const [transformDraft, setTransformDraft] = useState<TransformDraft | null>(null);
+  const [lastTransformDelta, setLastTransformDelta] = useState<TransformDraft | null>(null);
   const [measurePoints, setMeasurePoints] = useState<MeasurePoint[]>([]);
   const [agent, setAgent] = useState<AgentState>(defaultSpawn);
   const [spawn, setSpawn] = useState<AgentState>(defaultSpawn);
@@ -488,9 +527,10 @@ export function App() {
       debugCollision,
       agentBodyRadius: bodyPreset?.radius,
       grid: true,
-      cropBounds: cropRegion?.bounds
+      cropBounds: cropRegion?.bounds,
+      pointTransforms
     }),
-    [accent, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, isolatedClass, mode, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, spawn, trajectory]
+    [accent, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, isolatedClass, mode, pointTransforms, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
@@ -601,6 +641,10 @@ export function App() {
     setHistory([]);
     setCropRegion(null);
     setCropDraft(null);
+    setPointTransforms(new Map());
+    setTransformDraft(null);
+    setLastTransformDelta(null);
+    transformDragRef.current = null;
     setMeasurePoints([]);
     setStepCount(0);
     setLastAction("idle");
@@ -867,6 +911,45 @@ export function App() {
     [countPointsOutsideCrop, cropRegion, options, renderer, toStage]
   );
 
+  const applyTransformDelta = useCallback((drag: TransformDrag, delta: PointTransform) => {
+    setPointTransforms((current) => {
+      const next = new Map(current);
+      for (const index of drag.indices) {
+        const moved = addPointTransform(drag.baseTransforms.get(index), delta);
+        if (isZeroTransform(moved)) next.delete(index);
+        else next.set(index, moved);
+      }
+      return next;
+    });
+  }, []);
+
+  const restoreTransformBase = useCallback((drag: TransformDrag) => {
+    setPointTransforms((current) => {
+      const next = new Map(current);
+      for (const index of drag.indices) {
+        const base = drag.baseTransforms.get(index);
+        if (base && !isZeroTransform(base)) next.set(index, base);
+        else next.delete(index);
+      }
+      return next;
+    });
+  }, []);
+
+  const updateTransformDrag = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const drag = transformDragRef.current;
+      const canvas = canvasRef.current;
+      if (!drag || !canvas || !renderer?.projectToGround) return null;
+      const current = renderer.projectToGround(canvas, options, event.clientX, event.clientY);
+      if (!current) return null;
+      const delta: PointTransform = { dx: current[0] - drag.startWorld[0], dy: 0, dz: current[2] - drag.startWorld[2] };
+      applyTransformDelta(drag, delta);
+      setTransformDraft({ dx: delta.dx, dz: delta.dz, count: drag.indices.length, stage: toStage(event.clientX, event.clientY) });
+      return delta;
+    },
+    [applyTransformDelta, options, renderer, toStage]
+  );
+
   const deleteSelected = useCallback(() => {
     if (!selected.size) return;
     const indices = [...selected];
@@ -887,6 +970,18 @@ export function App() {
       if (last.type === "crop") {
         setCropRegion(last.previousCrop);
         setCropDraft(null);
+      } else if (last.type === "transform") {
+        setPointTransforms((transformSet) => {
+          const next = new Map(transformSet);
+          for (const index of last.indices) {
+            const previous = last.previousTransforms.get(index);
+            if (previous && !isZeroTransform(previous)) next.set(index, previous);
+            else next.delete(index);
+          }
+          return next;
+        });
+        setTransformDraft(null);
+        setLastTransformDelta(null);
       } else if (last.type === "delete") {
         setDeleted((deletedSet) => {
           const next = new Set(deletedSet);
@@ -1342,6 +1437,40 @@ export function App() {
       interactionRef.current = { kind: "crop", x: event.clientX, y: event.clientY };
       const start = toStage(event.clientX, event.clientY);
       setCropDraft({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
+    } else if (mode === "edit" && renderer && tool === "move") {
+      const canvas = canvasRef.current;
+      if (!selected.size) {
+        interactionRef.current = null;
+        setLastAction("transform needs selection");
+        return;
+      }
+      if (!canvas || !renderer.projectToGround) {
+        interactionRef.current = null;
+        setLastAction("transform unavailable");
+        return;
+      }
+      const startWorld = renderer.projectToGround(canvas, options, event.clientX, event.clientY);
+      if (!startWorld) {
+        interactionRef.current = null;
+        setLastAction("transform missed ground");
+        return;
+      }
+      const indices = [...selected].filter((index) => !deleted.has(index));
+      if (!indices.length) {
+        interactionRef.current = null;
+        setLastAction("transform needs visible selection");
+        return;
+      }
+      transformDragRef.current = {
+        startWorld,
+        indices,
+        baseTransforms: new Map(indices.flatMap((index) => {
+          const transform = pointTransforms.get(index);
+          return transform ? [[index, transform] as const] : [];
+        }))
+      };
+      interactionRef.current = { kind: "move", x: event.clientX, y: event.clientY };
+      setTransformDraft({ dx: 0, dz: 0, count: indices.length, stage: toStage(event.clientX, event.clientY) });
     } else if (mode === "edit" && renderer && tool === "ruler") {
       interactionRef.current = null;
       measureAt(event);
@@ -1368,6 +1497,10 @@ export function App() {
     if (interaction.kind === "crop") {
       const point = toStage(event.clientX, event.clientY);
       setCropDraft((current) => (current ? { ...current, x1: point.x, y1: point.y } : current));
+      return;
+    }
+    if (interaction.kind === "move") {
+      updateTransformDrag(event);
       return;
     }
     const dx = event.clientX - interaction.x;
@@ -1407,6 +1540,29 @@ export function App() {
     if (interaction?.kind === "crop") {
       applyCropFromDrag(interaction.x, interaction.y, event.clientX, event.clientY);
       setCropDraft(null);
+    }
+    if (interaction?.kind === "move") {
+      const drag = transformDragRef.current;
+      const delta = updateTransformDrag(event);
+      if (drag && delta && Math.hypot(delta.dx, delta.dz) >= 0.01) {
+        const entry: HistoryItem = {
+          id: crypto.randomUUID(),
+          type: "transform",
+          count: drag.indices.length,
+          indices: drag.indices,
+          delta,
+          previousTransforms: new Map(drag.baseTransforms)
+        };
+        setHistory((current) => [entry, ...current].slice(0, 10));
+        setLastTransformDelta({ dx: delta.dx, dz: delta.dz, count: drag.indices.length, stage: toStage(event.clientX, event.clientY) });
+        setLastAction(`transform ${drag.indices.length} moved`);
+      } else if (drag) {
+        restoreTransformBase(drag);
+        setLastTransformDelta(null);
+        setLastAction("transform too small");
+      }
+      transformDragRef.current = null;
+      setTransformDraft(null);
     }
     interactionRef.current = null;
     brushStrokeRef.current = new Set();
@@ -1450,7 +1606,7 @@ export function App() {
           <canvas
             ref={canvasRef}
             className={`ws-canvas ${mode === "simulate" ? "dual-right" : ""} ${
-              mode === "edit" && (tool === "brush" || tool === "rect" || tool === "crop" || tool === "ruler") ? "edit-tool" : ""
+              mode === "edit" && (tool === "brush" || tool === "rect" || tool === "crop" || tool === "move" || tool === "ruler") ? "edit-tool" : ""
             }`.trim()}
             data-testid="world-canvas"
             onPointerDown={onPointerDown}
@@ -1481,6 +1637,11 @@ export function App() {
             <div className="ws-crop-overlay">
               {cropRegion ? <div className="ws-crop-rect active" data-testid="crop-overlay" style={stageRectStyle(cropRegion.stage)} /> : null}
               {cropDraft ? <div className="ws-crop-rect draft" data-testid="crop-draft" style={stageRectStyle(cropDraft)} /> : null}
+            </div>
+          ) : null}
+          {mode === "edit" && transformDraft ? (
+            <div className="ws-transform-label" data-testid="transform-delta" style={{ left: transformDraft.stage.x, top: transformDraft.stage.y }}>
+              dx {transformDraft.dx.toFixed(2)} · dz {transformDraft.dz.toFixed(2)} m
             </div>
           ) : null}
           {mode === "edit" && measurePoints.length ? (
@@ -2088,6 +2249,7 @@ export function App() {
 
   function renderLeftPanel() {
     if (mode === "edit") {
+      const transformReadout = transformDraft ?? lastTransformDelta;
       return (
         <div className="ws-row-stack">
           <WSPanel title="Selection" meta={`${selected.size} splats`}>
@@ -2130,6 +2292,24 @@ export function App() {
               <WSButton disabled={!cropRegion} onClick={clearCrop}>
                 Clear Crop
               </WSButton>
+            </div>
+          </WSPanel>
+          <WSPanel title="Transform" meta={selected.size ? "ground delta" : "select"} data-testid="transform-panel">
+            <div className="ws-kv" data-testid="transform-readout">
+              <span>selected</span>
+              <b>{selected.size} points</b>
+            </div>
+            <div className="ws-kv" data-testid="transform-delta-readout">
+              <span>delta</span>
+              <b>{transformReadout ? `${transformReadout.dx.toFixed(2)} · ${transformReadout.dz.toFixed(2)} m` : "0.00 · 0.00 m"}</b>
+            </div>
+            <div className="ws-kv" data-testid="transform-moved-readout">
+              <span>moved</span>
+              <b>{pointTransforms.size} points</b>
+            </div>
+            <div className="ws-kv">
+              <span>path</span>
+              <b>point cloud</b>
             </div>
           </WSPanel>
           <WSPanel title="Measure" meta={measurementDistance === null ? "two clicks" : "ground plane"} data-testid="measure-panel">
