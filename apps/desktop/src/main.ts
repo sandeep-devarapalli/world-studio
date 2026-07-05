@@ -3,6 +3,7 @@ import type { EpisodeBundleAsset, LocalWorldPackagePayload, SaveEpisodeBundleInp
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createOpenLocalPackageDialogOptions } from "./open-local-dialog-options.js";
 import { readLocalPackage } from "./package-reader.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,10 +43,7 @@ ipcMain.handle("world-studio:pick-folder", async () => {
 });
 
 ipcMain.handle("world-studio:open-local-package", async (): Promise<LocalWorldPackagePayload | null> => {
-  const result = await dialog.showOpenDialog({
-    properties: ["openDirectory", "openFile"],
-    title: "Open World Studio Package"
-  });
+  const result = await dialog.showOpenDialog(createOpenLocalPackageDialogOptions());
   if (result.canceled) return null;
   const selectedPath = result.filePaths[0];
   if (!selectedPath) return null;
