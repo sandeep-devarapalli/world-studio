@@ -725,6 +725,18 @@ body {
   padding-right: 2px;
 }
 
+.ws-root.mode-episode .ws-episode-card {
+  max-height: 688px;
+  overflow: hidden;
+}
+
+.ws-root.mode-episode .ws-episode-card .ws-panel-body {
+  max-height: 632px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 .ws-episode-row {
   align-items: center;
   background: color-mix(in srgb, var(--panel), transparent 10%);
@@ -790,6 +802,41 @@ button.ws-episode-row {
 }
 
 .ws-episode-provenance .ws-kv b {
+  max-width: 196px;
+}
+
+.ws-episode-capture-detail {
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 7px;
+}
+
+.ws-detail-heading {
+  align-items: center;
+  color: var(--ink-faint);
+  display: flex;
+  font-family: var(--mono);
+  font-size: var(--fs-head);
+  justify-content: space-between;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ws-detail-heading b {
+  color: var(--acc);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ws-episode-capture-detail .ws-capture-preview,
+.ws-episode-capture-detail .ws-capture-missing {
+  max-height: 126px;
+}
+
+.ws-episode-capture-detail .ws-kv b {
   max-width: 196px;
 }
 

@@ -749,6 +749,19 @@ test("edits Sensors rig fields and restores them through Episode import", async 
   await expect(captureArtifacts).toContainText("ready");
   await expect(captureArtifacts.getByAltText("Latest sensor capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
 
+  await page.getByRole("button", { name: "Episode" }).click();
+  await expect(page.getByTestId("episode-selected-event")).toContainText("sensor capture · NavCam");
+  const episodeCaptureDetail = page.getByTestId("episode-capture-detail");
+  await expect(episodeCaptureDetail).toContainText("Capture Detail");
+  await expect(episodeCaptureDetail).toContainText("NavCam · depth");
+  await expect(episodeCaptureDetail).toContainText("event-1 · frame 1");
+  await expect(episodeCaptureDetail).toContainText("captures/event-0001-rgb.png");
+  await expect(episodeCaptureDetail).toContainText("fnv1a32:");
+  await expect(episodeCaptureDetail).toContainText("fov 50°");
+  await expect(episodeCaptureDetail).toContainText("ready");
+  await expect(episodeCaptureDetail.getByAltText("Selected episode capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
+
+  await page.getByRole("button", { name: "Sensors" }).click();
   await editor.getByRole("button", { name: "Record Rig" }).click();
   await page.getByRole("button", { name: "Episode" }).click();
   await expect(page.getByTestId("episode-event-list")).toContainText("sensor capture · NavCam");
@@ -782,6 +795,11 @@ test("edits Sensors rig fields and restores them through Episode import", async 
     buffer: Buffer.from(exported)
   });
   await expect(page.getByTestId("episode-save-status")).toContainText("loaded edited-sensors.world-episode.json");
+  await page.getByRole("button", { name: /Select episode event sensor capture/ }).click();
+  await expect(episodeCaptureDetail).toContainText("NavCam · depth");
+  await expect(episodeCaptureDetail).toContainText("captures/event-0001-rgb.png");
+  await expect(episodeCaptureDetail).toContainText("ready");
+  await expect(episodeCaptureDetail.getByAltText("Selected episode capture preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
   await page.getByRole("button", { name: "Sensors" }).click();
 
   await expect(editor.getByLabel("Sensor label")).toHaveValue("NavCam");
@@ -844,6 +862,12 @@ test("exports sensor captures as desktop bundle assets and flags missing externa
   const provenance = page.getByTestId("episode-provenance");
   await expect(provenance).toContainText("capture assets");
   await expect(provenance).toContainText("missing · 1/1 companion PNG missing");
+  const episodeCaptureDetail = page.getByTestId("episode-capture-detail");
+  await expect(episodeCaptureDetail).toContainText("Capture Detail");
+  await expect(episodeCaptureDetail).toContainText("NavCam · rgb");
+  await expect(episodeCaptureDetail).toContainText("captures/event-0001-rgb.png");
+  await expect(episodeCaptureDetail).toContainText("missing capture asset");
+  await expect(episodeCaptureDetail).toContainText("missing asset");
 
   await page.getByRole("button", { name: "Sensors" }).click();
   const captureArtifacts = page.getByTestId("sensor-capture-artifacts");
