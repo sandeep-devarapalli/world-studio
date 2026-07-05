@@ -161,8 +161,10 @@ export class ThreeWorldRenderer implements RenderAdapter {
   }
 
   dispose(): void {
-    this.sparkMesh?.dispose?.();
-    this.sparkRenderer?.dispose?.();
+    if (this.sparkMesh) this.scene?.remove(this.sparkMesh);
+    if (this.sparkRenderer) this.scene?.remove(this.sparkRenderer);
+    disposeSparkObject(this.sparkMesh);
+    disposeSparkRendererAfterPendingWork(this.sparkRenderer);
     if (this.sparkObjectUrl) URL.revokeObjectURL(this.sparkObjectUrl);
     this.webgl?.dispose();
     this.canvas = undefined;
@@ -743,4 +745,31 @@ function clampUnit(value: number): number {
 function shortError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/\s+/g, " ").slice(0, 72);
+}
+
+function disposeSparkObject(target: { dispose?: () => unknown } | undefined): void {
+  try {
+    const result = target?.dispose?.();
+    if (result && typeof (result as Promise<unknown>).catch === "function") {
+      void (result as Promise<unknown>).catch((error: unknown) => {
+        if (!isExpectedSparkWorkerTerminate(error)) throw error;
+      });
+    }
+  } catch (error) {
+    if (!isExpectedSparkWorkerTerminate(error)) throw error;
+  }
+}
+
+function disposeSparkRendererAfterPendingWork(target: { dispose?: () => unknown } | undefined): void {
+  if (!target) return;
+  if (typeof window === "undefined") {
+    disposeSparkObject(target);
+    return;
+  }
+  // Spark rejects in-flight worker RPCs if the worker-backed renderer is terminated during an active sort.
+  window.setTimeout(() => disposeSparkObject(target), 2_000);
+}
+
+function isExpectedSparkWorkerTerminate(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "message" in error && error.message === "Worker terminate");
 }
