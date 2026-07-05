@@ -52,6 +52,7 @@ end_header
 0.2 0.3 0.4 210 130 80 2`;
 
 const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
+const onePixelDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==";
 const localObj = `o local_fixture
 v -0.5 0 -0.5
 v 0.5 0 -0.5
@@ -114,6 +115,34 @@ const localPackagePayload: LocalWorldPackagePayload = {
       details: []
     }
   ]
+};
+
+const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
+  ...localPackagePayload,
+  name: "capture_splat_7k",
+  sourcePath: "/tmp/world-studio/capture_splat_7k",
+  sourceKind: "capture_splat.local_folder",
+  packageKind: "capture-splat-local-folder",
+  companionArtifacts: [...localPackagePayload.companionArtifacts, "capture-splat.media_frames.generated.json"],
+  budoMediaFrames: {
+    relativePath: "capture-splat.media_frames.generated.json",
+    text: JSON.stringify({
+      schema: "budo.media_frames.v0.8",
+      source_kind: "capture_splat.image_folder",
+      frames: [
+        {
+          display_name: "frame_000001",
+          rgb_path: "images/frame_000001.png",
+          preview_data_url: onePixelDataUrl
+        },
+        {
+          display_name: "frame_000002",
+          rgb_path: "images/frame_000002.png",
+          preview_data_url: onePixelDataUrl
+        }
+      ]
+    })
+  }
 };
 
 const localPackageMissingPointsPayload: LocalWorldPackagePayload = (() => {
@@ -1197,6 +1226,25 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
   await expect(page.getByText("ascii", { exact: true })).toBeVisible();
   await expect(page.getByText("spark prep")).toBeVisible();
   await expect(page.getByText("converted", { exact: true })).toBeVisible();
+});
+
+test("shows Capture Splat source frames beside live splat packages in Simulate mode", async ({ page }) => {
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => payload.sourcePath,
+      openLocalPackage: async () => payload
+    };
+  }, captureSplatSourceFramePayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+
+  await expect(page.getByAltText("Selected source frame evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000001");
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("3DGS visual proxy");
+  await expect(page.getByTestId("simulate-comparison-panel")).toContainText("source evidence");
+  await expect(page.locator(".ws-frame-row", { hasText: "frame_000001" }).getByAltText("frame_000001 preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
 });
 
 test("loads generic manifest-only packages through the desktop bridge", async ({ page }) => {
