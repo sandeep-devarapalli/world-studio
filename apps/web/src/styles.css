@@ -263,7 +263,61 @@ body {
 }
 
 .ws-root.mode-pilot .ws-left {
-  max-height: 620px;
+  max-height: 696px;
+  padding-right: 2px;
+  top: 118px;
+}
+
+.ws-root.mode-pilot .ws-agent-pad {
+  margin-top: 0;
+}
+
+.ws-root.mode-pilot .ws-agent-pad .ws-panel-head,
+.ws-root.mode-pilot .ws-prop-panel .ws-panel-head {
+  padding: 10px 14px 0;
+}
+
+.ws-root.mode-pilot .ws-agent-pad .ws-panel-body,
+.ws-root.mode-pilot .ws-prop-panel .ws-panel-body {
+  padding: 9px 14px 12px;
+}
+
+.ws-root.mode-pilot .ws-agent-pad .ws-kv {
+  padding: 2px 0;
+}
+
+.ws-root.mode-pilot .ws-spawn-panel {
+  gap: 10px;
+}
+
+.ws-root.mode-pilot .ws-spawn-grid {
+  gap: 6px;
+  padding: 10px 14px 4px;
+}
+
+.ws-root.mode-pilot .ws-spawn-item {
+  min-height: 45px;
+  padding: 7px 3px 6px;
+}
+
+.ws-root.mode-pilot .ws-prop-panel .ws-panel-body {
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.ws-root.mode-pilot .ws-prop-list {
+  max-height: 76px;
+}
+
+.ws-root.mode-pilot .ws-strip {
+  gap: 8px;
+  padding: 8px;
+}
+
+.ws-root.mode-pilot .ws-strip-cell {
+  height: 108px;
+  width: 186px;
 }
 
 .ws-right-col {
@@ -325,20 +379,20 @@ body {
 
 .ws-root.mode-simulate .ws-right-col {
   top: 128px;
-  width: 390px;
+  width: 374px;
 }
 
 .ws-root.mode-simulate .ws-bottom-tray {
-  bottom: 184px;
+  bottom: 214px;
   gap: 10px;
 }
 
 .ws-root.mode-simulate .ws-bottom-tray .ws-card {
-  width: 286px;
+  width: 272px;
 }
 
 .ws-root.mode-simulate .ws-bottom-tray .ws-mode-card {
-  width: 324px;
+  width: 312px;
 }
 
 .ws-root.mode-simulate .ws-bottom-tray .ws-panel-head {
@@ -384,7 +438,15 @@ body {
   top: 76px;
   width: 408px;
   gap: 12px;
-  max-height: 606px;
+  max-height: 842px;
+  padding-right: 2px;
+}
+
+.ws-root.mode-sensors .ws-sensor-list {
+  flex: 0 0 auto;
+  max-height: 312px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .ws-root.mode-sensors .ws-sensor-list .ws-panel-head {
@@ -393,12 +455,13 @@ body {
 
 .ws-root.mode-sensors .ws-sensor-list .ws-sensor-row {
   margin: 1px 6px;
-  min-height: 43px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 4px 10px;
 }
 
 .ws-root.mode-sensors .ws-sensor-spec {
-  font-size: 9.5px;
+  font-size: 9px;
+  line-height: 1.1;
 }
 
 .ws-root.mode-sensors .ws-tree-foot {
@@ -409,12 +472,21 @@ body {
   padding: 10px 14px 0;
 }
 
+.ws-root.mode-sensors .ws-intrinsics {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .ws-root.mode-sensors .ws-intrinsics .ws-panel-body {
+  max-height: 348px;
+  overflow-y: auto;
   padding: 10px 14px 14px;
+  scrollbar-width: thin;
 }
 
 .ws-root.mode-sensors .ws-intrinsics .ws-kv {
-  padding: 3px 0;
+  padding: 2px 0;
 }
 
 .ws-root.mode-sensors .ws-field-grid {
@@ -426,8 +498,8 @@ body {
 .ws-root.mode-sensors .ws-field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-bottom: 9px;
+  gap: 4px;
+  margin-bottom: 7px;
 }
 
 .ws-root.mode-sensors .ws-field span {
@@ -447,7 +519,7 @@ body {
   font: inherit;
   font-family: var(--mono);
   font-size: 11px;
-  height: 31px;
+  height: 29px;
   min-width: 0;
   outline: none;
   padding: 0 9px;
@@ -460,7 +532,7 @@ body {
 }
 
 .ws-root.mode-sensors .ws-field .ws-node {
-  height: 31px;
+  height: 29px;
   padding: 0 9px;
   text-align: left;
 }
@@ -468,6 +540,10 @@ body {
 .ws-root.mode-sensors .ws-capture-artifacts .ws-panel-body {
   gap: 7px;
   padding: 10px 14px 12px;
+}
+
+.ws-root.mode-sensors .ws-capture-artifacts {
+  flex: 0 0 auto;
 }
 
 .ws-capture-preview {
@@ -605,8 +681,8 @@ body {
 }
 
 .ws-root.mode-sensors .ws-preview-card {
-  width: 302px;
-  height: 190px;
+  width: 248px;
+  height: 156px;
 }
 
 .ws-bottom-right .ws-mode-card {
