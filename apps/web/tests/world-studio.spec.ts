@@ -169,6 +169,57 @@ function importedEpisodeBundleText({
   });
 }
 
+function importedComparisonEpisodeBundleText(): string {
+  return JSON.stringify({
+    schema: "world-studio.episode_bundle.v0.1",
+    createdAt: "2026-07-05T00:00:00.000Z",
+    episodeManifest: {
+      schema: "world-studio.episode.v0.1",
+      createdAt: "2026-07-05T00:00:00.000Z",
+      world: { name: "External 3DGS comparison" },
+      playback: { playhead: 0.5, selectedEventId: "compare-000001", eventCount: 1 },
+      events: [{ id: "compare-000001", frame: 1, lane: "capture", label: "frame 000001", status: "QA hold" }],
+      agentTrajectory: [],
+      props: [],
+      sensors: [{ id: "compare-rgb", label: "Imported Render Compare", kind: "rgb", enabled: true, spec: "source/render QA" }],
+      sensorCaptures: [
+        {
+          id: "capture-000001",
+          eventId: "compare-000001",
+          frame: 1,
+          sensorId: "compare-rgb",
+          sensorLabel: "Imported Render Compare",
+          sensorKind: "rgb",
+          sensorSpec: "source/render QA",
+          capturedAt: "2026-07-05T00:00:00.000Z",
+          previewDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==",
+          assetStatus: "embedded",
+          renderMode: "splat",
+          rendererStatus: "visual evidence · QA hold · finite PLY",
+          worldName: "External 3DGS comparison",
+          sourcePath: "runs/render_compare_native_3dgs_7000_20260705",
+          loadedVia: "episode-import",
+          camera: { x: 0, y: 1.5, z: 3, yaw: 0, pitch: 0, distance: 5 },
+          size: { width: 1, height: 1 }
+        }
+      ]
+    },
+    worldContext: { name: "External 3DGS comparison", version: "comparison" },
+    package: {
+      kind: "world-studio-render-comparison",
+      sourceKind: "world_studio.render_comparison",
+      sourcePath: "runs/render_compare_native_3dgs_7000_20260705",
+      loadedVia: "episode-import",
+      primaryArtifact: "world_studio_render_comparison.json",
+      companionArtifacts: ["contact_sheet_weak_tail.png"],
+      assetManifest: [],
+      authorityStatus: "visual_proxy"
+    },
+    renderer: { mode: "splat", status: "3DGS render QA · hold" },
+    compatibility: { notes: ["Visual proxy only; collision and physics authority are not validated."] }
+  });
+}
+
 const genericManifestPayload: LocalWorldPackagePayload = {
   kind: "world-studio.local-package",
   name: "generic_package",
@@ -852,6 +903,30 @@ test("compares sensor captures and exports a capture manifest", async ({ page })
   await expect(exportPreview).toContainText("\"eventId\": \"event-2\"");
   await expect(exportPreview).toContainText("\"checksum\": \"fnv1a32:");
   await expect(exportPreview).not.toContainText("previewDataUrl");
+});
+
+test("shows imported render comparison evidence in Simulate mode", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Episode" }).click();
+  await page.getByTestId("episode-import-input").setInputFiles({
+    name: "render-comparison.world-episode.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(importedComparisonEpisodeBundleText())
+  });
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded");
+  await expect(page.getByTestId("episode-save-status")).toContainText("world-episode.json");
+  await expect(page.getByTestId("episode-capture-detail")).toContainText("visual evidence · QA hold · finite PLY");
+
+  await page.getByRole("button", { name: "Simulate" }).click();
+  await expect(page.getByAltText("Selected comparison capture evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame 1");
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("3DGS visual proxy");
+  const panel = page.getByTestId("simulate-comparison-panel");
+  await expect(panel).toContainText("source/render evidence");
+  await expect(panel).toContainText("3DGS package not loaded");
+  await expect(panel).toContainText("visual_proxy");
+  await expect(panel).toContainText("visual evidence · QA hold · finite PLY");
+  await expect(panel.getByRole("button", { name: "Show comparison frame 1" })).toHaveClass(/on/);
 });
 
 test("exports sensor captures as desktop bundle assets and flags missing external previews", async ({ page }) => {
