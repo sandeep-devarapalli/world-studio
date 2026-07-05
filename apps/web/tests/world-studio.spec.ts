@@ -156,18 +156,34 @@ const cleanedPlyPayload: LocalWorldPackagePayload = {
   packageIssues: []
 };
 
+const captureSplatHandoffManifest = {
+  schema: "capture_splat.world_studio_handoff.v0.1",
+  status: "visual_evidence_with_3dgs_proposal",
+  source_frames: [{ path: "images/frame_000001.png" }, { path: "images/frame_000002.png" }],
+  assets: {
+    points: "points.ply",
+    gaussian: "gaussians.ply",
+    capture_manifest: "capture.json",
+    transforms: "colmap/transforms.json"
+  }
+};
+
 const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
   ...localPackagePayload,
   name: "capture_splat_7k",
   sourcePath: "/tmp/world-studio/capture_splat_7k",
   sourceKind: "capture_splat.local_folder",
   packageKind: "capture-splat-local-folder",
-  companionArtifacts: [...localPackagePayload.companionArtifacts, "capture-splat.media_frames.generated.json"],
+  companionArtifacts: [...localPackagePayload.companionArtifacts, "capture-splat.world-studio.json", "capture-splat.media_frames.generated.json"],
+  jsonManifests: [{
+    relativePath: "capture-splat.world-studio.json",
+    text: JSON.stringify(captureSplatHandoffManifest, null, 2)
+  }],
   budoMediaFrames: {
     relativePath: "capture-splat.media_frames.generated.json",
     text: JSON.stringify({
       schema: "budo.media_frames.v0.8",
-      source_kind: "capture_splat.image_folder",
+      source_kind: "capture_splat.world_studio_handoff",
       frames: [
         {
           display_name: "frame_000001",
@@ -181,7 +197,37 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
         }
       ]
     })
-  }
+  },
+  packageInsights: [
+    {
+      id: "capture-splat-manifest",
+      kind: "capture-splat-manifest",
+      title: "Capture Splat Handoff",
+      artifact: "capture-splat.world-studio.json",
+      summary: "Capture Splat package handoff for source frames and 3DGS review.",
+      status: "visual_evidence_with_3dgs_proposal",
+      metrics: [
+        { label: "frames", value: 2 },
+        { label: "points", value: "points.ply" },
+        { label: "gaussian", value: "gaussians.ply" }
+      ],
+      details: [
+        { label: "schema", value: "capture_splat.world_studio_handoff.v0.1" },
+        { label: "authority", value: "source frames visual evidence; 3DGS proposal" }
+      ],
+      sections: [
+        {
+          title: "Renderable Assets",
+          rows: [
+            { label: "points", value: "points.ply" },
+            { label: "gaussian ply", value: "gaussians.ply" },
+            { label: "mesh", value: "collision_mesh.obj" }
+          ]
+        }
+      ],
+      previewText: JSON.stringify(captureSplatHandoffManifest, null, 2)
+    }
+  ]
 };
 
 const localPackageMissingPointsPayload: LocalWorldPackagePayload = (() => {
@@ -1276,6 +1322,10 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await page.goto("/");
   await page.getByRole("button", { name: "Open Local" }).click();
   await expectSparkReadyForGaussianPayload(page, captureSplatSourceFramePayload);
+  await expect(page.getByText("capture-splat-local-folder")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Capture Splat Handoff detail" })).toBeVisible();
+  await page.getByRole("button", { name: "Open Capture Splat Handoff detail" }).click();
+  await expect(page.locator(".ws-detail-panel").getByText("source frames visual evidence; 3DGS proposal")).toBeVisible();
   await page.getByRole("button", { name: "Simulate" }).click();
 
   await expect(page.getByAltText("Selected source frame evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);

@@ -9,8 +9,19 @@ const maxGaussianPreviewPoints = 50_000;
 const maxCapturePreviewFrames = 24;
 const maxCapturePreviewImageBytes = 16 * 1024 * 1024;
 const maxPreviewChars = 8_000;
+const captureSplatManifestPath = "capture-splat.world-studio.json";
 const captureFrameDirs = ["source", "images", "rgb", "frames", "renders"];
 const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+
+interface CaptureSplatManifestRefs {
+  captureManifestPaths: string[];
+  cameraPosePaths: string[];
+  framePaths: string[];
+  gaussianPlyPaths: string[];
+  gaussianProxyPaths: string[];
+  objMeshPaths: string[];
+  pointsPlyPaths: string[];
+}
 
 export async function readLocalPackage(inputPath: string): Promise<LocalWorldPackagePayload> {
   const selectedPath = path.resolve(inputPath);
@@ -24,19 +35,25 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
   const selectedCleanedPly = isWorldStudioCleanedPly(selectedTextPly) ? selectedTextPly : undefined;
   const payloadSourcePath = selectedCleanedPly ? selectedPath : sourceRoot;
   const cleanedFolderCandidates = selectedCleanedPly ? [] : await findCleanedPlyCandidates(sourceRoot);
+  const captureSplatManifest = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, captureSplatManifestPath, packageIssues);
+  const parsedCaptureSplatManifest = captureSplatManifest
+    ? parseJsonRecord(captureSplatManifest.text, captureSplatManifest.relativePath, packageIssues)
+    : undefined;
+  const captureSplatRefs = parsedCaptureSplatManifest ? extractCaptureSplatManifestRefs(parsedCaptureSplatManifest) : emptyCaptureSplatRefs();
   const sceneFile = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "scene.json", packageIssues);
   const sourcePointsPly = selectedCleanedPly
-    ?? await readFirstText(sourceRoot, ["points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates], packageIssues);
+    ?? await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.pointsPlyPaths, "points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates]), packageIssues);
   const cleanedPointPly = isWorldStudioCleanedPly(sourcePointsPly);
-  const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, ["gaussians.ply", "splats.ply", "splat.ply"], packageIssues);
+  const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, uniquePaths([...captureSplatRefs.gaussianPlyPaths, "gaussians.ply", "splats.ply", "splat.ply"]), packageIssues);
   const generatedPointsPly = !sourcePointsPly && gaussianPly
     ? await readGaussianPreviewPointCloud(sourceRoot, gaussianPly.relativePath, packageIssues)
     : undefined;
   const pointsPly = sourcePointsPly ?? generatedPointsPly;
-  const objMesh = selectedCleanedPly ? undefined : await readFirstText(sourceRoot, ["collision_mesh.obj", "mesh.obj", "model.obj"], packageIssues);
+  const objMesh = selectedCleanedPly ? undefined : await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.objMeshPaths, "collision_mesh.obj", "mesh.obj", "model.obj"]), packageIssues);
   const sourceBudoMediaFrames = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues);
-  const generatedCaptureFrames = sourceBudoMediaFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifest(sourceRoot, packageIssues);
-  const budoMediaFrames = sourceBudoMediaFrames ?? generatedCaptureFrames;
+  const captureSplatManifestFrames = sourceBudoMediaFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifestFromPaths(sourceRoot, captureSplatRefs.framePaths, packageIssues);
+  const generatedCaptureFrames = sourceBudoMediaFrames || captureSplatManifestFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifest(sourceRoot, packageIssues);
+  const budoMediaFrames = sourceBudoMediaFrames ?? captureSplatManifestFrames ?? generatedCaptureFrames;
   const articleFigureViews = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.article_figure_3d_views.v0.1.json", packageIssues);
   const verifiedExport = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "verified_export/manifest.json", packageIssues);
   const jsonManifests = selectedCleanedPly ? [] : await readPackageJsonManifests(sourceRoot, packageIssues);
@@ -52,6 +69,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     });
   }
   const companionArtifacts = [...new Set([
+    captureSplatManifest?.relativePath,
     sceneFile?.relativePath,
     sourcePointsPly?.relativePath,
     gaussianPly?.relativePath,
@@ -62,6 +80,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     ...jsonManifests.map((file) => file.relativePath)
   ].filter((entry): entry is string => Boolean(entry)))];
   const assetManifest = buildAssetManifest([
+    captureSplatManifest,
     sceneFile,
     sourcePointsPly,
     gaussianPly,
@@ -71,8 +90,9 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     verifiedExport,
     ...jsonManifests
   ]);
+  const hasCaptureSplatPackage = Boolean(captureSplatManifest || captureSplatManifestFrames || generatedCaptureFrames);
 
-  const packageKind = generatedCaptureFrames
+  const packageKind = hasCaptureSplatPackage
     ? "capture-splat-local-folder"
     : classifyPackage({ articleFigureViews, budoMediaFrames, cleanedPointPly, pointsPly: sourcePointsPly, sceneFile, verifiedExport });
   const authorityStatus = classifyAuthority(packageKind);
@@ -89,6 +109,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
   addPackageLayoutIssues({
     articleFigureViews,
     budoMediaFrames,
+    captureSplatManifest,
     companionArtifacts,
     gaussianPly,
     jsonManifests,
@@ -130,6 +151,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     packageInsights: buildPackageInsights({
       articleFigureViews,
       budoMediaFrames,
+      captureSplatManifest,
       gaussianPly,
       cleanedPointPly,
       jsonManifests,
@@ -319,10 +341,32 @@ async function readCaptureFrameManifest(
 ): Promise<LocalWorldPackageTextFile | undefined> {
   const frames = await readCaptureFrameFiles(root, packageIssues);
   if (!frames.length) return undefined;
+  return createCaptureFrameManifest(frames, "capture_splat.image_folder");
+}
 
+async function readCaptureFrameManifestFromPaths(
+  root: string,
+  framePaths: string[],
+  packageIssues?: LocalPackageIssue[]
+): Promise<LocalWorldPackageTextFile | undefined> {
+  if (!framePaths.length) return undefined;
+  const frames = [];
+  for (const relativePath of uniquePaths(framePaths).slice(0, maxCapturePreviewFrames)) {
+    if (!imageExtensions.has(path.extname(relativePath).toLowerCase())) continue;
+    const frame = await readImagePreviewFile(root, relativePath, packageIssues);
+    if (frame) frames.push(frame);
+  }
+  if (!frames.length) return undefined;
+  return createCaptureFrameManifest(frames, "capture_splat.world_studio_handoff");
+}
+
+function createCaptureFrameManifest(
+  frames: Awaited<ReturnType<typeof readCaptureFrameFiles>>,
+  sourceKind: string
+): LocalWorldPackageTextFile {
   const manifest = {
     schema: "budo.media_frames.v0.8",
-    source_kind: "capture_splat.image_folder",
+    source_kind: sourceKind,
     generated_by: "world-studio.local-package-reader",
     frames: frames.map((frame, index) => ({
       display_name: frame.displayName,
@@ -342,6 +386,90 @@ async function readCaptureFrameManifest(
     sizeBytes: bytes.byteLength,
     checksum: checksumBytes(bytes)
   };
+}
+
+function emptyCaptureSplatRefs(): CaptureSplatManifestRefs {
+  return {
+    captureManifestPaths: [],
+    cameraPosePaths: [],
+    framePaths: [],
+    gaussianPlyPaths: [],
+    gaussianProxyPaths: [],
+    objMeshPaths: [],
+    pointsPlyPaths: []
+  };
+}
+
+function extractCaptureSplatManifestRefs(manifest: Record<string, unknown>): CaptureSplatManifestRefs {
+  const refs = emptyCaptureSplatRefs();
+  const assets = isRecord(manifest.assets) ? manifest.assets : {};
+  collectPathValues(refs.framePaths, manifest.source_frames, manifest.sourceFrames, manifest.frames, manifest.rgb_frames, manifest.images, assets.source_frames, assets.sourceFrames, assets.frames, assets.rgb);
+  collectPathValues(refs.pointsPlyPaths, manifest.points, manifest.points_ply, manifest.point_cloud, manifest.pointCloud, assets.points, assets.points_ply, assets.point_cloud, assets.pointCloud);
+  collectPathValues(refs.objMeshPaths, manifest.mesh, manifest.collision_mesh, manifest.collisionMesh, assets.mesh, assets.collision_mesh, assets.collisionMesh);
+  collectPathValues(refs.cameraPosePaths, manifest.camera_poses, manifest.cameraPoses, manifest.transforms, manifest.poses, assets.camera_poses, assets.cameraPoses, assets.transforms, assets.poses);
+  collectPathValues(refs.captureManifestPaths, manifest.capture_json, manifest.captureJson, manifest.capture_manifest, manifest.captureManifest, assets.capture_json, assets.captureJson, assets.capture_manifest, assets.captureManifest);
+  collectGaussianPathValues(refs, manifest.gaussian, manifest.gaussians, manifest.gaussian_ply, manifest.splat, manifest.spz, assets.gaussian, assets.gaussians, assets.gaussian_ply, assets.splat, assets.spz);
+
+  const artifacts = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
+  for (const artifact of artifacts) {
+    if (!isRecord(artifact)) continue;
+    const artifactPath = firstPathValue(artifact.path, artifact.relativePath, artifact.file, artifact.uri);
+    if (!artifactPath) continue;
+    const kind = `${stringValue(artifact.kind) ?? ""} ${stringValue(artifact.type) ?? ""} ${stringValue(artifact.role) ?? ""}`.toLowerCase();
+    const extension = path.extname(artifactPath).toLowerCase();
+    if (kind.includes("frame") || kind.includes("image") || kind.includes("rgb")) refs.framePaths.push(artifactPath);
+    else if ((kind.includes("point") || kind.includes("ordinary")) && extension === ".ply") refs.pointsPlyPaths.push(artifactPath);
+    else if (kind.includes("gaussian") || kind.includes("splat") || extension === ".splat" || extension === ".spz") addGaussianPath(refs, artifactPath);
+    else if (kind.includes("mesh") || extension === ".obj") refs.objMeshPaths.push(artifactPath);
+    else if (kind.includes("camera") || kind.includes("pose") || kind.includes("transform")) refs.cameraPosePaths.push(artifactPath);
+    else if (kind.includes("capture") || path.basename(artifactPath) === "capture.json") refs.captureManifestPaths.push(artifactPath);
+  }
+
+  return {
+    captureManifestPaths: uniquePaths(refs.captureManifestPaths),
+    cameraPosePaths: uniquePaths(refs.cameraPosePaths),
+    framePaths: uniquePaths(refs.framePaths),
+    gaussianPlyPaths: uniquePaths(refs.gaussianPlyPaths),
+    gaussianProxyPaths: uniquePaths(refs.gaussianProxyPaths),
+    objMeshPaths: uniquePaths(refs.objMeshPaths),
+    pointsPlyPaths: uniquePaths(refs.pointsPlyPaths)
+  };
+}
+
+function collectGaussianPathValues(refs: CaptureSplatManifestRefs, ...values: unknown[]) {
+  for (const relativePath of collectPathValues([], ...values)) {
+    addGaussianPath(refs, relativePath);
+  }
+}
+
+function addGaussianPath(refs: CaptureSplatManifestRefs, relativePath: string) {
+  if (path.extname(relativePath).toLowerCase() === ".ply") refs.gaussianPlyPaths.push(relativePath);
+  else refs.gaussianProxyPaths.push(relativePath);
+}
+
+function collectPathValues(out: string[], ...values: unknown[]): string[] {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const relativePath = normalizeManifestRelativePath(value);
+      if (relativePath) out.push(relativePath);
+    } else if (Array.isArray(value)) {
+      collectPathValues(out, ...value);
+    } else if (isRecord(value)) {
+      collectPathValues(out, value.path, value.relativePath, value.rgb_path, value.file, value.uri);
+    }
+  }
+  return out;
+}
+
+function firstPathValue(...values: unknown[]): string | undefined {
+  return collectPathValues([], ...values)[0];
+}
+
+function normalizeManifestRelativePath(value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!normalized || normalized.startsWith("/") || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(normalized)) return undefined;
+  if (normalized.split("/").includes("..")) return undefined;
+  return normalized;
 }
 
 async function readCaptureFrameFiles(
@@ -461,9 +589,14 @@ function resolveInside(root: string, relativePath: string): string {
   return filePath;
 }
 
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.filter(Boolean))];
+}
+
 function buildPackageInsights(input: {
   articleFigureViews?: LocalWorldPackageTextFile;
   budoMediaFrames?: LocalWorldPackageTextFile;
+  captureSplatManifest?: LocalWorldPackageTextFile;
   cleanedPointPly: boolean;
   gaussianPly?: { relativePath: string };
   jsonManifests: LocalWorldPackageTextFile[];
@@ -541,6 +674,56 @@ function buildPackageInsights(input: {
         { title: "Top Level", rows: rowsFromRecord(scene) }
       ],
       previewText: previewJson(scene)
+    });
+  }
+
+  if (input.captureSplatManifest) {
+    handled.add(input.captureSplatManifest.relativePath);
+    const manifest = parseJsonRecord(input.captureSplatManifest.text, input.captureSplatManifest.relativePath, packageIssues);
+    const refs = extractCaptureSplatManifestRefs(manifest);
+    const schema = stringValue(manifest.schema) ?? "capture_splat.world_studio_handoff.v0.1";
+    insights.push({
+      id: "capture-splat-manifest",
+      kind: "capture-splat-manifest",
+      title: "Capture Splat Handoff",
+      artifact: input.captureSplatManifest.relativePath,
+      summary: "Capture Splat package handoff for source frames and 3DGS review.",
+      status: stringValue(manifest.status) ?? "visual_evidence",
+      metrics: [
+        { label: "frames", value: refs.framePaths.length },
+        { label: "points", value: refs.pointsPlyPaths[0] ?? "missing" },
+        { label: "gaussian", value: refs.gaussianPlyPaths[0] ?? refs.gaussianProxyPaths[0] ?? "missing" }
+      ],
+      details: [
+        { label: "schema", value: schema },
+        { label: "authority", value: "source frames visual evidence; 3DGS proposal" }
+      ],
+      sections: [
+        {
+          title: "Renderable Assets",
+          rows: [
+            { label: "points", value: refs.pointsPlyPaths[0] ?? "missing" },
+            { label: "gaussian ply", value: refs.gaussianPlyPaths[0] ?? "missing" },
+            { label: "mesh", value: refs.objMeshPaths[0] ?? "missing" },
+            { label: "splat/spz", value: refs.gaussianProxyPaths[0] ?? "missing" }
+          ]
+        },
+        {
+          title: "Source Frames",
+          rows: refs.framePaths.length
+            ? refs.framePaths.slice(0, maxCapturePreviewFrames).map((relativePath, index) => ({ label: `frame ${index + 1}`, value: relativePath }))
+            : [{ label: "frames", value: "missing" }]
+        },
+        {
+          title: "Camera And Capture Metadata",
+          rows: [
+            { label: "capture", value: refs.captureManifestPaths[0] ?? "missing" },
+            { label: "poses", value: refs.cameraPosePaths[0] ?? "missing" }
+          ]
+        },
+        { title: "Top Level", rows: rowsFromRecord(manifest) }
+      ],
+      previewText: previewJson(manifest)
     });
   }
 
@@ -698,6 +881,7 @@ function buildPackageInsights(input: {
 function addPackageLayoutIssues(input: {
   articleFigureViews?: LocalWorldPackageTextFile;
   budoMediaFrames?: LocalWorldPackageTextFile;
+  captureSplatManifest?: LocalWorldPackageTextFile;
   companionArtifacts: string[];
   gaussianPly?: { relativePath: string };
   jsonManifests: LocalWorldPackageTextFile[];
@@ -708,7 +892,7 @@ function addPackageLayoutIssues(input: {
   verifiedExport?: LocalWorldPackageTextFile;
 }) {
   const hasRenderable = Boolean(input.pointsPly || input.gaussianPly || input.objMesh);
-  const hasManifest = Boolean(input.sceneFile || input.budoMediaFrames || input.articleFigureViews || input.verifiedExport || input.jsonManifests.length);
+  const hasManifest = Boolean(input.captureSplatManifest || input.sceneFile || input.budoMediaFrames || input.articleFigureViews || input.verifiedExport || input.jsonManifests.length);
   if (!input.companionArtifacts.length) {
     pushIssue(input.packageIssues, {
       code: "unsupported_layout",
