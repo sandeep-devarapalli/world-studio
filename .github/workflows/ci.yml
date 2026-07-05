@@ -50,6 +50,8 @@ jobs:
   desktop-package-smoke:
     name: Packaged desktop smoke
     runs-on: macos-latest
+    env:
+      WORLD_STUDIO_DESKTOP_SMOKE_ARTIFACTS: ${{ github.workspace }}/desktop-smoke-artifacts
 
     steps:
       - name: Checkout
@@ -71,3 +73,12 @@ jobs:
 
       - name: Package and smoke test desktop app
         run: pnpm desktop:package:smoke
+
+      - name: Upload packaged desktop smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-desktop-smoke-screenshots
+          path: ${{ env.WORLD_STUDIO_DESKTOP_SMOKE_ARTIFACTS }}
+          if-no-files-found: warn
+          retention-days: 14
