@@ -1255,6 +1255,7 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
   await expect(page.getByText("Package Inspector")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Scene Manifest detail" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Asset Set detail" })).toBeVisible();
+  await expect(page.getByTestId("cleaned-ply-source-row")).toHaveCount(0);
   await page.getByRole("button", { name: "splat" }).click();
   await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
   await expect(statusbar).toContainText("16060 splats");
@@ -1552,6 +1553,8 @@ test("re-imports cleaned ordinary PLY through the desktop bridge", async ({ page
 
   await expect(page.locator(".ws-logo-sub", { hasText: "world-studio-cleaned-loft_04 · loaded" })).toBeVisible();
   await expect(page.getByText("world-studio-cleaned-ply")).toBeVisible();
+  await expect(page.getByTestId("cleaned-ply-source-row")).toContainText("cleaned ordinary PLY");
+  await expect(page.getByTestId("cleaned-ply-boundary-row")).toContainText("ordinary PLY only");
   await expect(page.getByText("proposal_not_ground_truth", { exact: true })).toBeVisible();
   await expect(page.getByText(cleanedPlyFile).first()).toBeVisible();
   await expect(page.getByText("Cleaned ordinary PLY export detected")).toBeVisible();
