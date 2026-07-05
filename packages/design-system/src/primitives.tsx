@@ -68,11 +68,12 @@ type PanelProps = PropsWithChildren<{
   meta?: string;
   className?: string;
   pad?: boolean;
-}>;
+}> &
+  HTMLAttributes<HTMLElement>;
 
-export function WSPanel({ title, meta, className = "", pad = true, children }: PanelProps) {
+export function WSPanel({ title, meta, className = "", pad = true, children, ...props }: PanelProps) {
   return (
-    <section className={`ws-panel ${className}`.trim()}>
+    <section className={`ws-panel ${className}`.trim()} {...props}>
       {(title || meta) && (
         <header className="ws-panel-head">
           {title ? <div className="ws-head">{title}</div> : <span />}
@@ -226,4 +227,3 @@ export function WSWordmark({ context }: { context: string }) {
     </div>
   );
 }
-

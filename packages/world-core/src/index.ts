@@ -90,6 +90,9 @@ export interface SensorRigChannel {
   kind: "rgb" | "depth" | "segmentation" | "lidar" | "imu";
   enabled: boolean;
   spec: string;
+  fovDeg: number;
+  rangeM: number;
+  resolution: string;
 }
 
 export interface EpisodeTrackBlock {
@@ -113,6 +116,8 @@ export interface RenderOptions {
   agent?: AgentState;
   spawn?: AgentState;
   trajectory?: Array<[number, number]>;
+  sensors?: SensorRigChannel[];
+  selectedSensorId?: string;
   debugCollision: boolean;
   agentBodyRadius?: number;
   grid: boolean;

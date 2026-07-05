@@ -724,6 +724,59 @@ test("records Pilot prop actions in Episode mode", async ({ page }) => {
   await expect(browserProvenance).toContainText("Fixture assets are referenced");
 });
 
+test("edits Sensors rig fields and restores them through Episode import", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Load loft_04" }).click();
+  await page.getByRole("button", { name: "Sensors" }).click();
+
+  const editor = page.getByTestId("sensor-editor");
+  await editor.getByLabel("Sensor label").fill("NavCam");
+  await editor.getByLabel("Sensor kind").selectOption("depth");
+  await editor.getByLabel("Sensor spec").fill("stereo depth");
+  await editor.getByLabel("Sensor FOV").fill("86");
+  await editor.getByLabel("Sensor range").fill("12.5");
+  await editor.getByLabel("Sensor resolution").fill("1280x720");
+
+  await expect(page.locator(".ws-sensor-list")).toContainText("NavCam");
+  await expect(page.locator(".ws-sensor-list")).toContainText("stereo depth");
+  await expect(editor).toContainText("86° · 12.5m");
+
+  await editor.getByRole("button", { name: "Record Rig" }).click();
+  await page.getByRole("button", { name: "Episode" }).click();
+  await expect(page.getByTestId("episode-event-list")).toContainText("sensor rig update");
+  await expect(page.getByTestId("episode-selected-event")).toContainText("sensor rig update");
+
+  await page.getByRole("button", { name: "Preview JSON" }).click();
+  const exportPreview = page.getByTestId("episode-export-preview");
+  await expect(exportPreview).toContainText("\"label\": \"NavCam\"");
+  await expect(exportPreview).toContainText("\"kind\": \"depth\"");
+  await expect(exportPreview).toContainText("\"fovDeg\": 86");
+  await expect(exportPreview).toContainText("\"rangeM\": 12.5");
+  await expect(exportPreview).toContainText("\"resolution\": \"1280x720\"");
+  const exported = (await exportPreview.textContent()) ?? "";
+
+  await page.getByRole("button", { name: "Sensors" }).click();
+  await editor.getByLabel("Sensor label").fill("Temporary");
+  await expect(page.locator(".ws-sensor-list")).toContainText("Temporary");
+
+  await page.getByRole("button", { name: "Episode" }).click();
+  await page.getByTestId("episode-import-input").setInputFiles({
+    name: "edited-sensors.world-episode.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(exported)
+  });
+  await expect(page.getByTestId("episode-save-status")).toContainText("loaded edited-sensors.world-episode.json");
+  await page.getByRole("button", { name: "Sensors" }).click();
+
+  await expect(editor.getByLabel("Sensor label")).toHaveValue("NavCam");
+  await expect(editor.getByLabel("Sensor kind")).toHaveValue("depth");
+  await expect(editor.getByLabel("Sensor spec")).toHaveValue("stereo depth");
+  await expect(editor.getByLabel("Sensor FOV")).toHaveValue("86");
+  await expect(editor.getByLabel("Sensor range")).toHaveValue("12.5");
+  await expect(editor.getByLabel("Sensor resolution")).toHaveValue("1280x720");
+  await expect(editor).toContainText("86° · 12.5m");
+});
+
 test("saves and loads Episode manifests through the desktop bridge", async ({ page }) => {
   await page.addInitScript((input: { payload: LocalWorldPackagePayload; episodeText: string }) => {
     const { payload, episodeText } = input;
