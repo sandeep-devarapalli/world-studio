@@ -8,7 +8,7 @@ export default defineConfig({
     trace: "on-first-retry"
   },
   webServer: {
-    command: "pnpm --filter @world-studio/web dev -- --host 127.0.0.1",
+    command: "pnpm --filter @world-studio/web exec vite --host 127.0.0.1 --mode test",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: true
   },
@@ -19,4 +19,3 @@ export default defineConfig({
     }
   ]
 });
-

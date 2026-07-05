@@ -621,10 +621,7 @@ const compatibilityPackageChoices: PackageFixtureChoice[] = [
 ];
 
 test("loads loft_04 and switches all six modes", async ({ page }) => {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
+  const consoleDiagnostics = collectConsoleDiagnostics(page);
 
   await page.goto("/");
   await expect(page.getByText("World Studio")).toBeVisible();
@@ -648,7 +645,7 @@ test("loads loft_04 and switches all six modes", async ({ page }) => {
   }
 
   await expect(page.locator("[data-testid='world-canvas']")).toBeVisible();
-  expect(errors).toEqual([]);
+  expect(consoleDiagnostics).toEqual([]);
 });
 
 test("exercises edit delete undo and pilot keys", async ({ page }) => {
@@ -1238,6 +1235,7 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
 
   await page.goto("/");
   await page.getByRole("button", { name: "Open Local" }).click();
+  await expectSparkReadyForGaussianPayload(page, captureSplatSourceFramePayload);
   await page.getByRole("button", { name: "Simulate" }).click();
 
   await expect(page.getByAltText("Selected source frame evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);
@@ -1346,6 +1344,7 @@ test("selects compatibility package layouts through the visible UI test bridge",
 
     await bridge.getByRole("button", { name: choice.label }).click();
     await page.getByRole("button", { name: "Open Local" }).click();
+    await expectSparkReadyForGaussianPayload(page, choice.payload);
 
     await expect(page.getByText(choice.payload.packageKind).first()).toBeVisible();
     await expect(page.getByText(choice.payload.authorityStatus, { exact: true }).first()).toBeVisible();
@@ -1422,10 +1421,7 @@ test("keeps the stage centered and chrome visible across window resizes", async 
 });
 
 test("captures visual smoke for all modes across desktop viewports", async ({ page }, testInfo) => {
-  const consoleErrors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
-  });
+  const consoleDiagnostics = collectConsoleDiagnostics(page);
 
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
@@ -1488,8 +1484,31 @@ test("captures visual smoke for all modes across desktop viewports", async ({ pa
     }
   }
 
-  expect(consoleErrors).toEqual([]);
+  expect(consoleDiagnostics).toEqual([]);
 });
+
+function collectConsoleDiagnostics(page: Page): string[] {
+  const diagnostics: string[] = [];
+  page.on("console", (message) => {
+    const type = message.type();
+    const text = message.text();
+    if ((type === "error" || type === "warning") && !isExpectedBrowserDiagnostic(type, text)) {
+      const location = message.location();
+      diagnostics.push(`${type}: ${text} (${location.url}:${location.lineNumber}:${location.columnNumber})`);
+    }
+  });
+  page.on("pageerror", (error) => diagnostics.push(`pageerror: ${error.message}`));
+  return diagnostics;
+}
+
+function isExpectedBrowserDiagnostic(type: string, text: string): boolean {
+  return type === "warning" && text.includes("GL Driver Message") && text.includes("GPU stall due to ReadPixels");
+}
+
+async function expectSparkReadyForGaussianPayload(page: Page, payload: LocalWorldPackagePayload): Promise<void> {
+  if (!payload.pointsPly?.text || !payload.gaussianPly?.dataUrl) return;
+  await expect(page.locator(".ws-statusbar")).toContainText("spark gaussian", { timeout: 15_000 });
+}
 
 async function expectCanvasScreenshot(page: Page) {
   const canvas = page.locator("[data-testid='world-canvas']");
