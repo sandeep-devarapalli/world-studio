@@ -447,6 +447,22 @@ body {
   bottom: 46px;
 }
 
+.ws-root.mode-simulate .ws-bottom-stack {
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
+}
+
+.ws-root.mode-simulate .ws-bottom-stack .ws-timeline {
+  min-height: 42px;
+  padding: 6px 14px;
+  width: 320px;
+}
+
+.ws-root.mode-simulate .ws-sim-camera-strip {
+  max-width: min(1180px, calc(100vw - 470px));
+}
+
 .ws-root.mode-simulate .ws-frame-list {
   padding: 7px;
 }
