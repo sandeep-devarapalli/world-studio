@@ -30,6 +30,8 @@ import {
   panCamera,
   panFirstPersonCamera,
   radiusFromWorldPoints,
+  insideLookCameraFromFrames,
+  interpolateFrameCameras,
   rotateFirstPersonCamera,
   rotateFirstPersonCameraClamped,
   rotateCamera,
@@ -214,6 +216,9 @@ interface LoadedWorldInput {
   authorityStatus: AuthorityStatus;
   packageInsights?: LocalPackageInsight[];
   packageIssues?: LocalPackageIssue[];
+  sceneRadius?: number;
+  medianStructureDistance?: number;
+  captureProfile?: string;
 }
 
 interface LoadedWorldOptions {
@@ -499,6 +504,14 @@ export function App() {
   const [episodeIntegrityOpen, setEpisodeIntegrityOpen] = useState(false);
   const [captureCompareIds, setCaptureCompareIds] = useState<string[]>([]);
   const [selectedSourceFrameIndex, setSelectedSourceFrameIndex] = useState(0);
+  const selectedSourceFrameIndexRef = useRef(0);
+  useEffect(() => {
+    selectedSourceFrameIndexRef.current = selectedSourceFrameIndex;
+  }, [selectedSourceFrameIndex]);
+  const [tourCamera, setTourCamera] = useState<FrameCamera | null>(null);
+  const [tourSpeed, setTourSpeed] = useState(1.5);
+  const tourProgressRef = useRef(0);
+  const [handoffSceneHints, setHandoffSceneHints] = useState<{ radius?: number; median?: number; profile?: string }>({});
   const [simulateCameraMode, setSimulateCameraMode] = useState<SimulateCameraMode>("frame");
   const [firstPersonCamera, setFirstPersonCamera] = useState<FirstPersonCamera | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
@@ -571,10 +584,13 @@ export function App() {
     [captureFrames, worldPoints]
   );
   const sceneRadius = useMemo(
-    () => radiusFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints)),
-    [worldPoints]
+    () => handoffSceneHints.radius ?? radiusFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints)),
+    [handoffSceneHints.radius, worldPoints]
   );
-  const simulateSteps = useMemo(() => stepsForSceneRadius(sceneRadius), [sceneRadius]);
+  const simulateSteps = useMemo(
+    () => stepsForSceneRadius(handoffSceneHints.median ?? sceneRadius),
+    [handoffSceneHints.median, sceneRadius]
+  );
   const leveledSourceFrameCamera = simulateSourceFrame?.frameCamera
     ? applyWorldOrientationToFrameCamera(simulateSourceFrame.frameCamera, worldOrientation)
     : undefined;
@@ -636,7 +652,13 @@ export function App() {
   useEffect(() => {
     if (mode !== "simulate" && document.pointerLockElement === canvasRef.current) document.exitPointerLock();
   }, [mode]);
-  const simulateFrameCamera = mode === "simulate" && simulateCameraMode === "frame" ? leveledSourceFrameCamera : undefined;
+  const leveledTourCamera = tourCamera ? applyWorldOrientationToFrameCamera(tourCamera, worldOrientation) : undefined;
+  const simulateFrameCamera =
+    mode === "simulate" && simulateCameraMode === "frame"
+      ? playing && leveledTourCamera
+        ? leveledTourCamera
+        : leveledSourceFrameCamera
+      : undefined;
   const simulateFirstPersonCamera = mode === "simulate" && simulateCameraMode === "free" ? firstPersonCamera ?? undefined : undefined;
   const simulateRenderEvidenceUrl = mode === "simulate" && simulateCameraMode === "frame" ? simulateSourceFrame?.renderPreviewDataUrl : undefined;
   const activeWorldOrientation =
@@ -1016,6 +1038,9 @@ export function App() {
       authorityStatus: payload.authorityStatus,
       packageInsights: payload.packageInsights,
       packageIssues: payload.packageIssues,
+      sceneRadius: payload.sceneRadius,
+      medianStructureDistance: payload.medianStructureDistance,
+      captureProfile: payload.captureProfile,
       captureFrames: parseCaptureFrames(payload)
     }, options);
   }, []);
@@ -1108,6 +1133,7 @@ export function App() {
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
     setSelectedInsightId(null);
+    setHandoffSceneHints({ radius: input.sceneRadius, median: input.medianStructureDistance, profile: input.captureProfile });
     if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
       setMode("simulate");
       setSimulateCameraMode("frame");
@@ -1533,18 +1559,53 @@ export function App() {
   const toggleCapturePlayback = useCallback(() => {
     setPlaying((current) => {
       const next = !current;
-      if (next) applySourceFrameCamera(captureFrames[selectedSourceFrameIndex] ?? null, "capture playback");
+      if (next) {
+        tourProgressRef.current = selectedSourceFrameIndexRef.current;
+        applySourceFrameCamera(captureFrames[selectedSourceFrameIndexRef.current] ?? null, "capture tour");
+      }
       return next;
     });
-  }, [applySourceFrameCamera, captureFrames, selectedSourceFrameIndex]);
+  }, [applySourceFrameCamera, captureFrames]);
+
+  const enterInsidePreset = useCallback(() => {
+    const inside = insideLookCameraFromFrames(captureFrames.map((frame) => frame.frameCamera), worldOrientation);
+    if (!inside) {
+      setLastAction("inside preset unavailable");
+      return;
+    }
+    setPlaying(false);
+    setSimulateCameraMode("free");
+    setFirstPersonCamera(inside);
+    setLastAction("inside preset");
+  }, [captureFrames, worldOrientation]);
 
   useEffect(() => {
-    if (!playing || mode !== "simulate" || simulateCameraMode !== "frame" || captureFrames.length < 2) return;
-    const id = window.setTimeout(() => {
-      selectSourceFrame((selectedSourceFrameIndex + 1) % captureFrames.length);
-    }, 600);
-    return () => window.clearTimeout(id);
-  }, [captureFrames.length, mode, playing, selectSourceFrame, selectedSourceFrameIndex, simulateCameraMode]);
+    if (!playing || mode !== "simulate" || simulateCameraMode !== "frame" || captureFrames.length < 2) {
+      setTourCamera(null);
+      return;
+    }
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const total = captureFrames.length;
+      const progress = (tourProgressRef.current + dt * tourSpeed) % total;
+      tourProgressRef.current = progress;
+      const index = Math.floor(progress);
+      const next = (index + 1) % total;
+      const a = captureFrames[index]?.frameCamera;
+      const b = captureFrames[next]?.frameCamera;
+      if (a && b) setTourCamera(interpolateFrameCameras(a, b, progress - index));
+      setSelectedSourceFrameIndex((current) => (current === index ? current : index));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      setTourCamera(null);
+    };
+  }, [captureFrames, mode, playing, simulateCameraMode, tourSpeed]);
 
   useEffect(() => {
     if (playing && mode === "simulate" && simulateCameraMode !== "frame") setPlaying(false);
@@ -2712,16 +2773,25 @@ export function App() {
                 <div className="ws-bottom-stack">
                   {mode === "view" || mode === "simulate" ? (
                     mode === "simulate" && captureFrames.length > 0 ? (
-                      <TimelineCapsule
-                        frame={selectedSourceFrameIndex + 1}
-                        total={captureFrames.length}
-                        playing={playing}
-                        onToggle={toggleCapturePlayback}
-                        onRewind={() => {
-                          setPlaying(false);
-                          selectSourceFrame(0);
-                        }}
-                      />
+                      <>
+                        <TimelineCapsule
+                          frame={selectedSourceFrameIndex + 1}
+                          total={captureFrames.length}
+                          playing={playing}
+                          onToggle={toggleCapturePlayback}
+                          onRewind={() => {
+                            setPlaying(false);
+                            selectSourceFrame(0);
+                          }}
+                        />
+                        <button
+                          className="ws-sim-speed"
+                          aria-label="Tour speed"
+                          onClick={() => setTourSpeed((value) => (value >= 3 ? 0.75 : value * 2))}
+                        >
+                          {tourSpeed >= 3 ? "2×" : tourSpeed >= 1.5 ? "1×" : "½×"}
+                        </button>
+                      </>
                     ) : (
                       <TimelineCapsule
                         frame={Math.round(playhead * timelineTotal)}
@@ -2747,6 +2817,7 @@ export function App() {
                         </button>
                       </div>
                       <div className="ws-sim-nudge-group" data-testid="simulate-camera-dpad">
+                        <button aria-label="Inside preset" onClick={enterInsidePreset}>Inside</button>
                         <button aria-label="Fullscreen" onClick={() => void requestStageFullscreen()}>F11</button>
                       </div>
                       <div className="ws-sim-shortcuts" aria-label="Simulate controls">

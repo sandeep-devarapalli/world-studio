@@ -463,6 +463,19 @@ body {
   max-width: min(1180px, calc(100vw - 470px));
 }
 
+.ws-sim-speed {
+  background: color-mix(in srgb, var(--panel), transparent 6%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  min-height: 42px;
+  padding: 6px 13px;
+  pointer-events: auto;
+}
+
 .ws-root.mode-simulate .ws-frame-list {
   padding: 7px;
 }

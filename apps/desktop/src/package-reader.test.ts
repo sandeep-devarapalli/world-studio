@@ -412,6 +412,10 @@ end_header
         },
         spz: "exports/scene.spz"
       },
+      scene_radius: 2.4,
+      median_structure_distance: 1.1,
+      capture_profile: "room_interior",
+      initial_camera: { position: [0.5, -0.1, -2], coordinate_frame: "colmap_world", mode: "inside" },
       artifacts: [
         { kind: "mesh", path: "exports/collision_mesh.obj" }
       ]
@@ -465,6 +469,10 @@ end_header
       ])
     );
     expect(payload.packageIssues).toEqual([]);
+    expect(payload.sceneRadius).toBe(2.4);
+    expect(payload.medianStructureDistance).toBe(1.1);
+    expect(payload.captureProfile).toBe("room_interior");
+    expect(payload.initialCamera).toEqual({ position: [0.5, -0.1, -2], coordinateFrame: "colmap_world", mode: "inside" });
   });
 
   it("maps COLMAP frame cameras through the handoff dataparser transform", async () => {
