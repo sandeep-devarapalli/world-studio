@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, freeKeyboardLookStepX, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -117,6 +117,18 @@ describe("simulate camera controls", () => {
     expect(room.scale).toBeCloseTo(0.4 / freeMoveStep);
     expect(stepsForSceneRadius(0.1).move).toBeCloseTo(0.02);
     expect(stepsForSceneRadius(500).move).toBeCloseTo(1.0);
+  });
+
+  it("estimates the floor height from world points", () => {
+    const points = [
+      ...Array.from({ length: 90 }, (_, index) => ({ x: (index % 10) - 5, y: 0.02 * (index % 3), z: Math.floor(index / 10) - 4 })),
+      ...Array.from({ length: 30 }, (_, index) => ({ x: (index % 6) - 3, y: 2.4, z: (index % 5) - 2 }))
+    ];
+    const floor = floorHeightFromWorldPoints(points, [0, 0, 0]);
+    expect(floor).toBeDefined();
+    expect(floor!).toBeLessThan(0.1);
+    expect(floor!).toBeGreaterThanOrEqual(0);
+    expect(floorHeightFromWorldPoints(points.slice(0, 3), [0, 0, 0])).toBeUndefined();
   });
 
   it("estimates a robust scene radius from world points", () => {

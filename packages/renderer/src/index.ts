@@ -738,13 +738,25 @@ export class ThreeWorldRenderer implements RenderAdapter {
   }
 
   private syncWorldGuides(options: RenderOptions): void {
-    if (this.grid) this.grid.visible = options.grid;
+    if (this.grid) {
+      this.grid.visible = options.grid;
+      this.grid.position.y = options.gridY ?? 0;
+    }
     this.syncFrustums(options);
   }
 
   private syncFrustums(options: RenderOptions): void {
     if (!this.frustums) return;
     this.frustums.visible = options.grid;
+    const orientation = this.worldOrientationQuaternion(options);
+    if (orientation && options.worldOrientation) {
+      const center = options.worldOrientation.center;
+      this.frustums.quaternion.copy(orientation);
+      this.frustums.position.copy(new THREE.Vector3(center[0], center[1], center[2]).applyQuaternion(orientation).multiplyScalar(-1));
+    } else {
+      this.frustums.quaternion.identity();
+      this.frustums.position.set(0, 0, 0);
+    }
     const sensors = options.sensors ?? [];
     const signature = JSON.stringify({
       selected: options.selectedSensorId ?? null,

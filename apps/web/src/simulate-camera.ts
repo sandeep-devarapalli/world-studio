@@ -28,6 +28,27 @@ export function stepsForSceneRadius(sceneRadius?: number): SimulateSteps {
   return { move, rise: 0.8 * move, scale: move / freeMoveStep };
 }
 
+export function floorHeightFromWorldPoints(
+  points: Array<{ x: number; y: number; z: number }>,
+  center: [number, number, number],
+  rotation?: [number, number, number, number]
+): number | undefined {
+  if (points.length < 8) return undefined;
+  const stride = Math.max(1, Math.floor(points.length / 20000));
+  const heights: number[] = [];
+  for (let index = 0; index < points.length; index += stride) {
+    const point = points[index];
+    const y = rotation
+      ? rotateVector(rotation, [point.x - center[0], point.y - center[1], point.z - center[2]])[1]
+      : point.y;
+    if (Number.isFinite(y)) heights.push(y);
+  }
+  if (heights.length < 8) return undefined;
+  heights.sort((a, b) => a - b);
+  const floor = heights[Math.floor(heights.length * 0.05)];
+  return Number.isFinite(floor) ? floor : undefined;
+}
+
 export function radiusFromWorldPoints(points: Array<{ x: number; y: number; z: number }>, center: [number, number, number]): number | undefined {
   if (points.length < 8) return undefined;
   const stride = Math.max(1, Math.floor(points.length / 20000));

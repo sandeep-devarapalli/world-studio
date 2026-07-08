@@ -154,6 +154,7 @@ export interface RenderOptions {
   debugCollision: boolean;
   agentBodyRadius?: number;
   grid: boolean;
+  gridY?: number;
   cropBounds?: CropBounds;
   pointTransforms?: ReadonlyMap<number, PointTransform>;
 }

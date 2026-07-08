@@ -23,6 +23,7 @@ import {
   dollyFirstPersonCamera,
   estimateWorldOrientation,
   firstPersonCameraFromFrame,
+  floorHeightFromWorldPoints,
   holdRepeatStepsPerSecond,
   moveFirstPersonCamera,
   moveFreeCamera,
@@ -638,7 +639,12 @@ export function App() {
   const simulateFrameCamera = mode === "simulate" && simulateCameraMode === "frame" ? leveledSourceFrameCamera : undefined;
   const simulateFirstPersonCamera = mode === "simulate" && simulateCameraMode === "free" ? firstPersonCamera ?? undefined : undefined;
   const simulateRenderEvidenceUrl = mode === "simulate" && simulateCameraMode === "frame" ? simulateSourceFrame?.renderPreviewDataUrl : undefined;
-  const activeWorldOrientation = mode === "simulate" && (simulateFrameCamera || simulateFirstPersonCamera) ? worldOrientation : undefined;
+  const activeWorldOrientation =
+    (mode === "simulate" && (simulateFrameCamera || simulateFirstPersonCamera)) || mode === "view" ? worldOrientation : undefined;
+  const sceneFloorY = useMemo(
+    () => floorHeightFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints), activeWorldOrientation?.rotation),
+    [activeWorldOrientation, worldPoints]
+  );
   const simulateCameraLabel =
     simulateCameraMode === "frame"
       ? simulateFrameCamera
@@ -700,10 +706,11 @@ export function App() {
       debugCollision,
       agentBodyRadius: bodyPreset?.radius,
       grid: true,
+      gridY: sceneFloorY,
       cropBounds: cropRegion?.bounds,
       pointTransforms
     }),
-    [accent, activeWorldOrientation, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, firstPersonCamera, isolatedClass, mode, pointTransforms, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, simulateFirstPersonCamera, simulateFrameCamera, spawn, trajectory]
+    [accent, activeWorldOrientation, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, firstPersonCamera, isolatedClass, mode, pointTransforms, renderMode, replayAgent, sceneFloorY, selected, selectedSensorId, sensors, showDeleted, simulateFirstPersonCamera, simulateFrameCamera, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
@@ -752,6 +759,20 @@ export function App() {
     setSimulateCameraMode("frame");
     setFirstPersonCamera(captureFrames[0]?.frameCamera ? firstPersonCameraFromFrame(applyWorldOrientationToFrameCamera(captureFrames[0].frameCamera, worldOrientation)) : null);
   }, [captureFrames, worldOrientation]);
+
+  useEffect(() => {
+    if (!worldPoints.length) return;
+    const center = centerFromWorldPoints(worldPoints);
+    const radius = radiusFromWorldPoints(worldPoints, center);
+    if (!radius) return;
+    const target: [number, number, number] = worldOrientation ? [0, 0, 0] : center;
+    setCamera((current) => ({
+      ...current,
+      target,
+      distance: Math.min(28, Math.max(2.4, radius * 2.3)),
+      pitch: 0.5
+    }));
+  }, [worldOrientation, worldPoints]);
 
   const requestStageFullscreen = useCallback(async () => {
     const stage = canvasRef.current?.closest(".ws-stage-shell") as HTMLElement | null;
