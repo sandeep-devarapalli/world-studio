@@ -1509,6 +1509,26 @@ export function App() {
     applySourceFrameCamera(simulateSourceFrame, "frame reset");
   }, [applySourceFrameCamera, mode, simulateSourceFrame]);
 
+  const toggleCapturePlayback = useCallback(() => {
+    setPlaying((current) => {
+      const next = !current;
+      if (next) applySourceFrameCamera(captureFrames[selectedSourceFrameIndex] ?? null, "capture playback");
+      return next;
+    });
+  }, [applySourceFrameCamera, captureFrames, selectedSourceFrameIndex]);
+
+  useEffect(() => {
+    if (!playing || mode !== "simulate" || simulateCameraMode !== "frame" || captureFrames.length < 2) return;
+    const id = window.setTimeout(() => {
+      selectSourceFrame((selectedSourceFrameIndex + 1) % captureFrames.length);
+    }, 600);
+    return () => window.clearTimeout(id);
+  }, [captureFrames.length, mode, playing, selectSourceFrame, selectedSourceFrameIndex, simulateCameraMode]);
+
+  useEffect(() => {
+    if (playing && mode === "simulate" && simulateCameraMode !== "frame") setPlaying(false);
+  }, [mode, playing, simulateCameraMode]);
+
   const nudgeSimulateCamera = useCallback((command: "left" | "right" | "up" | "down" | "in" | "out") => {
     setSimulateCameraMode("orbit");
     setCamera((current) => {
@@ -2684,14 +2704,27 @@ export function App() {
               <div className="ws-bottom-center">
                 <div className="ws-bottom-stack">
                   {mode === "view" || mode === "simulate" ? (
-                    <TimelineCapsule
-                      frame={Math.round(playhead * timelineTotal)}
-                      total={timelineTotal}
-                      playing={playing}
-                      recording={mode === "view" && Boolean(session)}
-                      onToggle={() => setPlaying((value) => !value)}
-                      onRewind={() => setPlayhead(0)}
-                    />
+                    mode === "simulate" && captureFrames.length > 0 ? (
+                      <TimelineCapsule
+                        frame={selectedSourceFrameIndex + 1}
+                        total={captureFrames.length}
+                        playing={playing}
+                        onToggle={toggleCapturePlayback}
+                        onRewind={() => {
+                          setPlaying(false);
+                          selectSourceFrame(0);
+                        }}
+                      />
+                    ) : (
+                      <TimelineCapsule
+                        frame={Math.round(playhead * timelineTotal)}
+                        total={timelineTotal}
+                        playing={playing}
+                        recording={mode === "view" && Boolean(session)}
+                        onToggle={() => setPlaying((value) => !value)}
+                        onRewind={() => setPlayhead(0)}
+                      />
+                    )
                   ) : null}
                   {mode === "simulate" ? (
                     <div className="ws-sim-camera-strip" data-testid="simulate-camera-mode">
