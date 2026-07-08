@@ -1867,6 +1867,7 @@ test("captures visual smoke for all modes across desktop viewports", async ({ pa
       await expect(page.locator(".ws-top-center .ws-pill.on")).toHaveText(visualCase.mode);
       await expectBoxWithinViewport(page, ".ws-wordmark", viewport);
       await expectBoxWithinViewport(page, ".ws-top-center .ws-mode-switch", viewport);
+      await expectNoOverlap(page, ".ws-wordmark", ".ws-top-center .ws-mode-switch", "wordmark must not collide with the mode switch");
       await expectBoxWithinViewport(page, ".ws-statusbar", viewport);
       for (const selector of visualCase.required) await expectBoxWithinViewport(page, selector, viewport);
       for (const selector of visualCase.absent ?? []) await expect(page.locator(selector)).toHaveCount(0);
