@@ -481,6 +481,20 @@ body {
   width: 100%;
 }
 
+.ws-wordmark {
+  max-width: max(340px, calc(50vw - 300px));
+}
+
+.ws-wordmark > div:last-child {
+  min-width: 0;
+}
+
+.ws-wordmark .ws-logo-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ws-sim-camera-strip {
   align-items: center;
   align-self: center;
@@ -903,6 +917,7 @@ body {
 .ws-dual-left.has-comparison {
   align-items: center;
   background: rgba(0, 0, 0, 0.18);
+  box-sizing: border-box;
   display: flex;
   justify-content: center;
   padding: 88px 26px 132px;
@@ -914,9 +929,11 @@ body {
   border-radius: 8px;
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.26);
   display: block;
+  height: 100%;
   max-height: 100%;
   max-width: 100%;
   object-fit: contain;
+  width: 100%;
 }
 
 .ws-dual-right-frame {
