@@ -23,14 +23,19 @@ import {
   dollyFirstPersonCamera,
   estimateWorldOrientation,
   firstPersonCameraFromFrame,
+  holdRepeatStepsPerSecond,
   moveFirstPersonCamera,
   moveFreeCamera,
   panCamera,
   panFirstPersonCamera,
+  radiusFromWorldPoints,
   rotateFirstPersonCamera,
+  rotateFirstPersonCameraClamped,
   rotateCamera,
+  stepsForSceneRadius,
   type SimulateCameraMode,
-  type SimulateDragKind
+  type SimulateDragKind,
+  type SimulateKeyCommand
 } from "./simulate-camera";
 import type {
   AgentState,
@@ -88,6 +93,7 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
     { keyName: "Shift+←→", label: "strafe" },
     { keyName: "Q/E", label: "rise" },
     { keyName: "R/F", label: "roll" },
+    { keyName: "Space", label: "mouse look" },
     { glyph: "wheel", label: "zoom" },
     { glyph: "mouseL", label: "rotate" },
     { keyName: "Alt", label: "orbit" },
@@ -113,6 +119,7 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
 const simulateRailHints: Array<{ keyName?: string; glyph?: WSIconName; label: string }> = [
   { keyName: "WASD", label: "move" },
   { glyph: "mouseL", label: "look" },
+  { keyName: "Space", label: "mouse look" },
   { keyName: "Shift", label: "strafe" },
   { keyName: "Q/E", label: "rise" },
   { keyName: "R/F", label: "roll" },
@@ -562,9 +569,72 @@ export function App() {
     () => estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), centerFromWorldPoints(worldPoints)),
     [captureFrames, worldPoints]
   );
+  const sceneRadius = useMemo(
+    () => radiusFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints)),
+    [worldPoints]
+  );
+  const simulateSteps = useMemo(() => stepsForSceneRadius(sceneRadius), [sceneRadius]);
   const leveledSourceFrameCamera = simulateSourceFrame?.frameCamera
     ? applyWorldOrientationToFrameCamera(simulateSourceFrame.frameCamera, worldOrientation)
     : undefined;
+  const heldSimulateKeysRef = useRef(new Map<string, SimulateKeyCommand>());
+  const firstPersonCameraRef = useRef<FirstPersonCamera | null>(null);
+  const leveledSourceFrameCameraRef = useRef<FrameCamera | undefined>(undefined);
+  const simulateStepsRef = useRef(simulateSteps);
+  useEffect(() => {
+    firstPersonCameraRef.current = firstPersonCamera;
+  }, [firstPersonCamera]);
+  useEffect(() => {
+    leveledSourceFrameCameraRef.current = leveledSourceFrameCamera;
+  }, [leveledSourceFrameCamera]);
+  useEffect(() => {
+    simulateStepsRef.current = simulateSteps;
+  }, [simulateSteps]);
+  const applySimulateCommand = useCallback((command: SimulateKeyCommand, fraction = 1) => {
+    const leveled = leveledSourceFrameCameraRef.current;
+    const steps = simulateStepsRef.current;
+    if (firstPersonCameraRef.current || leveled) {
+      setFirstPersonCamera((current) => {
+        const base = current ?? (leveled ? firstPersonCameraFromFrame(leveled) : null);
+        return base ? moveFirstPersonCamera(base, command, steps, fraction) : base;
+      });
+    } else {
+      setCamera((current) => moveFreeCamera(current, command, steps, fraction));
+    }
+  }, []);
+  const [pointerLocked, setPointerLocked] = useState(false);
+  const togglePointerLock = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (document.pointerLockElement === canvas) {
+      document.exitPointerLock();
+      return;
+    }
+    setSimulateCameraMode("free");
+    const leveled = leveledSourceFrameCameraRef.current;
+    setFirstPersonCamera((current) => current ?? (leveled ? firstPersonCameraFromFrame(leveled) : current));
+    canvas.requestPointerLock();
+  }, []);
+  useEffect(() => {
+    const onChange = () => {
+      const locked = document.pointerLockElement === canvasRef.current;
+      setPointerLocked(locked);
+      setLastAction(locked ? "mouse look on" : "mouse look off");
+    };
+    const onMove = (event: MouseEvent) => {
+      if (document.pointerLockElement !== canvasRef.current) return;
+      setFirstPersonCamera((current) => (current ? rotateFirstPersonCameraClamped(current, event.movementX, event.movementY) : current));
+    };
+    document.addEventListener("pointerlockchange", onChange);
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      document.removeEventListener("pointerlockchange", onChange);
+      window.removeEventListener("mousemove", onMove);
+    };
+  }, []);
+  useEffect(() => {
+    if (mode !== "simulate" && document.pointerLockElement === canvasRef.current) document.exitPointerLock();
+  }, [mode]);
   const simulateFrameCamera = mode === "simulate" && simulateCameraMode === "frame" ? leveledSourceFrameCamera : undefined;
   const simulateFirstPersonCamera = mode === "simulate" && simulateCameraMode === "free" ? firstPersonCamera ?? undefined : undefined;
   const simulateRenderEvidenceUrl = mode === "simulate" && simulateCameraMode === "frame" ? simulateSourceFrame?.renderPreviewDataUrl : undefined;
@@ -576,7 +646,9 @@ export function App() {
         : "frame camera missing"
       : simulateCameraMode === "free"
         ? firstPersonCamera
-          ? "free · frame seeded"
+          ? pointerLocked
+            ? "free · mouse look"
+            : "free · frame seeded"
           : "free · orbit fallback"
       : simulateCameraMode;
   const episodeSourceMatch = useMemo(
@@ -707,6 +779,11 @@ export function App() {
       }
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
+      if (event.key === " " && mode === "simulate") {
+        event.preventDefault();
+        togglePointerLock();
+        return;
+      }
       if (event.key.toLowerCase() === "e" && mode === "episode") exportEpisodeManifest();
       if (event.key === "F11" && mode === "simulate") {
         event.preventDefault();
@@ -715,15 +792,10 @@ export function App() {
       const simulateCommand = mode === "simulate" && !event.metaKey && !event.ctrlKey && !event.altKey ? commandForKey(event.key, event.shiftKey) : undefined;
       if (simulateCommand) {
         event.preventDefault();
+        heldSimulateKeysRef.current.set(event.key.toLowerCase(), simulateCommand);
+        if (event.repeat) return;
         setSimulateCameraMode("free");
-        if (firstPersonCamera || leveledSourceFrameCamera) {
-          setFirstPersonCamera((current) => {
-            const base = current ?? (leveledSourceFrameCamera ? firstPersonCameraFromFrame(leveledSourceFrameCamera) : null);
-            return base ? moveFirstPersonCamera(base, simulateCommand) : base;
-          });
-        } else {
-          setCamera((current) => moveFreeCamera(current, simulateCommand));
-        }
+        applySimulateCommand(simulateCommand, 1);
         setLastAction(`inside ${simulateCommand}`);
         return;
       }
@@ -738,19 +810,44 @@ export function App() {
       }
     };
     const up = (event: KeyboardEvent) => {
+      heldSimulateKeysRef.current.delete(event.key.toLowerCase());
       setPressed((current) => {
         const next = new Set(current);
         next.delete(event.key.toLowerCase());
         return next;
       });
     };
+    const clearHeld = () => heldSimulateKeysRef.current.clear();
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
+    window.addEventListener("blur", clearHeld);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", clearHeld);
     };
-  }, [episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, trajectory]);
+  }, [applySimulateCommand, episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, togglePointerLock, trajectory]);
+
+  useEffect(() => {
+    if (mode !== "simulate") {
+      heldSimulateKeysRef.current.clear();
+      return;
+    }
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const held = heldSimulateKeysRef.current;
+      if (held.size > 0 && dt > 0) {
+        const fraction = dt * holdRepeatStepsPerSecond;
+        for (const command of held.values()) applySimulateCommand(command, fraction);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [applySimulateCommand, mode]);
 
   const initializeSimulation = useCallback((worldSession: WorldSession, mesh: ParsedObjMesh | undefined, nextSpawn: AgentState, body: AgentBodyPreset) => {
     const token = simulationTokenRef.current + 1;
@@ -1415,12 +1512,13 @@ export function App() {
   const nudgeSimulateCamera = useCallback((command: "left" | "right" | "up" | "down" | "in" | "out") => {
     setSimulateCameraMode("orbit");
     setCamera((current) => {
+      const dollyStep = 0.6 * simulateStepsRef.current.scale;
       if (command === "left") return { ...current, yaw: current.yaw - 0.18 };
       if (command === "right") return { ...current, yaw: current.yaw + 0.18 };
       if (command === "up") return { ...current, pitch: Math.max(0.05, current.pitch - 0.12) };
       if (command === "down") return { ...current, pitch: Math.min(1.2, current.pitch + 0.12) };
-      if (command === "in") return { ...current, distance: Math.max(2.4, current.distance - 0.6) };
-      return { ...current, distance: Math.min(14, current.distance + 0.6) };
+      if (command === "in") return { ...current, distance: Math.max(2.4, current.distance - dollyStep) };
+      return { ...current, distance: Math.min(14, current.distance + dollyStep) };
     });
     setLastAction(`orbit ${command}`);
   }, []);
@@ -1841,7 +1939,7 @@ export function App() {
     interactionRef.current = { ...interaction, x: event.clientX, y: event.clientY };
     if (interaction.kind === "camera" && interaction.dragKind === "pan") {
       if (mode === "simulate" && simulateCameraMode === "free" && firstPersonCamera) {
-        setFirstPersonCamera((current) => current ? panFirstPersonCamera(current, dx, dy) : current);
+        setFirstPersonCamera((current) => current ? panFirstPersonCamera(current, dx, dy, simulateSteps.scale) : current);
         return;
       }
       setCamera((current) => panCamera(current, dx, dy));
@@ -1916,7 +2014,7 @@ export function App() {
       if (firstPersonCamera || leveledSourceFrameCamera) {
         setFirstPersonCamera((current) => {
           const base = current ?? (leveledSourceFrameCamera ? firstPersonCameraFromFrame(leveledSourceFrameCamera) : null);
-          return base ? dollyFirstPersonCamera(base, event.deltaY) : base;
+          return base ? dollyFirstPersonCamera(base, event.deltaY, simulateSteps.scale) : base;
         });
         return;
       }

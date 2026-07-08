@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, dollyCamera, estimateWorldOrientation, firstPersonCameraFromFrame, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, rotateFirstPersonCamera, panCamera, rotateCamera } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, freeKeyboardLookStepX, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -107,4 +107,76 @@ describe("simulate camera controls", () => {
     expect(leveled.translation[1]).toBeCloseTo(1);
     expect(leveled.coordinateFrame).toBe("colmap_world_leveled");
   });
+
+  it("derives movement steps from the scene radius with clamped bounds", () => {
+    expect(stepsForSceneRadius(undefined)).toEqual(defaultSimulateSteps);
+    expect(stepsForSceneRadius(-3)).toEqual(defaultSimulateSteps);
+    const room = stepsForSceneRadius(10);
+    expect(room.move).toBeCloseTo(0.4);
+    expect(room.rise).toBeCloseTo(0.32);
+    expect(room.scale).toBeCloseTo(0.4 / freeMoveStep);
+    expect(stepsForSceneRadius(0.1).move).toBeCloseTo(0.02);
+    expect(stepsForSceneRadius(500).move).toBeCloseTo(1.0);
+  });
+
+  it("estimates a robust scene radius from world points", () => {
+    const points = Array.from({ length: 100 }, (_, index) => ({ x: Math.cos(index) * 5, y: 0, z: Math.sin(index) * 5 }));
+    const radius = radiusFromWorldPoints(points, [0, 0, 0]);
+    expect(radius).toBeDefined();
+    expect(radius!).toBeGreaterThan(4.5);
+    expect(radius!).toBeLessThanOrEqual(5.01);
+    expect(radiusFromWorldPoints(points.slice(0, 3), [0, 0, 0])).toBeUndefined();
+  });
+
+  it("scales keyboard movement by scene-derived steps and per-frame fractions", () => {
+    const steps = stepsForSceneRadius(10);
+    const moved = moveFreeCamera(camera, "back", steps);
+    expect(moved.target[2] - camera.target[2]).toBeCloseTo(steps.move);
+    const partial = moveFreeCamera(camera, "back", steps, 0.25);
+    expect(partial.target[2] - camera.target[2]).toBeCloseTo(steps.move * 0.25);
+    const looked = moveFreeCamera(camera, "lookRight", steps, 0.5);
+    expect(looked.yaw - camera.yaw).toBeCloseTo(freeKeyboardLookStepX * 0.5 * 0.006);
+  });
+
+  it("clamps first-person pitch during pointer-lock look", () => {
+    let inside = firstPersonCameraFromFrame({
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [0, 0, 0],
+      rotation: [1, 0, 0, 0]
+    });
+    for (let index = 0; index < 200; index += 1) {
+      inside = rotateFirstPersonCameraClamped(inside, 0, 40);
+    }
+    const elevation = Math.asin(Math.max(-1, Math.min(1, quaternionForwardY(inside.rotation))));
+    expect(Math.abs(elevation)).toBeLessThanOrEqual((70 * Math.PI) / 180 + 1e-6);
+    expect(Math.abs(elevation)).toBeGreaterThan((69 * Math.PI) / 180);
+  });
+
+  it("scales first-person dolly and pan by the scene scale", () => {
+    const inside = firstPersonCameraFromFrame({
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [0, 0, 0],
+      rotation: [1, 0, 0, 0]
+    });
+    const baseline = dollyFirstPersonCamera(inside, -100);
+    const scaled = dollyFirstPersonCamera(inside, -100, 2);
+    expect(scaled.position[2]).toBeCloseTo(baseline.position[2] * 2);
+    const panned = panFirstPersonCamera(inside, 10, 0, 2);
+    const pannedBaseline = panFirstPersonCamera(inside, 10, 0);
+    expect(panned.position[0]).toBeCloseTo(pannedBaseline.position[0] * 2);
+  });
 });
+
+function quaternionForwardY([w, x, y, z]: [number, number, number, number]): number {
+  return 2 * (y * z - w * x);
+}
