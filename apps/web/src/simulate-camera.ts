@@ -121,6 +121,27 @@ export function rotateFirstPersonCamera(camera: FirstPersonCamera, dx: number, d
   return { ...camera, rotation: normalizeQuaternion(multiplyQuaternion(yaw, multiplyQuaternion(pitch, camera.rotation))) };
 }
 
+export const maxFirstPersonPitchDeg = 70;
+
+export function rotateFirstPersonCameraClamped(camera: FirstPersonCamera, dx: number, dy: number, maxPitchDeg = maxFirstPersonPitchDeg): FirstPersonCamera {
+  const yawed = dx !== 0 ? rotateFirstPersonCamera(camera, dx, 0) : camera;
+  if (dy === 0) return yawed;
+  const maxPitch = (maxPitchDeg * Math.PI) / 180;
+  const pitchOf = (value: FirstPersonCamera) => {
+    const forward = rotateVector(value.rotation, [0, 0, 1]);
+    return Math.asin(Math.max(-1, Math.min(1, forward[1])));
+  };
+  const current = pitchOf(yawed);
+  const candidate = rotateFirstPersonCamera(yawed, 0, dy);
+  const next = pitchOf(candidate);
+  if (Math.abs(next) <= maxPitch) return candidate;
+  const delta = next - current;
+  if (Math.abs(delta) < 1e-9) return yawed;
+  const allowedFraction = (Math.sign(next) * maxPitch - current) / delta;
+  if (allowedFraction <= 0) return yawed;
+  return rotateFirstPersonCamera(yawed, 0, dy * allowedFraction);
+}
+
 export function rollFirstPersonCamera(camera: FirstPersonCamera, delta: number): FirstPersonCamera {
   const forward = rotateVector(camera.rotation, [0, 0, 1]);
   return { ...camera, rotation: normalizeQuaternion(multiplyQuaternion(quaternionFromAxisAngle(forward, delta), camera.rotation)) };

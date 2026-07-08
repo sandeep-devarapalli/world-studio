@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, freeKeyboardLookStepX, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, freeKeyboardLookStepX, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -138,6 +138,25 @@ describe("simulate camera controls", () => {
     expect(looked.yaw - camera.yaw).toBeCloseTo(freeKeyboardLookStepX * 0.5 * 0.006);
   });
 
+  it("clamps first-person pitch during pointer-lock look", () => {
+    let inside = firstPersonCameraFromFrame({
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [0, 0, 0],
+      rotation: [1, 0, 0, 0]
+    });
+    for (let index = 0; index < 200; index += 1) {
+      inside = rotateFirstPersonCameraClamped(inside, 0, 40);
+    }
+    const elevation = Math.asin(Math.max(-1, Math.min(1, quaternionForwardY(inside.rotation))));
+    expect(Math.abs(elevation)).toBeLessThanOrEqual((70 * Math.PI) / 180 + 1e-6);
+    expect(Math.abs(elevation)).toBeGreaterThan((69 * Math.PI) / 180);
+  });
+
   it("scales first-person dolly and pan by the scene scale", () => {
     const inside = firstPersonCameraFromFrame({
       width: 10,
@@ -157,3 +176,7 @@ describe("simulate camera controls", () => {
     expect(panned.position[0]).toBeCloseTo(pannedBaseline.position[0] * 2);
   });
 });
+
+function quaternionForwardY([w, x, y, z]: [number, number, number, number]): number {
+  return 2 * (y * z - w * x);
+}

@@ -30,6 +30,7 @@ import {
   panFirstPersonCamera,
   radiusFromWorldPoints,
   rotateFirstPersonCamera,
+  rotateFirstPersonCameraClamped,
   rotateCamera,
   stepsForSceneRadius,
   type SimulateCameraMode,
@@ -92,6 +93,7 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
     { keyName: "Shift+←→", label: "strafe" },
     { keyName: "Q/E", label: "rise" },
     { keyName: "R/F", label: "roll" },
+    { keyName: "Space", label: "mouse look" },
     { glyph: "wheel", label: "zoom" },
     { glyph: "mouseL", label: "rotate" },
     { keyName: "Alt", label: "orbit" },
@@ -117,6 +119,7 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
 const simulateRailHints: Array<{ keyName?: string; glyph?: WSIconName; label: string }> = [
   { keyName: "WASD", label: "move" },
   { glyph: "mouseL", label: "look" },
+  { keyName: "Space", label: "mouse look" },
   { keyName: "Shift", label: "strafe" },
   { keyName: "Q/E", label: "rise" },
   { keyName: "R/F", label: "roll" },
@@ -599,6 +602,39 @@ export function App() {
       setCamera((current) => moveFreeCamera(current, command, steps, fraction));
     }
   }, []);
+  const [pointerLocked, setPointerLocked] = useState(false);
+  const togglePointerLock = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (document.pointerLockElement === canvas) {
+      document.exitPointerLock();
+      return;
+    }
+    setSimulateCameraMode("free");
+    const leveled = leveledSourceFrameCameraRef.current;
+    setFirstPersonCamera((current) => current ?? (leveled ? firstPersonCameraFromFrame(leveled) : current));
+    canvas.requestPointerLock();
+  }, []);
+  useEffect(() => {
+    const onChange = () => {
+      const locked = document.pointerLockElement === canvasRef.current;
+      setPointerLocked(locked);
+      setLastAction(locked ? "mouse look on" : "mouse look off");
+    };
+    const onMove = (event: MouseEvent) => {
+      if (document.pointerLockElement !== canvasRef.current) return;
+      setFirstPersonCamera((current) => (current ? rotateFirstPersonCameraClamped(current, event.movementX, event.movementY) : current));
+    };
+    document.addEventListener("pointerlockchange", onChange);
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      document.removeEventListener("pointerlockchange", onChange);
+      window.removeEventListener("mousemove", onMove);
+    };
+  }, []);
+  useEffect(() => {
+    if (mode !== "simulate" && document.pointerLockElement === canvasRef.current) document.exitPointerLock();
+  }, [mode]);
   const simulateFrameCamera = mode === "simulate" && simulateCameraMode === "frame" ? leveledSourceFrameCamera : undefined;
   const simulateFirstPersonCamera = mode === "simulate" && simulateCameraMode === "free" ? firstPersonCamera ?? undefined : undefined;
   const simulateRenderEvidenceUrl = mode === "simulate" && simulateCameraMode === "frame" ? simulateSourceFrame?.renderPreviewDataUrl : undefined;
@@ -610,7 +646,9 @@ export function App() {
         : "frame camera missing"
       : simulateCameraMode === "free"
         ? firstPersonCamera
-          ? "free · frame seeded"
+          ? pointerLocked
+            ? "free · mouse look"
+            : "free · frame seeded"
           : "free · orbit fallback"
       : simulateCameraMode;
   const episodeSourceMatch = useMemo(
@@ -741,6 +779,11 @@ export function App() {
       }
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
+      if (event.key === " " && mode === "simulate") {
+        event.preventDefault();
+        togglePointerLock();
+        return;
+      }
       if (event.key.toLowerCase() === "e" && mode === "episode") exportEpisodeManifest();
       if (event.key === "F11" && mode === "simulate") {
         event.preventDefault();
@@ -783,7 +826,7 @@ export function App() {
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", clearHeld);
     };
-  }, [applySimulateCommand, episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, trajectory]);
+  }, [applySimulateCommand, episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, togglePointerLock, trajectory]);
 
   useEffect(() => {
     if (mode !== "simulate") {
