@@ -11,7 +11,37 @@ export const freeRiseStep = 0.12;
 export const freeRollStep = 0.035;
 export const freeKeyboardLookStepX = 8;
 export const freeKeyboardLookStepY = 6;
+export const holdRepeatStepsPerSecond = 6;
 const freeLookScale = 0.006;
+
+export interface SimulateSteps {
+  move: number;
+  rise: number;
+  scale: number;
+}
+
+export const defaultSimulateSteps: SimulateSteps = { move: freeMoveStep, rise: freeRiseStep, scale: 1 };
+
+export function stepsForSceneRadius(sceneRadius?: number): SimulateSteps {
+  if (sceneRadius === undefined || !Number.isFinite(sceneRadius) || sceneRadius <= 0) return defaultSimulateSteps;
+  const move = Math.min(1.0, Math.max(0.02, 0.04 * sceneRadius));
+  return { move, rise: 0.8 * move, scale: move / freeMoveStep };
+}
+
+export function radiusFromWorldPoints(points: Array<{ x: number; y: number; z: number }>, center: [number, number, number]): number | undefined {
+  if (points.length < 8) return undefined;
+  const stride = Math.max(1, Math.floor(points.length / 20000));
+  const distances: number[] = [];
+  for (let index = 0; index < points.length; index += stride) {
+    const point = points[index];
+    const distance = Math.hypot(point.x - center[0], point.y - center[1], point.z - center[2]);
+    if (Number.isFinite(distance)) distances.push(distance);
+  }
+  if (distances.length < 8) return undefined;
+  distances.sort((a, b) => a - b);
+  const p95 = distances[Math.min(distances.length - 1, Math.floor(distances.length * 0.95))];
+  return Number.isFinite(p95) && p95 > 0 ? p95 : undefined;
+}
 
 export function firstPersonCameraFromFrame(frameCamera: FrameCamera): FirstPersonCamera {
   return {
@@ -62,23 +92,25 @@ export function applyWorldOrientationToFirstPersonCamera(camera: FirstPersonCame
   };
 }
 
-export function moveFirstPersonCamera(camera: FirstPersonCamera, command: SimulateKeyCommand): FirstPersonCamera {
-  if (command === "lookLeft") return rotateFirstPersonCamera(camera, -freeKeyboardLookStepX, 0);
-  if (command === "lookRight") return rotateFirstPersonCamera(camera, freeKeyboardLookStepX, 0);
-  if (command === "lookUp") return rotateFirstPersonCamera(camera, 0, -freeKeyboardLookStepY);
-  if (command === "lookDown") return rotateFirstPersonCamera(camera, 0, freeKeyboardLookStepY);
-  if (command === "rollLeft") return rollFirstPersonCamera(camera, -freeRollStep);
-  if (command === "rollRight") return rollFirstPersonCamera(camera, freeRollStep);
+export function moveFirstPersonCamera(camera: FirstPersonCamera, command: SimulateKeyCommand, steps: SimulateSteps = defaultSimulateSteps, fraction = 1): FirstPersonCamera {
+  if (command === "lookLeft") return rotateFirstPersonCamera(camera, -freeKeyboardLookStepX * fraction, 0);
+  if (command === "lookRight") return rotateFirstPersonCamera(camera, freeKeyboardLookStepX * fraction, 0);
+  if (command === "lookUp") return rotateFirstPersonCamera(camera, 0, -freeKeyboardLookStepY * fraction);
+  if (command === "lookDown") return rotateFirstPersonCamera(camera, 0, freeKeyboardLookStepY * fraction);
+  if (command === "rollLeft") return rollFirstPersonCamera(camera, -freeRollStep * fraction);
+  if (command === "rollRight") return rollFirstPersonCamera(camera, freeRollStep * fraction);
 
   const forward = rotateVector(camera.rotation, [0, 0, 1]);
   const right = rotateVector(camera.rotation, [1, 0, 0]);
+  const moveStep = steps.move * fraction;
+  const riseStep = steps.rise * fraction;
   let delta: [number, number, number] = [0, 0, 0];
-  if (command === "forward") delta = scale3(forward, freeMoveStep);
-  if (command === "back") delta = scale3(forward, -freeMoveStep);
-  if (command === "left") delta = scale3(right, -freeMoveStep);
-  if (command === "right") delta = scale3(right, freeMoveStep);
-  if (command === "rise") delta = [0, freeRiseStep, 0];
-  if (command === "descend") delta = [0, -freeRiseStep, 0];
+  if (command === "forward") delta = scale3(forward, moveStep);
+  if (command === "back") delta = scale3(forward, -moveStep);
+  if (command === "left") delta = scale3(right, -moveStep);
+  if (command === "right") delta = scale3(right, moveStep);
+  if (command === "rise") delta = [0, riseStep, 0];
+  if (command === "descend") delta = [0, -riseStep, 0];
   return { ...camera, position: add3(camera.position, delta) };
 }
 
@@ -94,37 +126,39 @@ export function rollFirstPersonCamera(camera: FirstPersonCamera, delta: number):
   return { ...camera, rotation: normalizeQuaternion(multiplyQuaternion(quaternionFromAxisAngle(forward, delta), camera.rotation)) };
 }
 
-export function dollyFirstPersonCamera(camera: FirstPersonCamera, deltaY: number): FirstPersonCamera {
+export function dollyFirstPersonCamera(camera: FirstPersonCamera, deltaY: number, scale = 1): FirstPersonCamera {
   const forward = rotateVector(camera.rotation, [0, 0, 1]);
-  return { ...camera, position: add3(camera.position, scale3(forward, -deltaY * 0.004)) };
+  return { ...camera, position: add3(camera.position, scale3(forward, -deltaY * 0.004 * scale)) };
 }
 
-export function panFirstPersonCamera(camera: FirstPersonCamera, dx: number, dy: number): FirstPersonCamera {
+export function panFirstPersonCamera(camera: FirstPersonCamera, dx: number, dy: number, scale = 1): FirstPersonCamera {
   const right = rotateVector(camera.rotation, [1, 0, 0]);
   const up = rotateVector(camera.rotation, [0, 1, 0]);
   return {
     ...camera,
-    position: add3(add3(camera.position, scale3(right, -dx * 0.006)), scale3(up, dy * 0.006))
+    position: add3(add3(camera.position, scale3(right, -dx * 0.006 * scale)), scale3(up, dy * 0.006 * scale))
   };
 }
 
-export function moveFreeCamera(camera: CameraState, command: SimulateKeyCommand): CameraState {
-  if (command === "lookLeft") return rotateCamera(camera, -freeKeyboardLookStepX, 0);
-  if (command === "lookRight") return rotateCamera(camera, freeKeyboardLookStepX, 0);
-  if (command === "lookUp") return rotateCamera(camera, 0, -freeKeyboardLookStepY);
-  if (command === "lookDown") return rotateCamera(camera, 0, freeKeyboardLookStepY);
-  if (command === "rollLeft") return rollCamera(camera, -freeRollStep);
-  if (command === "rollRight") return rollCamera(camera, freeRollStep);
+export function moveFreeCamera(camera: CameraState, command: SimulateKeyCommand, steps: SimulateSteps = defaultSimulateSteps, fraction = 1): CameraState {
+  if (command === "lookLeft") return rotateCamera(camera, -freeKeyboardLookStepX * fraction, 0);
+  if (command === "lookRight") return rotateCamera(camera, freeKeyboardLookStepX * fraction, 0);
+  if (command === "lookUp") return rotateCamera(camera, 0, -freeKeyboardLookStepY * fraction);
+  if (command === "lookDown") return rotateCamera(camera, 0, freeKeyboardLookStepY * fraction);
+  if (command === "rollLeft") return rollCamera(camera, -freeRollStep * fraction);
+  if (command === "rollRight") return rollCamera(camera, freeRollStep * fraction);
 
   const forward: [number, number, number] = [Math.sin(camera.yaw), 0, Math.cos(camera.yaw)];
   const right: [number, number, number] = [Math.cos(camera.yaw), 0, -Math.sin(camera.yaw)];
+  const moveStep = steps.move * fraction;
+  const riseStep = steps.rise * fraction;
   let delta: [number, number, number] = [0, 0, 0];
-  if (command === "forward") delta = scale3(forward, -freeMoveStep);
-  if (command === "back") delta = scale3(forward, freeMoveStep);
-  if (command === "left") delta = scale3(right, -freeMoveStep);
-  if (command === "right") delta = scale3(right, freeMoveStep);
-  if (command === "rise") delta = [0, freeRiseStep, 0];
-  if (command === "descend") delta = [0, -freeRiseStep, 0];
+  if (command === "forward") delta = scale3(forward, -moveStep);
+  if (command === "back") delta = scale3(forward, moveStep);
+  if (command === "left") delta = scale3(right, -moveStep);
+  if (command === "right") delta = scale3(right, moveStep);
+  if (command === "rise") delta = [0, riseStep, 0];
+  if (command === "descend") delta = [0, -riseStep, 0];
   return { ...camera, target: add3(camera.target, delta) };
 }
 
