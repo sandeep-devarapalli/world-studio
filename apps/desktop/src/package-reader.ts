@@ -1,10 +1,10 @@
 import { buildGaussianPreviewPointCloudPly } from "@world-studio/artifacts";
-import type { AuthorityStatus, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { AuthorityStatus, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 const maxTextBytes = 64 * 1024 * 1024;
-const maxBinaryBytes = 256 * 1024 * 1024;
+const maxBinaryBytes = 384 * 1024 * 1024;
 const maxGaussianPreviewPoints = 50_000;
 const maxCapturePreviewFrames = 24;
 const maxCapturePreviewImageBytes = 16 * 1024 * 1024;
@@ -23,16 +23,30 @@ interface CaptureSplatManifestRefs {
   pointsPlyPaths: string[];
 }
 
+interface CaptureFramePreview {
+  checksum: string;
+  camera?: unknown;
+  frameCamera?: FrameCamera;
+  dataUrl: string;
+  displayName: string;
+  mimeType: string;
+  relativePath: string;
+  renderDataUrl?: string;
+  renderPath?: string;
+  sizeBytes: number;
+}
+
 export async function readLocalPackage(inputPath: string): Promise<LocalWorldPackagePayload> {
   const selectedPath = path.resolve(inputPath);
   const selectedInfo = await stat(selectedPath);
   const sourceRoot = selectedInfo.isDirectory() ? selectedPath : path.dirname(selectedPath);
   const selectedFile = selectedInfo.isFile() ? path.basename(selectedPath) : undefined;
   const packageIssues: LocalPackageIssue[] = [];
-  const selectedTextPly = selectedFile && isPlyFileName(selectedFile)
+  const selectedTextPly = selectedFile && isPlyFileName(selectedFile) && selectedInfo.size <= maxTextBytes
     ? await readOptionalText(sourceRoot, selectedFile, packageIssues)
     : undefined;
   const selectedCleanedPly = isWorldStudioCleanedPly(selectedTextPly) ? selectedTextPly : undefined;
+  const selectedGaussianPly = selectedFile && isPlyFileName(selectedFile) && !selectedCleanedPly ? selectedFile : undefined;
   const payloadSourcePath = selectedCleanedPly ? selectedPath : sourceRoot;
   const cleanedFolderCandidates = selectedCleanedPly ? [] : await findCleanedPlyCandidates(sourceRoot);
   const captureSplatManifest = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, captureSplatManifestPath, packageIssues);
@@ -44,14 +58,19 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
   const sourcePointsPly = selectedCleanedPly
     ?? await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.pointsPlyPaths, "points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates]), packageIssues);
   const cleanedPointPly = isWorldStudioCleanedPly(sourcePointsPly);
-  const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, uniquePaths([...captureSplatRefs.gaussianPlyPaths, "gaussians.ply", "splats.ply", "splat.ply"]), packageIssues);
+  const selectedGaussianPlyPaths = selectedGaussianPly ? [selectedGaussianPly] : [];
+  const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, uniquePaths([...selectedGaussianPlyPaths, ...captureSplatRefs.gaussianPlyPaths, "gaussians.ply", "splats.ply", "splat.ply"]), packageIssues);
   const generatedPointsPly = !sourcePointsPly && gaussianPly
     ? await readGaussianPreviewPointCloud(sourceRoot, gaussianPly.relativePath, packageIssues)
     : undefined;
   const pointsPly = sourcePointsPly ?? generatedPointsPly;
   const objMesh = selectedCleanedPly ? undefined : await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.objMeshPaths, "collision_mesh.obj", "mesh.obj", "model.obj"]), packageIssues);
   const sourceBudoMediaFrames = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues);
-  const captureSplatManifestFrames = sourceBudoMediaFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifestFromPaths(sourceRoot, captureSplatRefs.framePaths, packageIssues);
+  const captureSplatManifestFrames = sourceBudoMediaFrames || selectedCleanedPly
+    ? undefined
+    : parsedCaptureSplatManifest
+      ? await readCaptureFrameManifestFromManifest(sourceRoot, parsedCaptureSplatManifest, packageIssues)
+      : await readCaptureFrameManifestFromPaths(sourceRoot, captureSplatRefs.framePaths, packageIssues);
   const generatedCaptureFrames = sourceBudoMediaFrames || captureSplatManifestFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifest(sourceRoot, packageIssues);
   const budoMediaFrames = sourceBudoMediaFrames ?? captureSplatManifestFrames ?? generatedCaptureFrames;
   const articleFigureViews = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.article_figure_3d_views.v0.1.json", packageIssues);
@@ -360,8 +379,361 @@ async function readCaptureFrameManifestFromPaths(
   return createCaptureFrameManifest(frames, "capture_splat.world_studio_handoff");
 }
 
+async function readCaptureFrameManifestFromManifest(
+  root: string,
+  manifest: Record<string, unknown>,
+  packageIssues?: LocalPackageIssue[]
+): Promise<LocalWorldPackageTextFile | undefined> {
+  const assets = isRecord(manifest.assets) ? manifest.assets : {};
+  const refs = extractCaptureSplatManifestRefs(manifest);
+  const frameCameras = await readCaptureSplatFrameCameras(root, manifest, refs, packageIssues);
+  const entries = collectFrameEntries(manifest.source_frames, manifest.sourceFrames, manifest.frames, manifest.rgb_frames, manifest.images, assets.source_frames, assets.sourceFrames, assets.frames, assets.rgb);
+  const frames: CaptureFramePreview[] = [];
+  for (const entry of entries.slice(0, maxCapturePreviewFrames)) {
+    const frame = await readImagePreviewFile(root, entry.relativePath, packageIssues);
+    if (frame) {
+      const frameCamera = frameCameraFromRecord(firstRecordValue(entry.camera)) ?? lookupFrameCamera(frameCameras, entry.relativePath);
+      const renderFrame = entry.renderPath ? await readImagePreviewFile(root, entry.renderPath, packageIssues) : undefined;
+      frames.push({ ...frame, camera: entry.camera, frameCamera, renderDataUrl: renderFrame?.dataUrl, renderPath: renderFrame?.relativePath });
+    }
+  }
+  if (!frames.length) return readCaptureFrameManifestFromPaths(root, refs.framePaths, packageIssues);
+  return createCaptureFrameManifest(frames, "capture_splat.world_studio_handoff");
+}
+
+function collectFrameEntries(...values: unknown[]): Array<{ relativePath: string; camera?: unknown; renderPath?: string }> {
+  const out: Array<{ relativePath: string; camera?: unknown; renderPath?: string }> = [];
+  for (const value of values) {
+    if (typeof value === "string") {
+      const relativePath = normalizeManifestRelativePath(value);
+      if (relativePath) out.push({ relativePath });
+    } else if (Array.isArray(value)) {
+      out.push(...collectFrameEntries(...value));
+    } else if (isRecord(value)) {
+      const relativePath = firstPathValue(value.path, value.relativePath, value.rgb_path, value.file, value.uri);
+      const renderPath = firstPathValue(value.render_path, value.renderPath, value.render, value.rendered_path, value.renderedPath);
+      const camera = firstRecordValue(value.camera, value.camera_state, value.cameraState, value.frame_camera, value.frameCamera) ?? value;
+      if (relativePath) out.push({ relativePath, camera, renderPath });
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((entry) => {
+    if (seen.has(entry.relativePath)) return false;
+    seen.add(entry.relativePath);
+    return true;
+  });
+}
+
+async function readCaptureSplatFrameCameras(
+  root: string,
+  manifest: Record<string, unknown>,
+  refs: CaptureSplatManifestRefs,
+  packageIssues?: LocalPackageIssue[]
+): Promise<Map<string, FrameCamera>> {
+  const cameras = new Map<string, FrameCamera>();
+  for (const relativePath of refs.cameraPosePaths) {
+    if (path.basename(relativePath) !== "transforms.json") continue;
+    const text = await readRelativeUtf8(root, relativePath, packageIssues);
+    if (!text) continue;
+    for (const [key, camera] of parseTransformsFrameCameras(text)) {
+      setFrameCameraAliases(cameras, key, camera);
+    }
+  }
+
+  const assets = isRecord(manifest.assets) ? manifest.assets : {};
+  const sparse = isRecord(assets.colmap_sparse) ? assets.colmap_sparse : {};
+  const camerasPath = firstPathValue(sparse["cameras.txt"], sparse.cameras, assets.cameras);
+  const imagesPath = firstPathValue(sparse["images.txt"], sparse.images, assets.images_txt);
+  if (camerasPath && imagesPath) {
+    const camerasText = await readRelativeUtf8(root, camerasPath, packageIssues);
+    const imagesText = await readRelativeUtf8(root, imagesPath, packageIssues);
+    if (camerasText && imagesText) {
+      const worldTransform = captureSplatDataparserTransform(manifest);
+      for (const [key, camera] of parseColmapFrameCameras(camerasText, imagesText, worldTransform)) {
+        setFrameCameraAliases(cameras, key, camera);
+      }
+    }
+  }
+  return cameras;
+}
+
+function captureSplatDataparserTransform(manifest: Record<string, unknown>): number[][] | undefined {
+  const assets = isRecord(manifest.assets) ? manifest.assets : {};
+  const gaussian = isRecord(assets.gaussian_ply) ? assets.gaussian_ply : {};
+  const value = firstValue(
+    manifest.dataparser_transform,
+    manifest.dataparserTransform,
+    gaussian.dataparser_transform,
+    gaussian.dataparserTransform
+  );
+  return matrix4(value) ?? matrix4FromFlat(value);
+}
+
+function matrix4FromFlat(value: unknown): number[][] | undefined {
+  if (!Array.isArray(value) || value.length !== 16) return undefined;
+  const values = value.map(Number);
+  if (!values.every(Number.isFinite)) return undefined;
+  return [values.slice(0, 4), values.slice(4, 8), values.slice(8, 12), values.slice(12, 16)];
+}
+
+async function readRelativeUtf8(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]): Promise<string | undefined> {
+  try {
+    return await readFile(resolveInside(root, relativePath), "utf8");
+  } catch {
+    pushIssue(packageIssues, {
+      artifact: relativePath,
+      code: "unsupported_layout",
+      message: `Camera metadata ${relativePath} could not be read.`,
+      severity: "warning",
+      title: "Frame camera metadata skipped"
+    });
+    return undefined;
+  }
+}
+
+function lookupFrameCamera(cameras: Map<string, FrameCamera>, relativePath: string): FrameCamera | undefined {
+  const normalized = relativePath.replace(/\\/g, "/");
+  return cameras.get(normalized) ?? cameras.get(path.basename(normalized)) ?? cameras.get(path.basename(normalized, path.extname(normalized)));
+}
+
+function setFrameCameraAliases(cameras: Map<string, FrameCamera>, relativePath: string, camera: FrameCamera): void {
+  const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  cameras.set(normalized, camera);
+  cameras.set(path.basename(normalized), camera);
+  cameras.set(path.basename(normalized, path.extname(normalized)), camera);
+}
+
+function parseTransformsFrameCameras(text: string): Array<[string, FrameCamera]> {
+  const manifest = parseJsonRecord(text);
+  const frames = Array.isArray(manifest.frames) ? manifest.frames : [];
+  const out: Array<[string, FrameCamera]> = [];
+  for (const frame of frames) {
+    if (!isRecord(frame)) continue;
+    const relativePath = firstPathValue(frame.file_path, frame.rgb_path, frame.path, frame.file);
+    const matrix = matrix4(frame.transform_matrix);
+    if (!relativePath || !matrix) continue;
+    const camera = frameCameraFromRecord({
+      width: numberValue(frame.w) ?? numberValue(manifest.w),
+      height: numberValue(frame.h) ?? numberValue(manifest.h),
+      fx: numberValue(frame.fl_x) ?? numberValue(manifest.fl_x) ?? numberValue(frame.fx) ?? numberValue(manifest.fx),
+      fy: numberValue(frame.fl_y) ?? numberValue(manifest.fl_y) ?? numberValue(frame.fy) ?? numberValue(manifest.fy),
+      cx: numberValue(frame.cx) ?? numberValue(manifest.cx),
+      cy: numberValue(frame.cy) ?? numberValue(manifest.cy),
+      translation: [matrix[0][3], matrix[1][3], matrix[2][3]],
+      rotation: rotationMatrixToQuaternionWxyz([
+        [matrix[0][0], matrix[0][1], matrix[0][2]],
+        [matrix[1][0], matrix[1][1], matrix[1][2]],
+        [matrix[2][0], matrix[2][1], matrix[2][2]]
+      ]),
+      coordinate_frame: "nerfstudio_transform",
+      authority: "Nerfstudio transforms"
+    });
+    if (camera) out.push([relativePath, camera]);
+  }
+  return out;
+}
+
+function parseColmapFrameCameras(camerasText: string, imagesText: string, worldTransform?: number[][]): Array<[string, FrameCamera]> {
+  const cameras = new Map<number, { width: number; height: number; fx: number; fy: number; cx: number; cy: number }>();
+  for (const rawLine of camerasText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const parts = line.split(/\s+/);
+    const cameraId = Number(parts[0]);
+    const model = parts[1];
+    const width = Number(parts[2]);
+    const height = Number(parts[3]);
+    const params = parts.slice(4).map(Number);
+    if (!Number.isFinite(cameraId) || !Number.isFinite(width) || !Number.isFinite(height)) continue;
+    const intrinsics = colmapIntrinsics(model, width, height, params);
+    if (intrinsics) cameras.set(cameraId, intrinsics);
+  }
+
+  const out: Array<[string, FrameCamera]> = [];
+  const lines = imagesText.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 2) {
+    const line = lines[index]?.trim();
+    if (!line || line.startsWith("#")) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length < 10) continue;
+    const qw = Number(parts[1]);
+    const qx = Number(parts[2]);
+    const qy = Number(parts[3]);
+    const qz = Number(parts[4]);
+    const tx = Number(parts[5]);
+    const ty = Number(parts[6]);
+    const tz = Number(parts[7]);
+    const cameraId = Number(parts[8]);
+    const name = parts.slice(9).join(" ");
+    const intrinsics = cameras.get(cameraId);
+    if (!intrinsics || !name) continue;
+    const worldToCamera = quaternionWxyzToRotationMatrix([qw, qx, qy, qz]);
+    const cameraToWorld = transpose3(worldToCamera);
+    const origin = multiplyMat3Vec(cameraToWorld, [-tx, -ty, -tz]);
+    let rotationMatrix = cameraToWorld;
+    let translation = origin;
+    if (worldTransform) {
+      // Trainers like VkSplat train splats in a normalized world; map raw COLMAP
+      // camera-to-world poses through the similarity transform so frame cameras
+      // land in the same world as the trained splat means.
+      const linear = worldTransform.map((row) => row.slice(0, 3));
+      translation = multiplyMat3Vec(linear, origin);
+      translation = [
+        translation[0] + worldTransform[0][3],
+        translation[1] + worldTransform[1][3],
+        translation[2] + worldTransform[2][3]
+      ];
+      const scale = Math.hypot(linear[0][0], linear[1][0], linear[2][0]) || 1;
+      rotationMatrix = multiplyMat3(linear, cameraToWorld).map((row) => row.map((value) => value / scale));
+    }
+    const camera = frameCameraFromRecord({
+      ...intrinsics,
+      translation,
+      rotation: rotationMatrixToQuaternionWxyz(rotationMatrix),
+      coordinate_frame: worldTransform ? "trainer_normalized_world" : "colmap_world",
+      authority: worldTransform
+        ? "COLMAP sparse reconstruction · trainer dataparser transform"
+        : "COLMAP sparse reconstruction"
+    });
+    if (camera) out.push([name, camera]);
+  }
+  return out;
+}
+
+function colmapIntrinsics(model: string | undefined, width: number, height: number, params: number[]): FrameCamera | undefined {
+  if (!model || params.some((value) => !Number.isFinite(value))) return undefined;
+  if (model === "SIMPLE_PINHOLE" || model === "SIMPLE_RADIAL" || model === "RADIAL") {
+    const [f, cx, cy] = params;
+    return frameCameraFromRecord({ width, height, fx: f, fy: f, cx, cy, translation: [0, 0, 0], rotation: [1, 0, 0, 0] });
+  }
+  const [fx, fy, cx, cy] = params;
+  return frameCameraFromRecord({ width, height, fx, fy, cx, cy, translation: [0, 0, 0], rotation: [1, 0, 0, 0] });
+}
+
+function frameCameraFromRecord(value: Record<string, unknown> | undefined): FrameCamera | undefined {
+  if (!value) return undefined;
+  const intrinsics = firstRecordValue(value.intrinsics) ?? value;
+  const pose = firstRecordValue(value.pose) ?? value;
+  const width = finiteNumber(value.width, value.w, intrinsics.width, intrinsics.w);
+  const height = finiteNumber(value.height, value.h, intrinsics.height, intrinsics.h);
+  const fx = finiteNumber(value.fx, value.fl_x, intrinsics.fx, intrinsics.fl_x);
+  const fy = finiteNumber(value.fy, value.fl_y, intrinsics.fy, intrinsics.fl_y);
+  const cx = finiteNumber(value.cx, intrinsics.cx);
+  const cy = finiteNumber(value.cy, intrinsics.cy);
+  const translation = finiteTuple(firstValue(value.translation, pose.translation, pose.t), 3);
+  const rotation = finiteTuple(firstValue(value.rotation, pose.rotation, pose.qvec, pose.quaternion), 4);
+  if (!width || !height || !fx || !fy || cx === undefined || cy === undefined || !translation || !rotation) return undefined;
+  return {
+    width,
+    height,
+    fx,
+    fy,
+    cx,
+    cy,
+    translation,
+    rotation,
+    coordinateFrame: stringValue(firstValue(value.coordinate_frame, value.coordinateFrame, pose.coordinate_frame, pose.coordinateFrame)),
+    authority: stringValue(firstValue(value.authority, pose.authority))
+  };
+}
+
+function finiteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function finiteTuple(value: unknown, length: 3): [number, number, number] | undefined;
+function finiteTuple(value: unknown, length: 4): [number, number, number, number] | undefined;
+function finiteTuple(value: unknown, length: number): number[] | undefined {
+  if (!Array.isArray(value) || value.length !== length) return undefined;
+  return value.every((item) => typeof item === "number" && Number.isFinite(item)) ? value.slice() as number[] : undefined;
+}
+
+function firstValue(...values: unknown[]): unknown {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function matrix4(value: unknown): number[][] | undefined {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const rows = value.map((row) => Array.isArray(row) && row.length === 4 ? row.map(Number) : undefined);
+  return rows.every((row) => row?.every(Number.isFinite)) ? rows as number[][] : undefined;
+}
+
+function quaternionWxyzToRotationMatrix(q: [number, number, number, number]): number[][] {
+  const [qw, qx, qy, qz] = normalizeQuaternion(q);
+  return [
+    [1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)],
+    [2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)],
+    [2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)]
+  ];
+}
+
+function rotationMatrixToQuaternionWxyz(m: number[][]): [number, number, number, number] {
+  const trace = m[0][0] + m[1][1] + m[2][2];
+  let qw: number;
+  let qx: number;
+  let qy: number;
+  let qz: number;
+  if (trace > 0) {
+    const s = Math.sqrt(trace + 1) * 2;
+    qw = 0.25 * s;
+    qx = (m[2][1] - m[1][2]) / s;
+    qy = (m[0][2] - m[2][0]) / s;
+    qz = (m[1][0] - m[0][1]) / s;
+  } else if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+    const s = Math.sqrt(1 + m[0][0] - m[1][1] - m[2][2]) * 2;
+    qw = (m[2][1] - m[1][2]) / s;
+    qx = 0.25 * s;
+    qy = (m[0][1] + m[1][0]) / s;
+    qz = (m[0][2] + m[2][0]) / s;
+  } else if (m[1][1] > m[2][2]) {
+    const s = Math.sqrt(1 + m[1][1] - m[0][0] - m[2][2]) * 2;
+    qw = (m[0][2] - m[2][0]) / s;
+    qx = (m[0][1] + m[1][0]) / s;
+    qy = 0.25 * s;
+    qz = (m[1][2] + m[2][1]) / s;
+  } else {
+    const s = Math.sqrt(1 + m[2][2] - m[0][0] - m[1][1]) * 2;
+    qw = (m[1][0] - m[0][1]) / s;
+    qx = (m[0][2] + m[2][0]) / s;
+    qy = (m[1][2] + m[2][1]) / s;
+    qz = 0.25 * s;
+  }
+  return normalizeQuaternion([qw, qx, qy, qz]);
+}
+
+function normalizeQuaternion(q: [number, number, number, number]): [number, number, number, number] {
+  const length = Math.hypot(q[0], q[1], q[2], q[3]);
+  if (!Number.isFinite(length) || length <= 1e-12) return [1, 0, 0, 0];
+  return [q[0] / length, q[1] / length, q[2] / length, q[3] / length];
+}
+
+function transpose3(m: number[][]): number[][] {
+  return [
+    [m[0][0], m[1][0], m[2][0]],
+    [m[0][1], m[1][1], m[2][1]],
+    [m[0][2], m[1][2], m[2][2]]
+  ];
+}
+
+function multiplyMat3(a: number[][], b: number[][]): number[][] {
+  return [0, 1, 2].map((row) => [0, 1, 2].map((col) =>
+    a[row][0] * b[0][col] + a[row][1] * b[1][col] + a[row][2] * b[2][col]
+  ));
+}
+
+function multiplyMat3Vec(m: number[][], v: [number, number, number]): [number, number, number] {
+  return [
+    m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+    m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+    m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]
+  ];
+}
+
 function createCaptureFrameManifest(
-  frames: Awaited<ReturnType<typeof readCaptureFrameFiles>>,
+  frames: CaptureFramePreview[],
   sourceKind: string
 ): LocalWorldPackageTextFile {
   const manifest = {
@@ -373,9 +745,13 @@ function createCaptureFrameManifest(
       frame_index: index,
       rgb_path: frame.relativePath,
       preview_data_url: frame.dataUrl,
+      ...(frame.renderDataUrl ? { render_preview_data_url: frame.renderDataUrl } : {}),
+      ...(frame.renderPath ? { render_path: frame.renderPath } : {}),
       mime_type: frame.mimeType,
       size_bytes: frame.sizeBytes,
-      checksum: frame.checksum
+      checksum: frame.checksum,
+      ...(isRecord(frame.camera) ? { camera: frame.camera } : {}),
+      ...(frame.frameCamera ? { frame_camera: frame.frameCamera } : {})
     }))
   };
   const text = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -465,6 +841,10 @@ function firstPathValue(...values: unknown[]): string | undefined {
   return collectPathValues([], ...values)[0];
 }
 
+function firstRecordValue(...values: unknown[]): Record<string, unknown> | undefined {
+  return values.find(isRecord);
+}
+
 function normalizeManifestRelativePath(value: string): string | undefined {
   const normalized = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
   if (!normalized || normalized.startsWith("/") || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(normalized)) return undefined;
@@ -475,14 +855,7 @@ function normalizeManifestRelativePath(value: string): string | undefined {
 async function readCaptureFrameFiles(
   root: string,
   packageIssues?: LocalPackageIssue[]
-): Promise<Array<{
-  checksum: string;
-  dataUrl: string;
-  displayName: string;
-  mimeType: string;
-  relativePath: string;
-  sizeBytes: number;
-}>> {
+): Promise<CaptureFramePreview[]> {
   for (const directory of captureFrameDirs) {
     const dirPath = resolveInside(root, directory);
     let entries;
@@ -513,14 +886,7 @@ async function readImagePreviewFile(
   root: string,
   relativePath: string,
   packageIssues?: LocalPackageIssue[]
-): Promise<{
-  checksum: string;
-  dataUrl: string;
-  displayName: string;
-  mimeType: string;
-  relativePath: string;
-  sizeBytes: number;
-} | undefined> {
+): Promise<CaptureFramePreview | undefined> {
   const filePath = resolveInside(root, relativePath);
   try {
     const info = await stat(filePath);

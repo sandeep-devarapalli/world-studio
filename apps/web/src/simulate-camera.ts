@@ -1,0 +1,259 @@
+import type { CameraState, FirstPersonCamera, FrameCamera, WorldOrientation } from "@world-studio/world-core";
+
+export type SimulateCameraMode = "frame" | "orbit" | "free";
+export type SimulateDragKind = "rotate" | "orbit" | "pan";
+export type SimulateMoveCommand = "forward" | "back" | "left" | "right" | "rise" | "descend" | "rollLeft" | "rollRight";
+export type SimulateLookCommand = "lookLeft" | "lookRight" | "lookUp" | "lookDown";
+export type SimulateKeyCommand = SimulateMoveCommand | SimulateLookCommand;
+
+export const freeMoveStep = 0.16;
+export const freeRiseStep = 0.12;
+export const freeRollStep = 0.035;
+export const freeKeyboardLookStepX = 8;
+export const freeKeyboardLookStepY = 6;
+const freeLookScale = 0.006;
+
+export function firstPersonCameraFromFrame(frameCamera: FrameCamera): FirstPersonCamera {
+  return {
+    position: [...frameCamera.translation],
+    rotation: normalizeQuaternion(frameCamera.rotation),
+    fov: Math.min(90, Math.max(24, (2 * Math.atan(frameCamera.height / (2 * frameCamera.fy)) * 180) / Math.PI)),
+    coordinateFrame: frameCamera.coordinateFrame,
+    authority: frameCamera.authority
+  };
+}
+
+export function estimateWorldOrientation(frameCameras: Array<FrameCamera | undefined>, center: [number, number, number]): WorldOrientation | undefined {
+  const ups: Array<[number, number, number]> = [];
+  for (const frameCamera of frameCameras) {
+    if (!frameCamera) continue;
+    ups.push(rotateVector(frameCamera.rotation, [0, -1, 0]));
+  }
+  if (ups.length < 2) return undefined;
+  const sourceUp = normalize3(ups.reduce<[number, number, number]>((sum, up) => add3(sum, up), [0, 0, 0]));
+  if (!sourceUp) return undefined;
+  const rotation = quaternionFromUnitVectors(sourceUp, [0, 1, 0]);
+  return {
+    rotation,
+    center,
+    sourceUp,
+    authority: "estimated from source frame cameras"
+  };
+}
+
+export function applyWorldOrientationToFrameCamera(frameCamera: FrameCamera, orientation: WorldOrientation | undefined): FrameCamera {
+  if (!orientation) return frameCamera;
+  return {
+    ...frameCamera,
+    translation: rotateVector(orientation.rotation, subtract3(frameCamera.translation, orientation.center)),
+    rotation: normalizeQuaternion(multiplyQuaternion(orientation.rotation, frameCamera.rotation)),
+    coordinateFrame: `${frameCamera.coordinateFrame ?? "source_world"}_leveled`,
+    authority: frameCamera.authority
+  };
+}
+
+export function applyWorldOrientationToFirstPersonCamera(camera: FirstPersonCamera, orientation: WorldOrientation | undefined): FirstPersonCamera {
+  if (!orientation) return camera;
+  return {
+    ...camera,
+    position: rotateVector(orientation.rotation, subtract3(camera.position, orientation.center)),
+    rotation: normalizeQuaternion(multiplyQuaternion(orientation.rotation, camera.rotation)),
+    coordinateFrame: `${camera.coordinateFrame ?? "source_world"}_leveled`
+  };
+}
+
+export function moveFirstPersonCamera(camera: FirstPersonCamera, command: SimulateKeyCommand): FirstPersonCamera {
+  if (command === "lookLeft") return rotateFirstPersonCamera(camera, -freeKeyboardLookStepX, 0);
+  if (command === "lookRight") return rotateFirstPersonCamera(camera, freeKeyboardLookStepX, 0);
+  if (command === "lookUp") return rotateFirstPersonCamera(camera, 0, -freeKeyboardLookStepY);
+  if (command === "lookDown") return rotateFirstPersonCamera(camera, 0, freeKeyboardLookStepY);
+  if (command === "rollLeft") return rollFirstPersonCamera(camera, -freeRollStep);
+  if (command === "rollRight") return rollFirstPersonCamera(camera, freeRollStep);
+
+  const forward = rotateVector(camera.rotation, [0, 0, 1]);
+  const right = rotateVector(camera.rotation, [1, 0, 0]);
+  let delta: [number, number, number] = [0, 0, 0];
+  if (command === "forward") delta = scale3(forward, freeMoveStep);
+  if (command === "back") delta = scale3(forward, -freeMoveStep);
+  if (command === "left") delta = scale3(right, -freeMoveStep);
+  if (command === "right") delta = scale3(right, freeMoveStep);
+  if (command === "rise") delta = [0, freeRiseStep, 0];
+  if (command === "descend") delta = [0, -freeRiseStep, 0];
+  return { ...camera, position: add3(camera.position, delta) };
+}
+
+export function rotateFirstPersonCamera(camera: FirstPersonCamera, dx: number, dy: number): FirstPersonCamera {
+  const yaw = quaternionFromAxisAngle([0, 1, 0], -dx * freeLookScale);
+  const right = rotateVector(camera.rotation, [1, 0, 0]);
+  const pitch = quaternionFromAxisAngle(right, -dy * freeLookScale);
+  return { ...camera, rotation: normalizeQuaternion(multiplyQuaternion(yaw, multiplyQuaternion(pitch, camera.rotation))) };
+}
+
+export function rollFirstPersonCamera(camera: FirstPersonCamera, delta: number): FirstPersonCamera {
+  const forward = rotateVector(camera.rotation, [0, 0, 1]);
+  return { ...camera, rotation: normalizeQuaternion(multiplyQuaternion(quaternionFromAxisAngle(forward, delta), camera.rotation)) };
+}
+
+export function dollyFirstPersonCamera(camera: FirstPersonCamera, deltaY: number): FirstPersonCamera {
+  const forward = rotateVector(camera.rotation, [0, 0, 1]);
+  return { ...camera, position: add3(camera.position, scale3(forward, -deltaY * 0.004)) };
+}
+
+export function panFirstPersonCamera(camera: FirstPersonCamera, dx: number, dy: number): FirstPersonCamera {
+  const right = rotateVector(camera.rotation, [1, 0, 0]);
+  const up = rotateVector(camera.rotation, [0, 1, 0]);
+  return {
+    ...camera,
+    position: add3(add3(camera.position, scale3(right, -dx * 0.006)), scale3(up, dy * 0.006))
+  };
+}
+
+export function moveFreeCamera(camera: CameraState, command: SimulateKeyCommand): CameraState {
+  if (command === "lookLeft") return rotateCamera(camera, -freeKeyboardLookStepX, 0);
+  if (command === "lookRight") return rotateCamera(camera, freeKeyboardLookStepX, 0);
+  if (command === "lookUp") return rotateCamera(camera, 0, -freeKeyboardLookStepY);
+  if (command === "lookDown") return rotateCamera(camera, 0, freeKeyboardLookStepY);
+  if (command === "rollLeft") return rollCamera(camera, -freeRollStep);
+  if (command === "rollRight") return rollCamera(camera, freeRollStep);
+
+  const forward: [number, number, number] = [Math.sin(camera.yaw), 0, Math.cos(camera.yaw)];
+  const right: [number, number, number] = [Math.cos(camera.yaw), 0, -Math.sin(camera.yaw)];
+  let delta: [number, number, number] = [0, 0, 0];
+  if (command === "forward") delta = scale3(forward, -freeMoveStep);
+  if (command === "back") delta = scale3(forward, freeMoveStep);
+  if (command === "left") delta = scale3(right, -freeMoveStep);
+  if (command === "right") delta = scale3(right, freeMoveStep);
+  if (command === "rise") delta = [0, freeRiseStep, 0];
+  if (command === "descend") delta = [0, -freeRiseStep, 0];
+  return { ...camera, target: add3(camera.target, delta) };
+}
+
+export function rotateCamera(camera: CameraState, dx: number, dy: number): CameraState {
+  return {
+    ...camera,
+    yaw: camera.yaw + dx * 0.006,
+    pitch: clamp(camera.pitch + dy * 0.004, 0.05, 1.2)
+  };
+}
+
+export function panCamera(camera: CameraState, dx: number, dy: number): CameraState {
+  const scale = Math.max(0.004, camera.distance * 0.0018);
+  const right: [number, number, number] = [Math.cos(camera.yaw), 0, -Math.sin(camera.yaw)];
+  const lateral = scale3(right, -dx * scale);
+  const vertical: [number, number, number] = [0, dy * scale, 0];
+  return { ...camera, target: add3(add3(camera.target, lateral), vertical) };
+}
+
+export function dollyCamera(camera: CameraState, deltaY: number): CameraState {
+  return { ...camera, distance: clamp(camera.distance + deltaY * 0.004, 1.2, 28) };
+}
+
+export function rollCamera(camera: CameraState, delta: number): CameraState {
+  return { ...camera, roll: clamp((camera.roll ?? 0) + delta, -Math.PI, Math.PI) };
+}
+
+export function classifySimulateDrag(input: { altKey: boolean; shiftKey: boolean; button: number; buttons: number }): SimulateDragKind {
+  if (input.altKey) return "orbit";
+  if (input.shiftKey || input.button === 2 || (input.buttons & 2) === 2) return "pan";
+  return "rotate";
+}
+
+export function commandForKey(key: string, shiftKey = false): SimulateKeyCommand | undefined {
+  const normalized = key.toLowerCase();
+  if (normalized === "w") return "forward";
+  if (normalized === "s") return "back";
+  if (normalized === "a") return "left";
+  if (normalized === "d") return "right";
+  if (key === "ArrowUp") return shiftKey ? "forward" : "lookUp";
+  if (key === "ArrowDown") return shiftKey ? "back" : "lookDown";
+  if (key === "ArrowLeft") return shiftKey ? "left" : "lookLeft";
+  if (key === "ArrowRight") return shiftKey ? "right" : "lookRight";
+  if (normalized === "q") return "rise";
+  if (normalized === "e") return "descend";
+  if (normalized === "r") return "rollLeft";
+  if (normalized === "f") return "rollRight";
+  return undefined;
+}
+
+function add3(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function subtract3(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function scale3(v: [number, number, number], scale: number): [number, number, number] {
+  return [v[0] * scale, v[1] * scale, v[2] * scale];
+}
+
+function dot3(a: [number, number, number], b: [number, number, number]): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross3(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0]
+  ];
+}
+
+function normalize3(v: [number, number, number]): [number, number, number] | undefined {
+  const length = Math.hypot(v[0], v[1], v[2]);
+  if (!Number.isFinite(length) || length <= 1e-12) return undefined;
+  return [v[0] / length, v[1] / length, v[2] / length];
+}
+
+function rotateVector(q: [number, number, number, number], v: [number, number, number]): [number, number, number] {
+  const [w, x, y, z] = normalizeQuaternion(q);
+  const tx = 2 * (y * v[2] - z * v[1]);
+  const ty = 2 * (z * v[0] - x * v[2]);
+  const tz = 2 * (x * v[1] - y * v[0]);
+  return [
+    v[0] + w * tx + (y * tz - z * ty),
+    v[1] + w * ty + (z * tx - x * tz),
+    v[2] + w * tz + (x * ty - y * tx)
+  ];
+}
+
+function quaternionFromAxisAngle(axis: [number, number, number], angle: number): [number, number, number, number] {
+  const length = Math.hypot(axis[0], axis[1], axis[2]);
+  if (!Number.isFinite(length) || length <= 1e-12) return [1, 0, 0, 0];
+  const half = angle / 2;
+  const scale = Math.sin(half) / length;
+  return normalizeQuaternion([Math.cos(half), axis[0] * scale, axis[1] * scale, axis[2] * scale]);
+}
+
+function quaternionFromUnitVectors(from: [number, number, number], to: [number, number, number]): [number, number, number, number] {
+  const clampedDot = clamp(dot3(from, to), -1, 1);
+  if (clampedDot > 0.999999) return [1, 0, 0, 0];
+  if (clampedDot < -0.999999) {
+    const fallbackAxis = Math.abs(from[0]) < 0.9 ? [1, 0, 0] as [number, number, number] : [0, 0, 1] as [number, number, number];
+    const axis = normalize3(cross3(from, fallbackAxis)) ?? [0, 0, 1];
+    return quaternionFromAxisAngle(axis, Math.PI);
+  }
+  const axis = cross3(from, to);
+  return normalizeQuaternion([1 + clampedDot, axis[0], axis[1], axis[2]]);
+}
+
+function multiplyQuaternion(a: [number, number, number, number], b: [number, number, number, number]): [number, number, number, number] {
+  const [aw, ax, ay, az] = a;
+  const [bw, bx, by, bz] = b;
+  return [
+    aw * bw - ax * bx - ay * by - az * bz,
+    aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw
+  ];
+}
+
+function normalizeQuaternion(q: [number, number, number, number]): [number, number, number, number] {
+  const length = Math.hypot(q[0], q[1], q[2], q[3]);
+  if (!Number.isFinite(length) || length <= 1e-12) return [1, 0, 0, 0];
+  return [q[0] / length, q[1] / length, q[2] / length, q[3] / length];
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}

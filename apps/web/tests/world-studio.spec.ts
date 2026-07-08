@@ -188,12 +188,30 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
         {
           display_name: "frame_000001",
           rgb_path: "images/frame_000001.png",
-          preview_data_url: onePixelDataUrl
+          preview_data_url: onePixelDataUrl,
+          width: 8,
+          height: 6,
+          intrinsics: { fx: 8, fy: 6, cx: 4, cy: 3 },
+          pose: {
+            translation: [0, 0, 0],
+            rotation: [1, 0, 0, 0],
+            coordinate_frame: "colmap_world",
+            authority: "COLMAP sparse reconstruction"
+          }
         },
         {
           display_name: "frame_000002",
           rgb_path: "images/frame_000002.png",
-          preview_data_url: onePixelDataUrl
+          preview_data_url: onePixelDataUrl,
+          width: 8,
+          height: 6,
+          intrinsics: { fx: 8, fy: 6, cx: 4, cy: 3 },
+          pose: {
+            translation: [1, 0, 0],
+            rotation: [1, 0, 0, 0],
+            coordinate_frame: "colmap_world",
+            authority: "COLMAP sparse reconstruction"
+          }
         }
       ]
     })
@@ -1331,8 +1349,93 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.getByAltText("Selected source frame evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);
   await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000001");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("3DGS visual proxy");
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
+  await expect(page.getByTestId("simulate-camera-mode")).toContainText("Frame");
+  await expect(page.getByTestId("simulate-camera-mode")).toContainText("Free");
+  await expect(page.getByText("3DGS Performance")).toBeVisible();
+  await expect(page.getByText("review proposal")).toBeVisible();
   await expect(page.getByTestId("simulate-comparison-panel")).toContainText("source evidence");
   await expect(page.locator(".ws-frame-row", { hasText: "frame_000001" }).getByAltText("frame_000001 preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await page.getByRole("button", { name: "Orbit right" }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");
+  await page.getByRole("button", { name: "Reset frame camera" }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
+  await page.getByRole("button", { name: "Free" }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
+  await expect(page.locator(".ws-sim-camera-pad")).toContainText("free · frame seeded");
+  await page.keyboard.press("w");
+  await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("inside forward");
+  await page.keyboard.press("a");
+  await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("inside left");
+  await page.keyboard.press("q");
+  await page.keyboard.press("r");
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
+  const canvas = page.getByTestId("world-canvas");
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  if (box) {
+    await page.keyboard.down("Alt");
+    await page.mouse.move(box.x + box.width * 0.72, box.y + box.height * 0.48);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.76, box.y + box.height * 0.52);
+    await page.mouse.up();
+    await page.keyboard.up("Alt");
+  }
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");
+  await canvas.dblclick();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
+  await page.locator(".ws-frame-row", { hasText: "frame_000002" }).click();
+  await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000002");
+});
+
+test("keeps Simulate controls visible on a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript((payload) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => payload.sourcePath,
+      openLocalPackage: async () => payload
+    };
+  }, captureSplatSourceFramePayload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await expectSparkReadyForGaussianPayload(page, captureSplatSourceFramePayload);
+  await page.getByRole("button", { name: "Simulate" }).click();
+  await expect(page.getByTestId("simulate-camera-mode")).toBeVisible();
+  await expect(page.getByTestId("simulate-camera-dpad")).toBeVisible();
+  await expect(page.getByText("3DGS Performance")).toBeVisible();
+});
+
+test("does not claim frame alignment when source cameras are missing", async ({ page }) => {
+  const payload: LocalWorldPackagePayload = {
+    ...captureSplatSourceFramePayload,
+    budoMediaFrames: {
+      relativePath: "capture-splat.media_frames.generated.json",
+      text: JSON.stringify({
+        schema: "budo.media_frames.v0.8",
+        source_kind: "capture_splat.world_studio_handoff",
+        frames: [{
+          display_name: "frame_000001",
+          rgb_path: "images/frame_000001.png",
+          preview_data_url: onePixelDataUrl
+        }]
+      })
+    }
+  };
+  await page.addInitScript((input) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => input.sourcePath,
+      openLocalPackage: async () => input
+    };
+  }, payload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await expectSparkReadyForGaussianPayload(page, payload);
+  await page.getByRole("button", { name: "Simulate" }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("frame camera missing");
+  await page.getByRole("button", { name: "Free" }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("free · orbit fallback");
 });
 
 test("loads generic manifest-only packages through the desktop bridge", async ({ page }) => {

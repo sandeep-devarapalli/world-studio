@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 *.log
 .DS_Store
+.local/
 
 # Local upstream reference clones are kept for study, not shipped in the Apache repo.
 references/upstream/*

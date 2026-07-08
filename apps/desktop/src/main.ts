@@ -50,6 +50,12 @@ ipcMain.handle("world-studio:open-local-package", async (): Promise<LocalWorldPa
   return readLocalPackage(selectedPath);
 });
 
+ipcMain.handle("world-studio:initial-local-package", async (): Promise<LocalWorldPackagePayload | null> => {
+  const initialPath = process.env.WORLD_STUDIO_INITIAL_PACKAGE;
+  if (!initialPath) return null;
+  return readLocalPackage(initialPath);
+});
+
 ipcMain.handle(
   "world-studio:save-episode-manifest",
   async (_event, input: { suggestedName?: string; text?: string }): Promise<{ path: string } | null> => {

@@ -7,6 +7,7 @@ declare global {
     worldStudioDesktop?: {
       pickFolder?: () => Promise<string | null>;
       openLocalPackage?: () => Promise<LocalWorldPackagePayload | null>;
+      initialLocalPackage?: () => Promise<LocalWorldPackagePayload | null>;
       saveEpisodeManifest?: (input: { suggestedName: string; text: string }) => Promise<{ path: string } | null>;
       saveEpisodeBundle?: (input: SaveEpisodeBundleInput) => Promise<{ path: string } | null>;
       openEpisodeManifest?: () => Promise<{ path: string; text: string } | null>;

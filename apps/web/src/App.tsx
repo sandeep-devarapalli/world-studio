@@ -14,11 +14,31 @@ import { ThreeWorldRenderer } from "@world-studio/renderer";
 import { buildCleanedPointCloudPly, cleanedPointRows } from "./edit-ply-export";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
 import { RapierSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
+import {
+  classifySimulateDrag,
+  commandForKey,
+  applyWorldOrientationToFirstPersonCamera,
+  applyWorldOrientationToFrameCamera,
+  dollyCamera,
+  dollyFirstPersonCamera,
+  estimateWorldOrientation,
+  firstPersonCameraFromFrame,
+  moveFirstPersonCamera,
+  moveFreeCamera,
+  panCamera,
+  panFirstPersonCamera,
+  rotateFirstPersonCamera,
+  rotateCamera,
+  type SimulateCameraMode,
+  type SimulateDragKind
+} from "./simulate-camera";
 import type {
   AgentState,
   AuthorityStatus,
   CameraState,
   CropBounds,
+  FirstPersonCamera,
+  FrameCamera,
   LocalPackageInsight,
   LocalPackageIssue,
   LocalWorldPackagePayload,
@@ -30,9 +50,11 @@ import type {
   RenderMode,
   RenderOptions,
   SensorRigChannel,
+  SparkRenderProfile,
   StudioMode,
   WorldAssetManifestEntry,
   WorldClass,
+  WorldOrientation,
   WorldSession
 } from "@world-studio/world-core";
 
@@ -61,9 +83,15 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
     { keyName: "Del", label: "delete" }
   ],
   simulate: [
-    { keyName: "F", label: "frames" },
-    { glyph: "mouseL", label: "inspect" },
-    { keyName: "S", label: "sync" }
+    { keyName: "WASD/↑↓", label: "move" },
+    { keyName: "←→", label: "look" },
+    { keyName: "Shift+←→", label: "strafe" },
+    { keyName: "Q/E", label: "rise" },
+    { keyName: "R/F", label: "roll" },
+    { glyph: "wheel", label: "zoom" },
+    { glyph: "mouseL", label: "rotate" },
+    { keyName: "Alt", label: "orbit" },
+    { keyName: "F11", label: "fullscreen" }
   ],
   pilot: [
     { keyName: "WASD", label: "drive" },
@@ -81,6 +109,15 @@ const controls: Record<StudioMode, Array<{ keyName?: string; glyph?: WSIconName;
     { keyName: "E", label: "export" }
   ]
 };
+
+const simulateRailHints: Array<{ keyName?: string; glyph?: WSIconName; label: string }> = [
+  { keyName: "WASD", label: "move" },
+  { glyph: "mouseL", label: "look" },
+  { keyName: "Shift", label: "strafe" },
+  { keyName: "Q/E", label: "rise" },
+  { keyName: "R/F", label: "roll" },
+  { keyName: "Alt", label: "orbit" }
+];
 
 const stripCells: Array<{ mode: FeedMode; label: string }> = [
   { mode: "rgb", label: "RGB" },
@@ -118,9 +155,12 @@ interface AssetSummary {
 }
 
 interface CaptureFrame {
+  camera?: CameraState;
+  frameCamera?: FrameCamera;
   name: string;
   path: string;
   previewDataUrl?: string;
+  renderPreviewDataUrl?: string;
 }
 
 interface SensorCaptureArtifact {
@@ -389,7 +429,7 @@ function isZeroTransform(transform: PointTransform): boolean {
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const interactionRef = useRef<{ kind: "orbit" | "brush" | "rect" | "crop" | "move"; x: number; y: number } | null>(null);
+  const interactionRef = useRef<{ kind: "camera" | "brush" | "rect" | "crop" | "move"; x: number; y: number; dragKind?: SimulateDragKind } | null>(null);
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const transformDragRef = useRef<TransformDrag | null>(null);
   const simulationRef = useRef<RapierSimulation | null>(null);
@@ -450,6 +490,9 @@ export function App() {
   const [episodeProvenance, setEpisodeProvenance] = useState<EpisodeProvenanceSummary | null>(null);
   const [episodeIntegrityOpen, setEpisodeIntegrityOpen] = useState(false);
   const [captureCompareIds, setCaptureCompareIds] = useState<string[]>([]);
+  const [selectedSourceFrameIndex, setSelectedSourceFrameIndex] = useState(0);
+  const [simulateCameraMode, setSimulateCameraMode] = useState<SimulateCameraMode>("frame");
+  const [firstPersonCamera, setFirstPersonCamera] = useState<FirstPersonCamera | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
@@ -512,8 +555,30 @@ export function App() {
     [captureCompareIds, sensorCaptures]
   );
   const simulateCompareCaptures = captureComparison.length ? captureComparison : captureCompareCandidates;
+  const selectedSourceFrame = captureFrames[selectedSourceFrameIndex] ?? captureFrames.find((frame) => frame.previewDataUrl) ?? null;
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
-  const simulateSourceFrame = simulateComparisonCapture ? null : captureFrames.find((frame) => frame.previewDataUrl) ?? null;
+  const simulateSourceFrame = simulateComparisonCapture ? null : selectedSourceFrame;
+  const worldOrientation = useMemo<WorldOrientation | undefined>(
+    () => estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), centerFromWorldPoints(worldPoints)),
+    [captureFrames, worldPoints]
+  );
+  const leveledSourceFrameCamera = simulateSourceFrame?.frameCamera
+    ? applyWorldOrientationToFrameCamera(simulateSourceFrame.frameCamera, worldOrientation)
+    : undefined;
+  const simulateFrameCamera = mode === "simulate" && simulateCameraMode === "frame" ? leveledSourceFrameCamera : undefined;
+  const simulateFirstPersonCamera = mode === "simulate" && simulateCameraMode === "free" ? firstPersonCamera ?? undefined : undefined;
+  const simulateRenderEvidenceUrl = mode === "simulate" && simulateCameraMode === "frame" ? simulateSourceFrame?.renderPreviewDataUrl : undefined;
+  const activeWorldOrientation = mode === "simulate" && (simulateFrameCamera || simulateFirstPersonCamera) ? worldOrientation : undefined;
+  const simulateCameraLabel =
+    simulateCameraMode === "frame"
+      ? simulateFrameCamera
+        ? "frame · aligned camera"
+        : "frame camera missing"
+      : simulateCameraMode === "free"
+        ? firstPersonCamera
+          ? "free · frame seeded"
+          : "free · orbit fallback"
+      : simulateCameraMode;
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
     [episodeProvenance, session]
@@ -545,6 +610,9 @@ export function App() {
     () => ({
       mode: renderMode,
       camera,
+      frameCamera: simulateFrameCamera,
+      firstPersonCamera: simulateFirstPersonCamera,
+      worldOrientation: activeWorldOrientation,
       density,
       exposure,
       accent,
@@ -563,7 +631,7 @@ export function App() {
       cropBounds: cropRegion?.bounds,
       pointTransforms
     }),
-    [accent, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, isolatedClass, mode, pointTransforms, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, spawn, trajectory]
+    [accent, activeWorldOrientation, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, firstPersonCamera, isolatedClass, mode, pointTransforms, renderMode, replayAgent, selected, selectedSensorId, sensors, showDeleted, simulateFirstPersonCamera, simulateFrameCamera, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
@@ -608,6 +676,27 @@ export function App() {
   }, [playing]);
 
   useEffect(() => {
+    setSelectedSourceFrameIndex(0);
+    setSimulateCameraMode("frame");
+    setFirstPersonCamera(captureFrames[0]?.frameCamera ? firstPersonCameraFromFrame(applyWorldOrientationToFrameCamera(captureFrames[0].frameCamera, worldOrientation)) : null);
+  }, [captureFrames, worldOrientation]);
+
+  const requestStageFullscreen = useCallback(async () => {
+    const stage = canvasRef.current?.closest(".ws-stage-shell") as HTMLElement | null;
+    if (!stage?.requestFullscreen) {
+      setLastAction("fullscreen unavailable");
+      return;
+    }
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await stage.requestFullscreen();
+      setLastAction("fullscreen");
+    } catch {
+      setLastAction("fullscreen blocked");
+    }
+  }, []);
+
+  useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       setPressed((current) => new Set(current).add(event.key.toLowerCase()));
@@ -619,7 +708,25 @@ export function App() {
       if (event.key.toLowerCase() === "l") void (getDesktopApi()?.openLocalPackage ? loadLocalPackage() : loadFixture());
       if (event.key === " " && mode === "episode") setPlaying((value) => !value);
       if (event.key.toLowerCase() === "e" && mode === "episode") exportEpisodeManifest();
-      if (event.key.toLowerCase() === "s" && mode === "simulate") stepPhysics({ move: 0, turn: 0 }, "PhysicsStep(1/60s)");
+      if (event.key === "F11" && mode === "simulate") {
+        event.preventDefault();
+        void requestStageFullscreen();
+      }
+      const simulateCommand = mode === "simulate" && !event.metaKey && !event.ctrlKey && !event.altKey ? commandForKey(event.key, event.shiftKey) : undefined;
+      if (simulateCommand) {
+        event.preventDefault();
+        setSimulateCameraMode("free");
+        if (firstPersonCamera || leveledSourceFrameCamera) {
+          setFirstPersonCamera((current) => {
+            const base = current ?? (leveledSourceFrameCamera ? firstPersonCameraFromFrame(leveledSourceFrameCamera) : null);
+            return base ? moveFirstPersonCamera(base, simulateCommand) : base;
+          });
+        } else {
+          setCamera((current) => moveFreeCamera(current, simulateCommand));
+        }
+        setLastAction(`inside ${simulateCommand}`);
+        return;
+      }
       if (mode === "episode" && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
         stepEpisodeEvent(event.key === "ArrowRight" ? 1 : -1);
       }
@@ -643,7 +750,7 @@ export function App() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [mode, selected, history, trajectory, selectedEpisodeEventId, episodeEvents, episodeTotalFrames]);
+  }, [episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, trajectory]);
 
   const initializeSimulation = useCallback((worldSession: WorldSession, mesh: ParsedObjMesh | undefined, nextSpawn: AgentState, body: AgentBodyPreset) => {
     const token = simulationTokenRef.current + 1;
@@ -795,6 +902,21 @@ export function App() {
     }, options);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadInitialPackage = async () => {
+      const payload = await getDesktopApi()?.initialLocalPackage?.();
+      if (!payload || cancelled) return;
+      applyLocalPackage(payload);
+    };
+    void loadInitialPackage().catch((error) => {
+      if (!cancelled) setLoadError(error instanceof Error ? error.message : "Failed to load initial package");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyLocalPackage]);
+
   const applyLoadedWorld = useCallback((input: LoadedWorldInput, options?: LoadedWorldOptions) => {
     setLoadError(null);
 
@@ -813,6 +935,10 @@ export function App() {
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
       setSelectedInsightId(null);
+      if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
+        setMode("simulate");
+        setSimulateCameraMode("frame");
+      }
       if (!options?.preserveEpisode) resetTransientState(worldSession);
       initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
       return;
@@ -848,6 +974,7 @@ export function App() {
       classes: worldSession.classes,
       mesh,
       gaussianUrl: input.gaussianUrl,
+      sparkProfile: sparkProfileForLoadedWorld(input),
       onDiagnosticsChange: setRendererDiagnostics
     });
     setRenderer(nextRenderer);
@@ -863,9 +990,13 @@ export function App() {
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
     setSelectedInsightId(null);
+    if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
+      setMode("simulate");
+      setSimulateCameraMode("frame");
+    }
     if (!options?.preserveEpisode) resetTransientState(worldSession);
     initializeSimulation(worldSession, mesh, worldSession.agentSpawn ?? defaultSpawn, bodyPreset);
-  }, [bodyPreset, initializeSimulation, resetTransientState]);
+  }, [bodyPreset, initializeSimulation, resetTransientState, setMode]);
 
   const toStage = useCallback(
     (clientX: number, clientY: number) => {
@@ -1249,6 +1380,51 @@ export function App() {
     setEpisodeSaveStatus(null);
   }, []);
 
+  const applySourceFrameCamera = useCallback((frame: CaptureFrame | null, action: string) => {
+    setSimulateCameraMode("frame");
+    if (frame?.frameCamera) {
+      setFirstPersonCamera(firstPersonCameraFromFrame(applyWorldOrientationToFrameCamera(frame.frameCamera, worldOrientation)));
+      setLastAction(action);
+    } else {
+      setFirstPersonCamera(null);
+      setLastAction("frame camera unavailable");
+    }
+  }, [worldOrientation]);
+
+  const enterFreeCamera = useCallback((action = "inside free camera") => {
+    setSimulateCameraMode("free");
+    if (leveledSourceFrameCamera) {
+      setFirstPersonCamera((current) => current ?? firstPersonCameraFromFrame(leveledSourceFrameCamera));
+      setLastAction(action);
+    } else {
+      setLastAction("free camera");
+    }
+  }, [leveledSourceFrameCamera]);
+
+  const selectSourceFrame = useCallback((index: number) => {
+    setCaptureCompareIds([]);
+    setSelectedSourceFrameIndex(index);
+    applySourceFrameCamera(captureFrames[index] ?? null, "frame camera");
+  }, [applySourceFrameCamera, captureFrames]);
+
+  const resetSimulateFrameCamera = useCallback(() => {
+    if (mode !== "simulate") return;
+    applySourceFrameCamera(simulateSourceFrame, "frame reset");
+  }, [applySourceFrameCamera, mode, simulateSourceFrame]);
+
+  const nudgeSimulateCamera = useCallback((command: "left" | "right" | "up" | "down" | "in" | "out") => {
+    setSimulateCameraMode("orbit");
+    setCamera((current) => {
+      if (command === "left") return { ...current, yaw: current.yaw - 0.18 };
+      if (command === "right") return { ...current, yaw: current.yaw + 0.18 };
+      if (command === "up") return { ...current, pitch: Math.max(0.05, current.pitch - 0.12) };
+      if (command === "down") return { ...current, pitch: Math.min(1.2, current.pitch + 0.12) };
+      if (command === "in") return { ...current, distance: Math.max(2.4, current.distance - 0.6) };
+      return { ...current, distance: Math.min(14, current.distance + 0.6) };
+    });
+    setLastAction(`orbit ${command}`);
+  }, []);
+
   const stepEpisodeEvent = useCallback(
     (direction: -1 | 1) => {
       if (!episodeTimeline.length) return;
@@ -1571,6 +1747,7 @@ export function App() {
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
     if (mode === "edit" && renderer && tool === "brush") {
       interactionRef.current = { kind: "brush", x: event.clientX, y: event.clientY };
@@ -1622,7 +1799,16 @@ export function App() {
       interactionRef.current = null;
       measureAt(event);
     } else {
-      interactionRef.current = { kind: "orbit", x: event.clientX, y: event.clientY };
+      const dragKind = mode === "simulate" ? classifySimulateDrag(event) : "orbit";
+      if (mode === "simulate") {
+        if (dragKind === "orbit") {
+          setSimulateCameraMode("orbit");
+        } else {
+          enterFreeCamera(dragKind === "pan" ? "inside pan" : "inside look");
+        }
+        setLastAction(dragKind === "orbit" ? "orbit" : dragKind === "pan" ? "inside pan" : "inside look");
+      }
+      interactionRef.current = { kind: "camera", x: event.clientX, y: event.clientY, dragKind };
     }
   };
 
@@ -1653,11 +1839,19 @@ export function App() {
     const dx = event.clientX - interaction.x;
     const dy = event.clientY - interaction.y;
     interactionRef.current = { ...interaction, x: event.clientX, y: event.clientY };
-    setCamera((current) => ({
-      ...current,
-      yaw: current.yaw + dx * 0.006,
-      pitch: Math.max(0.05, Math.min(1.2, current.pitch + dy * 0.004))
-    }));
+    if (interaction.kind === "camera" && interaction.dragKind === "pan") {
+      if (mode === "simulate" && simulateCameraMode === "free" && firstPersonCamera) {
+        setFirstPersonCamera((current) => current ? panFirstPersonCamera(current, dx, dy) : current);
+        return;
+      }
+      setCamera((current) => panCamera(current, dx, dy));
+      return;
+    }
+    if (interaction.kind === "camera" && mode === "simulate" && simulateCameraMode === "free" && firstPersonCamera && interaction.dragKind !== "orbit") {
+      setFirstPersonCamera((current) => current ? rotateFirstPersonCamera(current, dx, dy) : current);
+      return;
+    }
+    setCamera((current) => rotateCamera(current, dx, dy));
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1717,10 +1911,17 @@ export function App() {
 
   const onWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
-    setCamera((current) => ({
-      ...current,
-      distance: Math.max(2.4, Math.min(14, current.distance + event.deltaY * 0.004))
-    }));
+    if (mode === "simulate") {
+      enterFreeCamera("inside dolly");
+      if (firstPersonCamera || leveledSourceFrameCamera) {
+        setFirstPersonCamera((current) => {
+          const base = current ?? (leveledSourceFrameCamera ? firstPersonCameraFromFrame(leveledSourceFrameCamera) : null);
+          return base ? dollyFirstPersonCamera(base, event.deltaY) : base;
+        });
+        return;
+      }
+    }
+    setCamera((current) => dollyCamera(current, event.deltaY));
   };
 
   const activeMode = modes.find((entry) => entry.id === mode) ?? modes[0];
@@ -1756,12 +1957,15 @@ export function App() {
               mode === "edit" && (tool === "brush" || tool === "rect" || tool === "crop" || tool === "move" || tool === "ruler") ? "edit-tool" : ""
             }`.trim()}
             data-testid="world-canvas"
+            tabIndex={0}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
             onPointerLeave={() => setCursor(null)}
+            onContextMenu={(event) => event.preventDefault()}
             onWheel={onWheel}
+            onDoubleClick={resetSimulateFrameCamera}
           />
           {mode === "edit" && tool === "brush" && cursor ? (
             <div
@@ -1838,10 +2042,18 @@ export function App() {
                     </WSChip>
                   </div>
                 </div>
+                <div className="ws-dual-right-frame" />
                 <div className="ws-dual-split" />
+                {simulateRenderEvidenceUrl ? (
+                  <img
+                    alt={`${simulateSourceFrame?.name ?? "source frame"} native render evidence`}
+                    className="ws-native-render-evidence"
+                    src={simulateRenderEvidenceUrl}
+                  />
+                ) : null}
                 <div className="ws-view-tag metric">
                   <span className="ws-head">3DGS visual proxy</span>
-                  <WSChip>{session ? `loaded · ${session.pointCount} pts` : "load splat package"}</WSChip>
+                  <WSChip>{session ? `${simulateRenderEvidenceUrl ? "native render evidence" : simulateCameraLabel} · ${session.pointCount} pts` : "load splat package"}</WSChip>
                 </div>
               </>
             ) : null}
@@ -1860,6 +2072,14 @@ export function App() {
                 ))}
               </WSPanel>
             </div>
+
+            {hasDesktopApi && (session || simulateComparisonCapture) ? (
+              <div className="ws-open-local-action">
+                <WSPanel className="ws-header-actions">
+                  <WSButton onClick={() => void loadLocalPackage()}>Open Local</WSButton>
+                </WSPanel>
+              </div>
+            ) : null}
 
             {mode === "view" || mode === "edit" ? (
               <div className="ws-render-row">
@@ -1988,6 +2208,32 @@ export function App() {
                     <button className="ws-node click" onClick={() => setDebugCollision((value) => !value)}>
                       {debugCollision ? "collision on" : "collision off"}
                     </button>
+                  </div>
+                </WSPanel>
+                <WSPanel title="3DGS Performance" meta="visual proposal" className="ws-performance-card">
+                  <div className="ws-kv">
+                    <span>density</span>
+                    <b>{Math.round(density * 100)}% preview</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>spark</span>
+                    <b>{rendererDiagnostics?.sparkState ?? "unknown"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>profile</span>
+                    <b>{rendererDiagnostics?.sparkProfile ?? "default"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>splats</span>
+                    <b>{rendererDiagnostics?.gaussianSplatCount ?? assetSummary?.pointCount ?? session?.pointCount ?? "unknown"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>source</span>
+                    <b>{rendererDiagnostics?.gaussianPreparedForSpark === undefined ? "pending" : rendererDiagnostics.gaussianPreparedForSpark ? "converted" : "native"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>authority</span>
+                    <b>review proposal</b>
                   </div>
                 </WSPanel>
                 <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
@@ -2349,7 +2595,43 @@ export function App() {
                       onRewind={() => setPlayhead(0)}
                     />
                   ) : null}
-                  <WSControlsBar controls={controls[mode]} />
+                  {mode === "simulate" ? (
+                    <div className="ws-sim-camera-strip" data-testid="simulate-camera-mode">
+                      <div className="ws-sim-mode-group" aria-label="Camera mode">
+                        <button className={simulateCameraMode === "frame" ? "on" : ""} onClick={resetSimulateFrameCamera}>
+                          Frame
+                        </button>
+                        <button className={simulateCameraMode === "orbit" ? "on" : ""} onClick={() => setSimulateCameraMode("orbit")}>
+                          Orbit
+                        </button>
+                        <button className={simulateCameraMode === "free" ? "on" : ""} onClick={() => enterFreeCamera()}>
+                          Free
+                        </button>
+                      </div>
+                      <div className="ws-sim-nudge-group" data-testid="simulate-camera-dpad">
+                        <button aria-label="Orbit up" onClick={() => nudgeSimulateCamera("up")}><WSIcon name="chevD" size={13} /></button>
+                        <button aria-label="Orbit left" onClick={() => nudgeSimulateCamera("left")}><WSIcon name="chev" size={13} /></button>
+                        <button aria-label="Reset frame camera" onClick={resetSimulateFrameCamera}><WSIcon name="camera" size={13} /></button>
+                        <button aria-label="Orbit right" onClick={() => nudgeSimulateCamera("right")}><WSIcon name="chev" size={13} /></button>
+                        <button aria-label="Orbit down" onClick={() => nudgeSimulateCamera("down")}><WSIcon name="chevD" size={13} /></button>
+                        <button aria-label="Zoom in" onClick={() => nudgeSimulateCamera("in")}>+</button>
+                        <button aria-label="Zoom out" onClick={() => nudgeSimulateCamera("out")}>-</button>
+                        <button aria-label="Fullscreen" onClick={() => void requestStageFullscreen()}>F11</button>
+                      </div>
+                      <div className="ws-sim-shortcuts" aria-label="Simulate controls">
+                        {simulateRailHints.map((hint) => (
+                          <span className="ws-sim-shortcut" key={`${hint.glyph ?? hint.keyName}-${hint.label}`}>
+                            <WSKey className={hint.glyph ? "ws-key-mouse" : ""}>
+                              {hint.glyph ? <WSIcon name={hint.glyph} size={12} /> : hint.keyName}
+                            </WSKey>
+                            <span>{hint.label}</span>
+                          </span>
+                        ))}
+                      </div>
+                      <span className="ws-sim-camera-status">{simulateCameraLabel}</span>
+                    </div>
+                  ) : null}
+                  {mode === "simulate" ? null : <WSControlsBar controls={controls[mode]} />}
                 </div>
               </div>
             )}
@@ -2499,8 +2781,8 @@ export function App() {
         <WSPanel title="Frames" meta={captureFrames.length ? `${captureFrames.length} captured` : "none"} pad={false}>
           <div className="ws-frame-list">
             {captureFrames.length ? (
-              captureFrames.slice(0, 7).map((frame) => (
-                <div key={frame.name} className="ws-frame-row">
+              captureFrames.slice(0, 7).map((frame, index) => (
+                <button key={frame.name} className={`ws-frame-row ${index === selectedSourceFrameIndex && !simulateComparisonCapture ? "active" : ""}`.trim()} onClick={() => selectSourceFrame(index)}>
                   {frame.previewDataUrl ? (
                     <img alt={`${frame.name} preview`} className="ws-frame-thumb image" src={frame.previewDataUrl} />
                   ) : (
@@ -2508,7 +2790,7 @@ export function App() {
                   )}
                   <span className="ws-row-name">{frame.name}</span>
                   <WSChip>ok</WSChip>
-                </div>
+                </button>
               ))
             ) : (
               <div className="ws-frame-row dim">
@@ -3203,15 +3485,29 @@ function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagno
   if (!diagnostics?.hasGaussianSource) return "splat fallback · no gaussian";
   if (diagnostics.sparkState === "idle" || diagnostics.sparkState === "loading") return "spark loading · point fallback";
   if (diagnostics.splatRenderPath === "spark-gaussian") {
-    return `spark gaussian · ${diagnostics.gaussianSplatCount ?? "ready"} splats`;
+    return `spark gaussian · ${diagnostics.sparkProfile ?? "default"} · ${diagnostics.gaussianSplatCount ?? "ready"} splats`;
   }
   if (diagnostics.sparkState === "failed") return `splat fallback · ${diagnostics.sparkFailureReason ?? "spark failed"}`;
   return "splat fallback · not renderable";
 }
 
+function sparkProfileForLoadedWorld(input: LoadedWorldInput): SparkRenderProfile {
+  if (input.packageKind === "capture-splat-local-folder" || input.sourceKind === "capture_splat.local_folder") {
+    return "capture-splat-vksplat";
+  }
+  return "world-studio-default";
+}
+
 function rendererPreparationLabel(diagnostics: RendererDiagnostics | null): string {
   if (!diagnostics?.hasGaussianSource) return "none";
   if (diagnostics.gaussianPreparedForSpark === undefined) return "pending";
+  const previewLimits: string[] = [];
+  if (diagnostics.gaussianClampedScaleCount) previewLimits.push(`${diagnostics.gaussianClampedScaleCount} scales clamped`);
+  if (diagnostics.gaussianDroppedOutlierCount) previewLimits.push(`${diagnostics.gaussianDroppedOutlierCount} outliers hidden`);
+  if (diagnostics.gaussianNormalizedRotationCount) previewLimits.push(`${diagnostics.gaussianNormalizedRotationCount} rotations normalized`);
+  if (previewLimits.length) {
+    return `spark preview limited · ${previewLimits.join(" · ")} · native render evidence authoritative`;
+  }
   return diagnostics.gaussianPreparedForSpark ? "converted" : "native";
 }
 
@@ -3345,6 +3641,7 @@ function buildEditPublishManifest({
     renderer: {
       status: rendererStatus,
       sparkState: rendererDiagnostics?.sparkState ?? "unavailable",
+      sparkProfile: rendererDiagnostics?.sparkProfile ?? null,
       splatRenderPath: rendererDiagnostics?.splatRenderPath ?? "point-fallback",
       hasGaussianSource: rendererDiagnostics?.hasGaussianSource ?? false,
       gaussianSplatCount: rendererDiagnostics?.gaussianSplatCount ?? null
@@ -3455,6 +3752,26 @@ function classesFromPointCloud(points: PointRecord[]): WorldClass[] {
     }));
 }
 
+function centerFromWorldPoints(points: PointRecord[]): [number, number, number] {
+  if (!points.length) return [0, 0, 0];
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    minZ = Math.min(minZ, point.z);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+    maxZ = Math.max(maxZ, point.z);
+  }
+  if (![minX, minY, minZ, maxX, maxY, maxZ].every(Number.isFinite)) return [0, 0, 0];
+  return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+}
+
 function sceneClassToWorldClass(entry: LoftSceneManifest["classes"][number]): WorldClass {
   return {
     label: entry.label,
@@ -3486,20 +3803,75 @@ function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
   const text = payload.budoMediaFrames?.text;
   if (!text) return [];
   try {
-    const parsed = JSON.parse(text) as { frames?: Array<{ display_name?: string; rgb_path?: string; preview_data_url?: string; previewDataUrl?: string }> };
+    const parsed = JSON.parse(text) as { frames?: Array<{ camera?: unknown; frame_camera?: unknown; frameCamera?: unknown; display_name?: string; rgb_path?: string; preview_data_url?: string; previewDataUrl?: string; render_preview_data_url?: string; renderPreviewDataUrl?: string; intrinsics?: unknown; pose?: unknown; width?: unknown; height?: unknown }> };
     if (!Array.isArray(parsed.frames)) return [];
     return parsed.frames.map((frame, index) => ({
+      camera: parseFrameCamera(frame.camera),
+      frameCamera: parseSourceFrameCamera(frame),
       name: frame.display_name ?? `frame ${index + 1}`,
       path: frame.rgb_path ?? "",
       previewDataUrl: typeof frame.preview_data_url === "string" && frame.preview_data_url.startsWith("data:image/")
         ? frame.preview_data_url
         : typeof frame.previewDataUrl === "string" && frame.previewDataUrl.startsWith("data:image/")
           ? frame.previewDataUrl
+          : undefined,
+      renderPreviewDataUrl: typeof frame.render_preview_data_url === "string" && frame.render_preview_data_url.startsWith("data:image/")
+        ? frame.render_preview_data_url
+        : typeof frame.renderPreviewDataUrl === "string" && frame.renderPreviewDataUrl.startsWith("data:image/")
+          ? frame.renderPreviewDataUrl
           : undefined
     }));
   } catch {
     return [];
   }
+}
+
+function parseFrameCamera(value: unknown): CameraState | undefined {
+  if (!isRecord(value)) return undefined;
+  return parseEpisodeCamera(value);
+}
+
+function parseSourceFrameCamera(frame: Record<string, unknown>): FrameCamera | undefined {
+  const explicit = firstRecord(frame.frame_camera, frame.frameCamera);
+  return parseFrameCameraRecord(explicit) ?? parseFrameCameraRecord(frame) ?? parseFrameCameraRecord(firstRecord(frame.camera));
+}
+
+function parseFrameCameraRecord(value: Record<string, unknown> | undefined): FrameCamera | undefined {
+  if (!value) return undefined;
+  const intrinsics = firstRecord(value.intrinsics) ?? value;
+  const pose = firstRecord(value.pose) ?? value;
+  const width = finiteNumber(firstValue(value.width, value.w, intrinsics.width, intrinsics.w), 1, 100000);
+  const height = finiteNumber(firstValue(value.height, value.h, intrinsics.height, intrinsics.h), 1, 100000);
+  const fx = finiteNumber(firstValue(value.fx, value.fl_x, intrinsics.fx, intrinsics.fl_x), 0.000001, 1000000);
+  const fy = finiteNumber(firstValue(value.fy, value.fl_y, intrinsics.fy, intrinsics.fl_y), 0.000001, 1000000);
+  const cx = finiteNumber(firstValue(value.cx, intrinsics.cx), -1000000, 1000000);
+  const cy = finiteNumber(firstValue(value.cy, intrinsics.cy), -1000000, 1000000);
+  const translation = finiteTuple(firstValue(value.translation, pose.translation, pose.t), 3, -1000000, 1000000);
+  const rotation = finiteTuple(firstValue(value.rotation, pose.rotation, pose.qvec, pose.quaternion), 4, -2, 2);
+  if (
+    width === undefined ||
+    height === undefined ||
+    fx === undefined ||
+    fy === undefined ||
+    cx === undefined ||
+    cy === undefined ||
+    !translation ||
+    !rotation
+  ) {
+    return undefined;
+  }
+  return {
+    width,
+    height,
+    fx,
+    fy,
+    cx,
+    cy,
+    translation,
+    rotation,
+    coordinateFrame: optionalString(firstValue(value.coordinate_frame, value.coordinateFrame, pose.coordinate_frame, pose.coordinateFrame)) ?? undefined,
+    authority: optionalString(firstValue(value.authority, pose.authority)) ?? undefined
+  };
 }
 
 function parseEpisodeManifestText(text: string): ImportedEpisodeManifest {
@@ -4055,6 +4427,27 @@ function readOptionalFiniteNumber(value: unknown, fallback: number, min: number,
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> | undefined {
+  return values.find(isRecord);
+}
+
+function firstValue(...values: unknown[]): unknown {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function finiteNumber(value: unknown, min: number, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.min(max, Math.max(min, value));
+}
+
+function finiteTuple(value: unknown, length: 3, min: number, max: number): [number, number, number] | undefined;
+function finiteTuple(value: unknown, length: 4, min: number, max: number): [number, number, number, number] | undefined;
+function finiteTuple(value: unknown, length: number, min: number, max: number): number[] | undefined {
+  if (!Array.isArray(value) || value.length !== length) return undefined;
+  const numbers = value.map((item) => finiteNumber(item, min, max));
+  return numbers.every((item) => item !== undefined) ? numbers as number[] : undefined;
 }
 
 function optionalString(value: unknown): string | null {

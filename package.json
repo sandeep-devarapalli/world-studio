@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "pnpm --filter @world-studio/web dev",
     "desktop:setup": "pnpm --filter @world-studio/desktop run setup",
-    "desktop:dev": "pnpm --filter @world-studio/desktop dev",
+    "desktop:dev": "concurrently -k -s first -n web,desktop \"pnpm --filter @world-studio/web dev --host 127.0.0.1\" \"node scripts/wait-for-url.mjs http://127.0.0.1:5173 && pnpm --filter @world-studio/desktop dev\"",
     "desktop:package": "pnpm build && pnpm --filter @world-studio/desktop run package",
     "desktop:smoke": "pnpm --filter @world-studio/desktop run smoke",
     "desktop:package:smoke": "pnpm desktop:package && pnpm desktop:smoke",

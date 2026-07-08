@@ -4,9 +4,11 @@ declare module "@sparkjsdev/spark" {
   export interface SparkRendererOptions {
     renderer: THREE.WebGLRenderer;
     onDirty?: () => void;
+    blurAmount?: number;
     minAlpha?: number;
     maxPixelRadius?: number;
     focalAdjustment?: number;
+    sortRadial?: boolean;
   }
 
   export class SparkRenderer extends THREE.Object3D {

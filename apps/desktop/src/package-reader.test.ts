@@ -90,7 +90,7 @@ end_header
     const root = await makePackage("oversized");
     const gaussianPath = join(root, "gaussians.ply");
     await writeFile(gaussianPath, "");
-    await truncate(gaussianPath, 256 * 1024 * 1024 + 1);
+    await truncate(gaussianPath, 384 * 1024 * 1024 + 1);
 
     const payload = await readLocalPackage(root);
 
@@ -264,6 +264,39 @@ end_header
     expect(payload.packageIssues).toEqual([]);
   });
 
+  it("loads a directly selected standalone Gaussian PLY", async () => {
+    const root = await makePackage("standalone-gaussian-ply");
+    const plyPath = join(root, "capture-splat-7000.ply");
+    await writeFile(plyPath, `ply
+format ascii 1.0
+element vertex 2
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 1 -6 -6 -6 1 0 0 0
+1 0 0 0.5 0 0 1 -6 -6 -6 1 0 0 0`);
+
+    const payload = await readLocalPackage(plyPath);
+
+    expect(payload.packageKind).toBe("external-local-folder");
+    expect(payload.primaryArtifact).toBe("capture-splat-7000.ply");
+    expect(payload.gaussianPly?.relativePath).toBe("capture-splat-7000.ply");
+    expect(payload.pointsPly?.relativePath).toBe("capture-splat-7000.ply#preview-points");
+    expect(payload.packageIssues).toEqual([]);
+  });
+
   it("synthesizes source frame previews for Capture Splat image folders", async () => {
     const root = await makePackage("capture-splat-images");
     await mkdir(join(root, "images"));
@@ -291,7 +324,7 @@ end_header
 
     const payload = await readLocalPackage(root);
     const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
-      frames?: Array<{ rgb_path?: string; preview_data_url?: string }>;
+      frames?: Array<{ frame_camera?: unknown; rgb_path?: string; preview_data_url?: string }>;
       source_kind?: string;
     };
 
@@ -344,15 +377,39 @@ end_header
     await writeFile(join(root, "exports", "collision_mesh.obj"), "o fixture\nv 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n");
     await writeJson(root, "capture.json", { schema: "capture_splat.v0.1", accepted_keyframes: 2 });
     await writeJson(root, "colmap/transforms.json", { schema: "capture_splat.transforms.v0.1", frames: [] });
+    await writeFile(join(root, "colmap", "cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
+    await writeFile(join(root, "colmap", "images.txt"), "1 1 0 0 0 0 0 0 1 frame_000001.png\n\n2 1 0 0 0 -1 0 0 1 frame_000002.png\n\n");
     await writeJson(root, "capture-splat.world-studio.json", {
       schema: "capture_splat.world_studio_handoff.v0.1",
       status: "visual_evidence_with_3dgs_proposal",
-      source_frames: [{ path: "rgb/frame_000001.png" }, { path: "rgb/frame_000002.png" }],
+      source_frames: [
+        {
+          path: "rgb/frame_000001.png",
+          width: 8,
+          height: 6,
+          intrinsics: { fx: 10, fy: 11, cx: 4, cy: 3 },
+          pose: {
+            translation: [2, 3, 4],
+            rotation: [1, 0, 0, 0],
+            coordinate_frame: "colmap_world",
+            authority: "inline handoff"
+          }
+        },
+        { path: "rgb/frame_000002.png" }
+      ],
+      frames: [
+        { path: "rgb/frame_000001.png" },
+        { path: "rgb/frame_000002.png" }
+      ],
       assets: {
         points: "exports/points.ply",
         gaussian: "renders/splat.ply",
         capture_manifest: "capture.json",
         transforms: "colmap/transforms.json",
+        colmap_sparse: {
+          "cameras.txt": "colmap/cameras.txt",
+          "images.txt": "colmap/images.txt"
+        },
         spz: "exports/scene.spz"
       },
       artifacts: [
@@ -362,7 +419,7 @@ end_header
 
     const payload = await readLocalPackage(root);
     const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
-      frames?: Array<{ rgb_path?: string; preview_data_url?: string }>;
+      frames?: Array<{ frame_camera?: unknown; rgb_path?: string; preview_data_url?: string }>;
       source_kind?: string;
     };
 
@@ -377,6 +434,21 @@ end_header
     expect(mediaFrames.frames).toHaveLength(2);
     expect(mediaFrames.frames?.[0]?.rgb_path).toBe("rgb/frame_000001.png");
     expect(mediaFrames.frames?.[0]?.preview_data_url).toMatch(/^data:image\/png;base64,/);
+    expect(mediaFrames.frames?.[0]).toMatchObject({
+      frame_camera: {
+        width: 8,
+        height: 6,
+        fx: 10,
+        fy: 11,
+        cx: 4,
+        cy: 3,
+        translation: [2, 3, 4],
+        rotation: [1, 0, 0, 0],
+        coordinateFrame: "colmap_world",
+        authority: "inline handoff"
+      }
+    });
+    expect(mediaFrames.frames?.[1]).toMatchObject({ frame_camera: { translation: [1, 0, 0] } });
     expect(payload.companionArtifacts).toEqual(
       expect.arrayContaining(["capture-splat.world-studio.json", "exports/points.ply", "renders/splat.ply", "capture-splat.media_frames.generated.json", "exports/collision_mesh.obj", "capture.json"])
     );
@@ -393,6 +465,43 @@ end_header
       ])
     );
     expect(payload.packageIssues).toEqual([]);
+  });
+
+  it("maps COLMAP frame cameras through the handoff dataparser transform", async () => {
+    const root = await makePackage("capture-splat-handoff-dataparser");
+    await mkdir(join(root, "rgb"), { recursive: true });
+    await mkdir(join(root, "colmap"), { recursive: true });
+    await writeFile(join(root, "rgb", "frame_000001.png"), onePixelPng);
+    await writeFile(join(root, "colmap", "cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
+    await writeFile(join(root, "colmap", "images.txt"), "1 1 0 0 0 -1 0 0 1 frame_000001.png\n\n");
+    await writeJson(root, "capture-splat.world-studio.json", {
+      schema: "capture_splat.world_studio_handoff.v0.1",
+      status: "visual_evidence_with_3dgs_proposal",
+      dataparser_transform: [
+        [2, 0, 0, 10],
+        [0, 2, 0, 0],
+        [0, 0, 2, 0],
+        [0, 0, 0, 1]
+      ],
+      source_frames: [{ path: "rgb/frame_000001.png" }],
+      assets: {
+        colmap_sparse: {
+          "cameras.txt": "colmap/cameras.txt",
+          "images.txt": "colmap/images.txt"
+        }
+      }
+    });
+
+    const payload = await readLocalPackage(root);
+    const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ frame_camera?: { translation?: number[]; rotation?: number[]; coordinateFrame?: string } }>;
+    };
+
+    expect(mediaFrames.frames?.[0]?.frame_camera).toMatchObject({
+      translation: [12, 0, 0],
+      rotation: [1, 0, 0, 0],
+      coordinateFrame: "trainer_normalized_world"
+    });
   });
 
   it("keeps generic JSON folders external and proposal-scoped", async () => {

@@ -24,10 +24,19 @@ export interface PreparedSparkGaussianPly {
   headerLength: number;
   sourceFormat: PlyHeader["format"];
   vertexCount: number;
+  clampedScaleCount?: number;
+  normalizedRotationCount?: number;
+  droppedOutlierCount?: number;
 }
 
 export interface GaussianPreviewPointCloudOptions {
   maxPoints?: number;
+}
+
+export interface SparkGaussianPlyPrepareOptions {
+  maxScale?: number;
+  normalizeRotations?: boolean;
+  hideOutliersBeyondRadius?: number;
 }
 
 interface PlyScalarProperty {
@@ -141,7 +150,7 @@ export function detectPlyKind(source: string): PlyKind {
   return "unknown-ply";
 }
 
-export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer): PreparedSparkGaussianPly {
+export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer, options: SparkGaussianPlyPrepareOptions = {}): PreparedSparkGaussianPly {
   const bytes = source instanceof Uint8Array ? source : new Uint8Array(source);
   const headerLength = findPlyHeaderLength(bytes);
   if (headerLength < 0) throw new Error("PLY header is missing end_header");
@@ -150,7 +159,26 @@ export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer): Pr
   const header = parsePlyHeader(headerText);
   const kind = detectPlyKind(headerText);
   if (kind !== "gaussian-ply") throw new Error(`Expected Gaussian PLY, got ${kind}`);
+  const maxLogScale = options.maxScale && options.maxScale > 0 ? Math.log(options.maxScale) : undefined;
+  const hideRadius = options.hideOutliersBeyondRadius && options.hideOutliersBeyondRadius > 0 ? options.hideOutliersBeyondRadius : undefined;
   if (header.format !== "ascii") {
+    if (header.format === "binary_little_endian" && (maxLogScale !== undefined || options.normalizeRotations || hideRadius !== undefined)) {
+      const prepared = prepareBinaryGaussianRows(bytes, headerText, headerLength, {
+        maxLogScale,
+        normalizeRotations: options.normalizeRotations,
+        hideOutliersBeyondRadius: hideRadius
+      });
+      return {
+        bytes: prepared.bytes,
+        converted: prepared.clampedScaleCount > 0 || prepared.normalizedRotationCount > 0 || prepared.droppedOutlierCount > 0,
+        headerLength,
+        sourceFormat: header.format,
+        vertexCount: header.vertexCount,
+        clampedScaleCount: prepared.clampedScaleCount,
+        normalizedRotationCount: prepared.normalizedRotationCount,
+        droppedOutlierCount: prepared.droppedOutlierCount
+      };
+    }
     return { bytes, converted: false, headerLength, sourceFormat: header.format, vertexCount: header.vertexCount };
   }
 
@@ -175,17 +203,32 @@ export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer): Pr
     if (cols.length < properties.length) {
       throw new Error(`ASCII Gaussian PLY row ${rowIndex + 1} has ${cols.length} columns`);
     }
+    let clampedScaleCount = 0;
     for (let propertyIndex = 0; propertyIndex < properties.length; propertyIndex++) {
-      offset = writePlyScalar(view, offset, properties[propertyIndex], cols[propertyIndex]);
+      const property = properties[propertyIndex]!;
+      const rawValue = cols[propertyIndex];
+      const value = maxLogScale === undefined ? rawValue : clampGaussianScaleRawValue(property, rawValue, maxLogScale);
+      if (value !== rawValue) clampedScaleCount++;
+      offset = writePlyScalar(view, offset, property, value);
     }
   }
 
+  const normalized = options.normalizeRotations || hideRadius !== undefined
+    ? prepareBinaryGaussianRows(outputBytes, binaryHeader, headerBytes.length, {
+        normalizeRotations: options.normalizeRotations,
+        hideOutliersBeyondRadius: hideRadius
+      })
+    : { bytes: outputBytes, normalizedRotationCount: 0, clampedScaleCount: 0, droppedOutlierCount: 0 };
+
   return {
-    bytes: outputBytes,
+    bytes: normalized.bytes,
     converted: true,
     headerLength: headerBytes.length,
     sourceFormat: header.format,
-    vertexCount
+    vertexCount,
+    clampedScaleCount: maxLogScale === undefined ? undefined : countAsciiGaussianScaleClamps(lines, properties, maxLogScale),
+    normalizedRotationCount: options.normalizeRotations ? normalized.normalizedRotationCount : undefined,
+    droppedOutlierCount: hideRadius === undefined ? undefined : normalized.droppedOutlierCount
   };
 }
 
@@ -406,35 +449,143 @@ function plyScalarSize(type: PlyScalarType): number {
   }
 }
 
+function clampGaussianScaleRawValue(property: PlyScalarProperty, rawValue: string | undefined, maxLogScale: number): string | undefined {
+  if (!isGaussianScaleProperty(property.name)) return rawValue;
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= maxLogScale) return rawValue;
+  return String(maxLogScale);
+}
+
+function countAsciiGaussianScaleClamps(lines: string[], properties: PlyScalarProperty[], maxLogScale: number): number {
+  let count = 0;
+  for (const line of lines) {
+    const cols = line.trim().split(/\s+/);
+    for (let propertyIndex = 0; propertyIndex < properties.length; propertyIndex++) {
+      const property = properties[propertyIndex]!;
+      if (!isGaussianScaleProperty(property.name)) continue;
+      const value = Number(cols[propertyIndex]);
+      if (Number.isFinite(value) && value > maxLogScale) count++;
+    }
+  }
+  return count;
+}
+
+// sigmoid(-30) is ~1e-13, so preview-hidden splats render fully transparent without changing row layout.
+const hiddenOutlierOpacityLogit = -30;
+
+function prepareBinaryGaussianRows(
+  bytes: Uint8Array,
+  headerText: string,
+  headerLength: number,
+  options: { maxLogScale?: number; normalizeRotations?: boolean; hideOutliersBeyondRadius?: number }
+): { bytes: Uint8Array; clampedScaleCount: number; normalizedRotationCount: number; droppedOutlierCount: number } {
+  const { properties, vertexCount } = parseAsciiPlySchema(headerText);
+  const offsets = propertyByteOffsets(properties);
+  const stride = properties.reduce((sum, property) => sum + plyScalarSize(property.type), 0);
+  const scaleIndexes = properties.flatMap((property, index) => isGaussianScaleProperty(property.name) ? [index] : []);
+  const rotationIndexes = ["rot_0", "rot_1", "rot_2", "rot_3"]
+    .map((name) => properties.findIndex((property) => property.name === name));
+  const positionIndexes = ["x", "y", "z"].map((name) => properties.findIndex((property) => property.name === name));
+  const opacityIndex = properties.findIndex((property) => property.name === "opacity");
+  const canNormalizeRotations = Boolean(options.normalizeRotations && rotationIndexes.every((index) => index >= 0));
+  const canHideOutliers = Boolean(
+    options.hideOutliersBeyondRadius !== undefined &&
+    positionIndexes.every((index) => index >= 0) &&
+    opacityIndex >= 0
+  );
+  if (!scaleIndexes.length && !canNormalizeRotations && !canHideOutliers) {
+    return { bytes, clampedScaleCount: 0, normalizedRotationCount: 0, droppedOutlierCount: 0 };
+  }
+
+  const output = new Uint8Array(bytes);
+  const view = new DataView(output.buffer, output.byteOffset, output.byteLength);
+  let clampedScaleCount = 0;
+  let normalizedRotationCount = 0;
+  let droppedOutlierCount = 0;
+  for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
+    const rowOffset = headerLength + vertexIndex * stride;
+    if (canHideOutliers) {
+      const [x, y, z] = positionIndexes.map((propertyIndex) =>
+        readPlyScalar(view, rowOffset + offsets[propertyIndex]!, properties[propertyIndex]!)
+      );
+      const distance = Math.hypot(x!, y!, z!);
+      if (!Number.isFinite(distance) || distance > options.hideOutliersBeyondRadius!) {
+        const property = properties[opacityIndex]!;
+        if (readPlyScalar(view, rowOffset + offsets[opacityIndex]!, property) > hiddenOutlierOpacityLogit) {
+          writePlyNumber(view, rowOffset + offsets[opacityIndex]!, property, hiddenOutlierOpacityLogit);
+          droppedOutlierCount++;
+        }
+      }
+    }
+    if (options.maxLogScale !== undefined) {
+      for (const propertyIndex of scaleIndexes) {
+        const property = properties[propertyIndex]!;
+        const offset = rowOffset + offsets[propertyIndex]!;
+        const value = readPlyScalar(view, offset, property);
+        if (!Number.isFinite(value) || value <= options.maxLogScale) continue;
+        writePlyNumber(view, offset, property, options.maxLogScale);
+        clampedScaleCount++;
+      }
+    }
+    if (canNormalizeRotations) {
+      const values = rotationIndexes.map((propertyIndex) => {
+        const property = properties[propertyIndex]!;
+        return readPlyScalar(view, rowOffset + offsets[propertyIndex]!, property);
+      });
+      const length = Math.hypot(...values);
+      if (Number.isFinite(length) && length > 1e-12 && Math.abs(length - 1) > 1e-4) {
+        for (let index = 0; index < rotationIndexes.length; index++) {
+          const propertyIndex = rotationIndexes[index]!;
+          const property = properties[propertyIndex]!;
+          writePlyNumber(view, rowOffset + offsets[propertyIndex]!, property, values[index]! / length);
+        }
+        normalizedRotationCount++;
+      }
+    }
+  }
+  const changed = clampedScaleCount > 0 || normalizedRotationCount > 0 || droppedOutlierCount > 0;
+  return { bytes: changed ? output : bytes, clampedScaleCount, normalizedRotationCount, droppedOutlierCount };
+}
+
+function isGaussianScaleProperty(name: string): boolean {
+  return name === "scale_0" || name === "scale_1" || name === "scale_2";
+}
+
 function writePlyScalar(view: DataView, offset: number, property: PlyScalarProperty, rawValue: string | undefined): number {
   const value = Number(rawValue);
   if (!Number.isFinite(value)) throw new Error(`PLY property ${property.name} is not finite`);
 
+  writePlyNumber(view, offset, property, value);
+  return offset + plyScalarSize(property.type);
+}
+
+function writePlyNumber(view: DataView, offset: number, property: PlyScalarProperty, value: number): void {
+  if (!Number.isFinite(value)) throw new Error(`PLY property ${property.name} is not finite`);
   switch (property.type) {
     case "char":
       view.setInt8(offset, value);
-      return offset + 1;
+      return;
     case "uchar":
       view.setUint8(offset, value);
-      return offset + 1;
+      return;
     case "short":
       view.setInt16(offset, value, true);
-      return offset + 2;
+      return;
     case "ushort":
       view.setUint16(offset, value, true);
-      return offset + 2;
+      return;
     case "int":
       view.setInt32(offset, value, true);
-      return offset + 4;
+      return;
     case "uint":
       view.setUint32(offset, value, true);
-      return offset + 4;
+      return;
     case "float":
       view.setFloat32(offset, value, true);
-      return offset + 4;
+      return;
     case "double":
       view.setFloat64(offset, value, true);
-      return offset + 8;
+      return;
   }
 }
 

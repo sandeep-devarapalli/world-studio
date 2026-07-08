@@ -81,6 +81,17 @@ body {
   transform: translateX(-50%);
 }
 
+.ws-open-local-action {
+  position: absolute;
+  top: 96px;
+  right: 32px;
+  pointer-events: auto;
+}
+
+.ws-header-actions {
+  padding: 8px;
+}
+
 .ws-mode-switch .ws-head {
   margin: 0 10px 0 8px;
 }
@@ -389,7 +400,7 @@ body {
 }
 
 .ws-root.mode-simulate .ws-bottom-tray {
-  bottom: 214px;
+  bottom: 250px;
   gap: 10px;
 }
 
@@ -399,6 +410,10 @@ body {
 
 .ws-root.mode-simulate .ws-bottom-tray .ws-mode-card {
   width: 312px;
+}
+
+.ws-root.mode-simulate .ws-bottom-tray .ws-performance-card {
+  width: 224px;
 }
 
 .ws-root.mode-simulate .ws-bottom-tray .ws-panel-head {
@@ -429,7 +444,7 @@ body {
 }
 
 .ws-root.mode-simulate .ws-bottom-center {
-  bottom: 62px;
+  bottom: 46px;
 }
 
 .ws-root.mode-simulate .ws-frame-list {
@@ -438,6 +453,156 @@ body {
 
 .ws-root.mode-simulate .ws-frame-row {
   min-height: 36px;
+}
+
+.ws-frame-row {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.ws-sim-camera-strip {
+  align-items: center;
+  align-self: center;
+  background: color-mix(in srgb, var(--panel), transparent 6%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 9px;
+  min-height: 42px;
+  max-width: min(1480px, calc(100vw - 112px));
+  padding: 6px 12px;
+  pointer-events: auto;
+}
+
+.ws-sim-mode-group,
+.ws-sim-nudge-group,
+.ws-sim-shortcuts {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+}
+
+.ws-sim-mode-group {
+  border-right: 1px solid var(--line);
+  padding-right: 10px;
+}
+
+.ws-sim-mode-group button,
+.ws-sim-nudge-group button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 28px;
+  min-width: 30px;
+  padding: 0 9px;
+  text-transform: uppercase;
+}
+
+.ws-sim-mode-group button.on {
+  background: var(--acc);
+  border-color: color-mix(in oklab, var(--acc) 70%, white);
+  color: #160c06;
+  box-shadow: 0 8px 20px color-mix(in oklab, var(--acc) 22%, transparent);
+}
+
+.ws-sim-nudge-group button {
+  aspect-ratio: 1;
+  padding: 0;
+}
+
+.ws-sim-shortcuts {
+  border-left: 1px solid var(--line);
+  gap: 13px;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 10px;
+}
+
+.ws-sim-shortcut {
+  align-items: center;
+  color: var(--ink-mut);
+  display: inline-flex;
+  flex: 0 1 auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  gap: 6px;
+  letter-spacing: 0.13em;
+  min-width: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ws-sim-shortcut .ws-key {
+  flex: 0 0 auto;
+  font-size: 9px;
+  padding: 2px 6px;
+}
+
+.ws-sim-shortcut span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-sim-mode-group button:hover,
+.ws-sim-nudge-group button:hover {
+  border-color: color-mix(in oklab, var(--acc) 48%, var(--line));
+  color: var(--acc);
+}
+
+.ws-sim-mode-group button.on:hover {
+  color: #160c06;
+}
+
+.ws-sim-camera-status {
+  border-left: 1px solid var(--line);
+  color: var(--ink-faint);
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  max-width: 168px;
+  overflow: hidden;
+  padding-left: 10px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 1500px) {
+  .ws-sim-shortcut:nth-child(n + 6) {
+    display: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .ws-sim-shortcut:nth-child(n + 5),
+  .ws-sim-camera-status {
+    display: none;
+  }
+}
+
+.ws-performance-card {
+  width: 224px;
+}
+
+.ws-sim-nudge-group button[aria-label="Orbit left"] svg,
+.ws-sim-nudge-group button[aria-label="Orbit up"] svg {
+  transform: rotate(180deg);
 }
 
 .ws-root.mode-sensors .ws-right-col {
@@ -704,6 +869,7 @@ body {
 }
 
 .ws-canvas.dual-right {
+  clip-path: inset(88px 26px 132px 26px round 8px);
   left: 50%;
   width: 50%;
 }
@@ -735,6 +901,36 @@ body {
   max-height: 100%;
   max-width: 100%;
   object-fit: contain;
+}
+
+.ws-dual-right-frame {
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.018), 0 18px 42px rgba(0, 0, 0, 0.24);
+  bottom: 132px;
+  left: calc(50% + 26px);
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  right: 26px;
+  top: 88px;
+  z-index: 0;
+}
+
+.ws-native-render-evidence {
+  background: rgba(0, 0, 0, 0.36);
+  bottom: 132px;
+  display: block;
+  left: calc(50% + 26px);
+  max-height: calc(100% - 220px);
+  object-fit: contain;
+  pointer-events: none;
+  position: absolute;
+  right: 26px;
+  top: 88px;
+  width: calc(50% - 52px);
+  z-index: 0;
 }
 
 .ws-view-tag.metric {

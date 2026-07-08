@@ -61,6 +61,107 @@ describe("World Studio artifact loaders", () => {
     expect(binaryPrepared.bytes).toBe(asciiPrepared.bytes);
   });
 
+  it("clamps binary Gaussian PLY scales for visual review when requested", () => {
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 1 1 1 1 1 0 0 0
+`);
+    const binary = prepareGaussianPlyForSpark(source).bytes;
+    const prepared = prepareGaussianPlyForSpark(binary, { maxScale: 0.06 });
+    const view = new DataView(prepared.bytes.buffer, prepared.bytes.byteOffset, prepared.bytes.byteLength);
+    const maxLogScale = Math.log(0.06);
+
+    expect(prepared.converted).toBe(true);
+    expect(prepared.clampedScaleCount).toBe(3);
+    expect(view.getFloat32(prepared.headerLength + 7 * 4, true)).toBeCloseTo(maxLogScale, 5);
+    expect(view.getFloat32(prepared.headerLength + 8 * 4, true)).toBeCloseTo(maxLogScale, 5);
+    expect(view.getFloat32(prepared.headerLength + 9 * 4, true)).toBeCloseTo(maxLogScale, 5);
+  });
+
+  it("normalizes binary Gaussian PLY rotations for Spark visual parity when requested", () => {
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 1 -4 -4 -4 2 0 0 0
+`);
+    const binary = prepareGaussianPlyForSpark(source).bytes;
+    const prepared = prepareGaussianPlyForSpark(binary, { normalizeRotations: true });
+    const view = new DataView(prepared.bytes.buffer, prepared.bytes.byteOffset, prepared.bytes.byteLength);
+
+    expect(prepared.converted).toBe(true);
+    expect(prepared.normalizedRotationCount).toBe(1);
+    expect(view.getFloat32(prepared.headerLength + 10 * 4, true)).toBeCloseTo(1, 5);
+    expect(view.getFloat32(prepared.headerLength + 11 * 4, true)).toBeCloseTo(0, 5);
+    expect(view.getFloat32(prepared.headerLength + 12 * 4, true)).toBeCloseTo(0, 5);
+    expect(view.getFloat32(prepared.headerLength + 13 * 4, true)).toBeCloseTo(0, 5);
+  });
+
+  it("hides binary Gaussian PLY coordinate outliers for preview when requested", () => {
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 2
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 2 -5 -5 -5 1 0 0 0
+1000 0 0 0 0 0 2 -5 -5 -5 1 0 0 0
+`);
+    const binary = prepareGaussianPlyForSpark(source).bytes;
+    const prepared = prepareGaussianPlyForSpark(binary, { hideOutliersBeyondRadius: 100 });
+    const view = new DataView(prepared.bytes.buffer, prepared.bytes.byteOffset, prepared.bytes.byteLength);
+    const stride = 14 * 4;
+    const opacityOffset = 6 * 4;
+
+    expect(prepared.converted).toBe(true);
+    expect(prepared.droppedOutlierCount).toBe(1);
+    expect(view.getFloat32(prepared.headerLength + opacityOffset, true)).toBeCloseTo(2, 5);
+    expect(view.getFloat32(prepared.headerLength + stride + opacityOffset, true)).toBeLessThanOrEqual(-30);
+    expect(view.getFloat32(prepared.headerLength + stride, true)).toBeCloseTo(1000, 3);
+  });
+
   it("builds ordinary preview points from Gaussian PLYs", async () => {
     const gaussians = await readFile(fixture("gaussians.ply"));
     const preview = buildGaussianPreviewPointCloudPly(gaussians, { maxPoints: 64 });

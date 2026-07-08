@@ -67,6 +67,36 @@ export interface CameraState {
   distance: number;
   target: [number, number, number];
   fov: number;
+  roll?: number;
+}
+
+export interface FrameCamera {
+  width: number;
+  height: number;
+  fx: number;
+  fy: number;
+  cx: number;
+  cy: number;
+  translation: [number, number, number];
+  rotation: [number, number, number, number];
+  coordinateFrame?: string;
+  authority?: string;
+}
+
+export interface FirstPersonCamera {
+  position: [number, number, number];
+  rotation: [number, number, number, number];
+  fov: number;
+  coordinateFrame?: string;
+  authority?: string;
+  roll?: number;
+}
+
+export interface WorldOrientation {
+  rotation: [number, number, number, number];
+  center: [number, number, number];
+  sourceUp?: [number, number, number];
+  authority?: string;
 }
 
 export interface AgentState {
@@ -106,6 +136,9 @@ export interface EpisodeTrackBlock {
 export interface RenderOptions {
   mode: RenderMode;
   camera: CameraState;
+  frameCamera?: FrameCamera;
+  firstPersonCamera?: FirstPersonCamera;
+  worldOrientation?: WorldOrientation;
   density: number;
   exposure: number;
   accent: string;
@@ -142,14 +175,20 @@ export type SparkLoadState = "unavailable" | "idle" | "loading" | "ready" | "fai
 
 export type SplatRenderPath = "spark-gaussian" | "point-fallback";
 
+export type SparkRenderProfile = "world-studio-default" | "capture-splat-vksplat";
+
 export interface RendererDiagnostics {
   splatRenderPath: SplatRenderPath;
   sparkState: SparkLoadState;
   sparkRenderable: boolean;
   hasGaussianSource: boolean;
+  sparkProfile?: SparkRenderProfile;
   gaussianSourceFormat?: string;
   gaussianPreparedForSpark?: boolean;
   gaussianSplatCount?: number;
+  gaussianClampedScaleCount?: number;
+  gaussianNormalizedRotationCount?: number;
+  gaussianDroppedOutlierCount?: number;
   sparkFailureReason?: string;
 }
 
@@ -253,6 +292,10 @@ export interface BudoMediaFrame {
   rgb_path?: string;
   width?: number;
   height?: number;
+  camera?: CameraState;
+  frame_camera?: FrameCamera;
+  intrinsics?: Record<string, unknown>;
+  pose?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

@@ -1,5 +1,14 @@
 import { prepareGaussianPlyForSpark, type ParsedObjMesh, type ParsedPointCloud, type PointRecord } from "@world-studio/artifacts";
-import type { RendererDiagnostics, RenderAdapter, RenderOptions, SensorRigChannel, SparkLoadState, WorldClass } from "@world-studio/world-core";
+import type {
+  FrameCamera,
+  RendererDiagnostics,
+  RenderAdapter,
+  RenderOptions,
+  SensorRigChannel,
+  SparkLoadState,
+  SparkRenderProfile,
+  WorldClass
+} from "@world-studio/world-core";
 import * as THREE from "three";
 
 type ThreeConsoleFunction = (type: "log" | "warn" | "error", message: string, ...params: unknown[]) => void;
@@ -15,7 +24,17 @@ export interface ThreeRendererInput {
   classes: WorldClass[];
   mesh?: ParsedObjMesh;
   gaussianUrl?: string;
+  sparkProfile?: SparkRenderProfile;
   onDiagnosticsChange?: (diagnostics: RendererDiagnostics) => void;
+}
+
+interface SparkRuntimeProfile {
+  minAlpha: number;
+  maxPixelRadius: number;
+  focalAdjustment: number;
+  sortRadial?: boolean;
+  maxGaussianScale?: number;
+  maxGaussianPositionRadius?: number;
 }
 
 const fallbackClassColors = [
@@ -37,6 +56,24 @@ const knownSparkDeprecationWarnings = new Set([
   sparkDeprecatedWasmInitWarning,
   sparkDeprecatedThreeClockWarning
 ]);
+const sparkRuntimeProfiles: Record<SparkRenderProfile, SparkRuntimeProfile> = {
+  "world-studio-default": {
+    minAlpha: 1 / 255,
+    maxPixelRadius: 180,
+    focalAdjustment: 1.5
+  },
+  // Spark defaults (as proven by Budo Studio on Bonsai PLYs) plus preview-only tail handling:
+  // VkSplat scenes keep most mass in faint splats, so raising minAlpha darkens them, and clamping
+  // scales below the ~99.5th percentile erases real wall/floor splats.
+  "capture-splat-vksplat": {
+    minAlpha: 0.5 / 255,
+    maxPixelRadius: 512,
+    focalAdjustment: 1,
+    sortRadial: true,
+    maxGaussianScale: 0.3,
+    maxGaussianPositionRadius: 25
+  }
+};
 const sparkWorkerConsoleWarningFilterSource = `(() => {
   const originalWarn = console.warn.bind(console);
   console.warn = (...args) => {
@@ -54,7 +91,9 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private readonly classColors: Map<number, THREE.Color>;
   private readonly mesh?: ParsedObjMesh;
   private readonly gaussianUrl?: string;
+  private readonly sparkProfile: SparkRenderProfile;
   private readonly onDiagnosticsChange?: (diagnostics: RendererDiagnostics) => void;
+  private readonly sceneCenter: THREE.Vector3;
   private canvas?: HTMLCanvasElement;
   private webgl?: THREE.WebGLRenderer;
   private scene?: THREE.Scene;
@@ -77,6 +116,9 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private sparkFailureReason?: string;
   private gaussianSourceFormat?: string;
   private gaussianPreparedForSpark?: boolean;
+  private gaussianClampedScaleCount?: number;
+  private gaussianNormalizedRotationCount?: number;
+  private gaussianDroppedOutlierCount?: number;
   private sparkObjectUrl?: string;
   private releaseSparkWarnings?: () => void;
   private lastCanvas?: HTMLCanvasElement;
@@ -88,8 +130,10 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.points = input.pointCloud.points;
     this.mesh = input.mesh;
     this.gaussianUrl = input.gaussianUrl;
+    this.sparkProfile = input.sparkProfile ?? "world-studio-default";
     if (this.gaussianUrl) this.releaseSparkWarnings = retainSparkConsoleWarningFilter();
     this.onDiagnosticsChange = input.onDiagnosticsChange;
+    this.sceneCenter = centerFromBounds(input.pointCloud.bounds);
     this.pointPositions = new Float32Array(this.points.length * 3);
     this.pointColors = new Float32Array(this.points.length * 3);
     this.classColors = new Map(
@@ -196,9 +240,13 @@ export class ThreeWorldRenderer implements RenderAdapter {
       sparkState: this.gaussianUrl ? this.sparkState : "unavailable",
       sparkRenderable,
       hasGaussianSource: Boolean(this.gaussianUrl),
+      sparkProfile: this.gaussianUrl ? this.sparkProfile : undefined,
       gaussianSourceFormat: this.gaussianSourceFormat,
       gaussianPreparedForSpark: this.gaussianPreparedForSpark,
       gaussianSplatCount: this.sparkMesh?.numSplats,
+      gaussianClampedScaleCount: this.gaussianClampedScaleCount,
+      gaussianNormalizedRotationCount: this.gaussianNormalizedRotationCount,
+      gaussianDroppedOutlierCount: this.gaussianDroppedOutlierCount,
       sparkFailureReason: this.sparkFailureReason
     };
   }
@@ -230,6 +278,9 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.sparkFailureReason = undefined;
     this.gaussianSourceFormat = undefined;
     this.gaussianPreparedForSpark = undefined;
+    this.gaussianClampedScaleCount = undefined;
+    this.gaussianNormalizedRotationCount = undefined;
+    this.gaussianDroppedOutlierCount = undefined;
     this.sparkObjectUrl = undefined;
     if (releaseSparkWarnings) this.releaseSparkWarnings = undefined;
     this.sparkState = "idle";
@@ -291,6 +342,15 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private updateCamera(canvas: HTMLCanvasElement, options: RenderOptions): void {
     if (!this.camera) return;
+    if (options.frameCamera) {
+      this.updateFrameCamera(options.frameCamera, options);
+      return;
+    }
+    if (options.firstPersonCamera) {
+      this.updateFirstPersonCamera(canvas, options.firstPersonCamera, options);
+      return;
+    }
+    this.camera.matrixAutoUpdate = true;
     const rect = canvas.getBoundingClientRect();
     const { yaw, pitch, distance, target, fov } = options.camera;
     const cy = Math.cos(yaw);
@@ -301,7 +361,91 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.camera.aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
     this.camera.position.set(target[0] + distance * cp * sy, target[1] + distance * sp, target[2] + distance * cp * cy);
     this.camera.lookAt(target[0], target[1], target[2]);
+    if (options.camera.roll) this.camera.rotateZ(options.camera.roll);
     this.camera.updateProjectionMatrix();
+  }
+
+  private updateFirstPersonCamera(canvas: HTMLCanvasElement, firstPersonCamera: NonNullable<RenderOptions["firstPersonCamera"]>, options: RenderOptions): void {
+    if (!this.camera) return;
+    const rect = canvas.getBoundingClientRect();
+    const near = 0.005;
+    const far = 1000;
+    this.camera.fov = Math.min(90, Math.max(24, firstPersonCamera.fov));
+    this.camera.aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+    this.camera.near = near;
+    this.camera.far = far;
+
+    const [qw, qx, qy, qz] = firstPersonCamera.rotation;
+    const rotation = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(qx, qy, qz, qw).normalize());
+    const e = rotation.elements;
+    const center = options.worldOrientation ? new THREE.Vector3() : this.sceneCenter;
+    const offset = new THREE.Vector3(
+      center.x - firstPersonCamera.position[0],
+      center.y - firstPersonCamera.position[1],
+      center.z - firstPersonCamera.position[2]
+    );
+    const col0 = new THREE.Vector3(e[0], e[1], e[2]);
+    const col1 = new THREE.Vector3(e[4], e[5], e[6]);
+    const col2 = new THREE.Vector3(e[8], e[9], e[10]);
+    const view = new THREE.Matrix4().set(
+      col0.x, col0.y, col0.z, col0.dot(offset),
+      -col1.x, -col1.y, -col1.z, -col1.dot(offset),
+      -col2.x, -col2.y, -col2.z, -col2.dot(offset),
+      0, 0, 0, 1
+    );
+    this.camera.matrixAutoUpdate = false;
+    this.camera.matrixWorld.copy(view).invert();
+    this.camera.matrixWorldInverse.copy(view);
+    this.camera.updateProjectionMatrix();
+    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
+  }
+
+  private updateFrameCamera(frameCamera: FrameCamera, options: RenderOptions): void {
+    if (!this.camera) return;
+    const width = Math.max(1, frameCamera.width);
+    const height = Math.max(1, frameCamera.height);
+    const near = 0.005;
+    const far = 1000;
+    const verticalFov = THREE.MathUtils.radToDeg(2 * Math.atan(height / (2 * frameCamera.fy)));
+    this.camera.fov = Math.min(75, Math.max(32, verticalFov));
+    this.camera.aspect = width / height;
+    this.camera.near = near;
+    this.camera.far = far;
+
+    const [qw, qx, qy, qz] = frameCamera.rotation;
+    const rotation = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(qx, qy, qz, qw).normalize());
+    const e = rotation.elements;
+    const center = options.worldOrientation ? new THREE.Vector3() : this.sceneCenter;
+    const cx = center.x;
+    const cy = center.y;
+    const cz = center.z;
+    const ox = frameCamera.translation[0];
+    const oy = frameCamera.translation[1];
+    const oz = frameCamera.translation[2];
+    const offsetX = cx - ox;
+    const offsetY = cy - oy;
+    const offsetZ = cz - oz;
+    const col0 = new THREE.Vector3(e[0], e[1], e[2]);
+    const col1 = new THREE.Vector3(e[4], e[5], e[6]);
+    const col2 = new THREE.Vector3(e[8], e[9], e[10]);
+    const view = new THREE.Matrix4().set(
+      col0.x, col0.y, col0.z, col0.dot(new THREE.Vector3(offsetX, offsetY, offsetZ)),
+      -col1.x, -col1.y, -col1.z, -col1.dot(new THREE.Vector3(offsetX, offsetY, offsetZ)),
+      -col2.x, -col2.y, -col2.z, -col2.dot(new THREE.Vector3(offsetX, offsetY, offsetZ)),
+      0, 0, 0, 1
+    );
+    this.camera.matrixAutoUpdate = false;
+    this.camera.matrixWorld.copy(view).invert();
+    this.camera.matrixWorldInverse.copy(view);
+    this.camera.projectionMatrix.makePerspective(
+      (-frameCamera.cx * near) / frameCamera.fx,
+      ((width - frameCamera.cx) * near) / frameCamera.fx,
+      ((height - frameCamera.cy) * near) / frameCamera.fy,
+      (-frameCamera.cy * near) / frameCamera.fy,
+      near,
+      far
+    );
+    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
   }
 
   private createPointCloud(): THREE.Points {
@@ -374,7 +518,21 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private pointPosition(point: PointRecord, index: number, options: RenderOptions): [number, number, number] {
     const transform = options.pointTransforms?.get(index);
-    return [point.x + (transform?.dx ?? 0), point.y + (transform?.dy ?? 0), point.z + (transform?.dz ?? 0)];
+    const x = point.x + (transform?.dx ?? 0);
+    const y = point.y + (transform?.dy ?? 0);
+    const z = point.z + (transform?.dz ?? 0);
+    const orientation = this.worldOrientationQuaternion(options);
+    if (orientation && options.worldOrientation) {
+      const center = options.worldOrientation.center;
+      const oriented = new THREE.Vector3(x - center[0], y - center[1], z - center[2]).applyQuaternion(orientation);
+      return [oriented.x, oriented.y, oriented.z];
+    }
+    const shift = this.usesSceneCenterShift(options) ? this.sceneCenter : undefined;
+    return [
+      x - (shift?.x ?? 0),
+      y - (shift?.y ?? 0),
+      z - (shift?.z ?? 0)
+    ];
   }
 
   private colorForPoint(point: PointRecord, index: number, options: RenderOptions, maxDistance: number): THREE.Color {
@@ -442,13 +600,40 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private syncMesh(options: RenderOptions): void {
     if (!this.meshGroup) return;
     this.meshGroup.visible = options.mode === "mesh";
+    this.applyWorldObjectTransform(this.meshGroup, options);
   }
 
   private syncSpark(options: RenderOptions): void {
     if (this.sparkState === "idle") void this.initializeSpark();
     const visible = options.mode === "splat" && this.sparkState === "ready" && this.sparkRenderable;
-    if (this.sparkMesh) this.sparkMesh.visible = visible;
+    if (this.sparkMesh) {
+      this.sparkMesh.visible = visible;
+      this.applyWorldObjectTransform(this.sparkMesh, options);
+    }
     if (this.sparkRenderer) this.sparkRenderer.visible = visible;
+  }
+
+  private usesSceneCenterShift(options: RenderOptions): boolean {
+    return Boolean(!options.worldOrientation && (options.frameCamera || options.firstPersonCamera));
+  }
+
+  private applyWorldObjectTransform(object: THREE.Object3D, options: RenderOptions): void {
+    const orientation = this.worldOrientationQuaternion(options);
+    if (orientation && options.worldOrientation) {
+      const center = new THREE.Vector3(...options.worldOrientation.center).applyQuaternion(orientation).multiplyScalar(-1);
+      object.position.copy(center);
+      object.quaternion.copy(orientation);
+      return;
+    }
+    object.position.copy(this.usesSceneCenterShift(options) ? this.sceneCenter.clone().multiplyScalar(-1) : new THREE.Vector3());
+    object.quaternion.identity();
+  }
+
+  private worldOrientationQuaternion(options: RenderOptions): THREE.Quaternion | undefined {
+    const rotation = options.worldOrientation?.rotation;
+    if (!rotation) return undefined;
+    const [qw, qx, qy, qz] = rotation;
+    return new THREE.Quaternion(qx, qy, qz, qw).normalize();
   }
 
   private async initializeSpark(): Promise<void> {
@@ -465,12 +650,11 @@ export class ThreeWorldRenderer implements RenderAdapter {
         return;
       }
       if (sparkUrl !== this.gaussianUrl) this.sparkObjectUrl = sparkUrl;
+      const profile = sparkRuntimeProfiles[this.sparkProfile];
       this.sparkRenderer = new spark.SparkRenderer({
         renderer: this.webgl,
         onDirty: () => this.requestFrame(),
-        minAlpha: 1 / 255,
-        maxPixelRadius: 180,
-        focalAdjustment: 1.5
+        ...profile
       });
       this.scene.add(this.sparkRenderer);
 
@@ -609,9 +793,17 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private async sparkCompatiblePlyUrl(url: string): Promise<string> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Unable to load Gaussian PLY: ${response.status}`);
-    const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer());
+    const profile = sparkRuntimeProfiles[this.sparkProfile];
+    const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer(), {
+      maxScale: profile.maxGaussianScale,
+      normalizeRotations: this.sparkProfile === "capture-splat-vksplat",
+      hideOutliersBeyondRadius: profile.maxGaussianPositionRadius
+    });
     this.gaussianSourceFormat = prepared.sourceFormat;
     this.gaussianPreparedForSpark = prepared.converted;
+    this.gaussianClampedScaleCount = prepared.clampedScaleCount;
+    this.gaussianNormalizedRotationCount = prepared.normalizedRotationCount;
+    this.gaussianDroppedOutlierCount = prepared.droppedOutlierCount;
     this.notifyDiagnostics();
     if (!prepared.converted) return url;
     const blobBytes = new ArrayBuffer(prepared.bytes.byteLength);
@@ -783,6 +975,14 @@ function createFrustums(sensors: SensorRigChannel[], selectedSensorId: string | 
 
 function pushLine(out: number[], a: THREE.Vector3, b: THREE.Vector3): void {
   out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+}
+
+function centerFromBounds(bounds: { min: [number, number, number]; max: [number, number, number] }): THREE.Vector3 {
+  return new THREE.Vector3(
+    (bounds.min[0] + bounds.max[0]) * 0.5,
+    (bounds.min[1] + bounds.max[1]) * 0.5,
+    (bounds.min[2] + bounds.max[2]) * 0.5
+  );
 }
 
 function depthColor(t: number): THREE.Color {
