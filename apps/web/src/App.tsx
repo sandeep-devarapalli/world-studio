@@ -1529,20 +1529,6 @@ export function App() {
     if (playing && mode === "simulate" && simulateCameraMode !== "frame") setPlaying(false);
   }, [mode, playing, simulateCameraMode]);
 
-  const nudgeSimulateCamera = useCallback((command: "left" | "right" | "up" | "down" | "in" | "out") => {
-    setSimulateCameraMode("orbit");
-    setCamera((current) => {
-      const dollyStep = 0.6 * simulateStepsRef.current.scale;
-      if (command === "left") return { ...current, yaw: current.yaw - 0.18 };
-      if (command === "right") return { ...current, yaw: current.yaw + 0.18 };
-      if (command === "up") return { ...current, pitch: Math.max(0.05, current.pitch - 0.12) };
-      if (command === "down") return { ...current, pitch: Math.min(1.2, current.pitch + 0.12) };
-      if (command === "in") return { ...current, distance: Math.max(2.4, current.distance - dollyStep) };
-      return { ...current, distance: Math.min(14, current.distance + dollyStep) };
-    });
-    setLastAction(`orbit ${command}`);
-  }, []);
-
   const stepEpisodeEvent = useCallback(
     (direction: -1 | 1) => {
       if (!episodeTimeline.length) return;
@@ -2740,13 +2726,6 @@ export function App() {
                         </button>
                       </div>
                       <div className="ws-sim-nudge-group" data-testid="simulate-camera-dpad">
-                        <button aria-label="Orbit up" onClick={() => nudgeSimulateCamera("up")}><WSIcon name="chevD" size={13} /></button>
-                        <button aria-label="Orbit left" onClick={() => nudgeSimulateCamera("left")}><WSIcon name="chev" size={13} /></button>
-                        <button aria-label="Reset frame camera" onClick={resetSimulateFrameCamera}><WSIcon name="camera" size={13} /></button>
-                        <button aria-label="Orbit right" onClick={() => nudgeSimulateCamera("right")}><WSIcon name="chev" size={13} /></button>
-                        <button aria-label="Orbit down" onClick={() => nudgeSimulateCamera("down")}><WSIcon name="chevD" size={13} /></button>
-                        <button aria-label="Zoom in" onClick={() => nudgeSimulateCamera("in")}>+</button>
-                        <button aria-label="Zoom out" onClick={() => nudgeSimulateCamera("out")}>-</button>
                         <button aria-label="Fullscreen" onClick={() => void requestStageFullscreen()}>F11</button>
                       </div>
                       <div className="ws-sim-shortcuts" aria-label="Simulate controls">
