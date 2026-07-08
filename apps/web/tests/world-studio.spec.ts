@@ -1340,6 +1340,9 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await page.goto("/");
   await page.getByRole("button", { name: "Open Local" }).click();
   await expectSparkReadyForGaussianPayload(page, captureSplatSourceFramePayload);
+  // Gaussian packages with frame cameras auto-enter Simulate on load;
+  // provenance and insight surfaces live in View, so inspect them there first.
+  await page.getByRole("button", { name: "View", exact: true }).click();
   await expect(page.getByText("capture-splat-local-folder")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Capture Splat Handoff detail" })).toBeVisible();
   await page.getByRole("button", { name: "Open Capture Splat Handoff detail" }).click();
@@ -1362,7 +1365,7 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
   await page.getByRole("button", { name: "Free" }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
-  await expect(page.locator(".ws-sim-camera-pad")).toContainText("free · frame seeded");
+  await expect(page.locator(".ws-sim-camera-status")).toContainText("free · frame seeded");
   await page.keyboard.press("w");
   await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("inside forward");
   await page.keyboard.press("a");
@@ -1836,7 +1839,7 @@ test("captures visual smoke for all modes across desktop viewports", async ({ pa
     },
     {
       mode: "Simulate",
-      required: [".ws-dual-left", ".ws-left-simulate", ".ws-bottom-tray", ".ws-timeline", ".ws-bottom-center .ws-ctrlbar"],
+      required: [".ws-dual-left", ".ws-left-simulate", ".ws-bottom-tray", ".ws-timeline", ".ws-bottom-center .ws-sim-camera-strip"],
       noOverlap: [[".ws-bottom-tray", ".ws-timeline", "Simulate tray must not cover the timeline"]]
     },
     {
@@ -1901,7 +1904,13 @@ function isExpectedBrowserDiagnostic(type: string, text: string): boolean {
 
 async function expectSparkReadyForGaussianPayload(page: Page, payload: LocalWorldPackagePayload): Promise<void> {
   if (!payload.pointsPly?.text || !payload.gaussianPly?.dataUrl) return;
-  await expect(page.locator(".ws-statusbar")).toContainText("spark gaussian", { timeout: 15_000 });
+  // Gaussian packages with frame cameras auto-enter Simulate, where the
+  // renderer path is reported by the 3DGS Performance panel; View mode keeps
+  // it in the statusbar accent slot. Assert Spark engaged on whichever
+  // surface the loaded mode exposes.
+  const simulateSpark = page.locator(".ws-performance-card", { hasText: "ready" });
+  const viewSpark = page.locator(".ws-statusbar", { hasText: "spark gaussian" });
+  await expect(simulateSpark.or(viewSpark).first()).toBeVisible({ timeout: 15_000 });
 }
 
 async function expectCanvasScreenshot(page: Page) {
