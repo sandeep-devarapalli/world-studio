@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -167,6 +167,48 @@ describe("simulate camera controls", () => {
     const elevation = Math.asin(Math.max(-1, Math.min(1, quaternionForwardY(inside.rotation))));
     expect(Math.abs(elevation)).toBeLessThanOrEqual((70 * Math.PI) / 180 + 1e-6);
     expect(Math.abs(elevation)).toBeGreaterThan((69 * Math.PI) / 180);
+  });
+
+  it("interpolates frame cameras with lerp position and slerp rotation", () => {
+    const base = {
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [0, 0, 0] as [number, number, number],
+      rotation: [1, 0, 0, 0] as [number, number, number, number]
+    };
+    const quarterTurn: [number, number, number, number] = [Math.SQRT1_2, 0, Math.SQRT1_2, 0];
+    const mid = interpolateFrameCameras(base, { ...base, translation: [2, 0, 4], rotation: quarterTurn }, 0.5);
+
+    expect(mid.translation).toEqual([1, 0, 2]);
+    const eighth = Math.PI / 8;
+    expect(mid.rotation[0]).toBeCloseTo(Math.cos(eighth));
+    expect(mid.rotation[2]).toBeCloseTo(Math.sin(eighth));
+    expect(interpolateFrameCameras(base, { ...base, translation: [2, 0, 4] }, 0).translation).toEqual([0, 0, 0]);
+  });
+
+  it("builds the inside preset at the median frame position looking at the center", () => {
+    const frame = (x: number, z: number) => ({
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [x, 1, z] as [number, number, number],
+      rotation: [1, 0, 0, 0] as [number, number, number, number]
+    });
+    const inside = insideLookCameraFromFrames([frame(2, 0), frame(2.2, 0.1), frame(1.8, -0.1)], undefined);
+
+    expect(inside).not.toBeNull();
+    expect(inside!.position[0]).toBeCloseTo(2);
+    expect(inside!.position[1]).toBeCloseTo(1);
+    const forwardX = 2 * (inside!.rotation[0] * inside!.rotation[2] + inside!.rotation[1] * inside!.rotation[3]);
+    expect(forwardX).toBeLessThan(-0.9);
+    expect(insideLookCameraFromFrames([undefined], undefined)).toBeNull();
   });
 
   it("scales first-person dolly and pan by the scene scale", () => {

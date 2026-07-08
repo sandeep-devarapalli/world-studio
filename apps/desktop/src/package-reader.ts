@@ -167,6 +167,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     articleFigureViews,
     verifiedExport,
     jsonManifests,
+    ...extractHandoffSceneHints(parsedCaptureSplatManifest),
     packageInsights: buildPackageInsights({
       articleFigureViews,
       budoMediaFrames,
@@ -455,6 +456,35 @@ async function readCaptureSplatFrameCameras(
     }
   }
   return cameras;
+}
+
+function extractHandoffSceneHints(manifest: Record<string, unknown> | undefined): {
+  sceneRadius?: number;
+  medianStructureDistance?: number;
+  captureProfile?: string;
+  initialCamera?: { position: [number, number, number]; coordinateFrame?: string; mode?: "inside" | "orbit" };
+} {
+  if (!manifest) return {};
+  const hints: ReturnType<typeof extractHandoffSceneHints> = {};
+  const radius = finiteNumber(manifest.scene_radius, manifest.sceneRadius);
+  if (radius !== undefined && radius > 0) hints.sceneRadius = radius;
+  const median = finiteNumber(manifest.median_structure_distance, manifest.medianStructureDistance);
+  if (median !== undefined && median > 0) hints.medianStructureDistance = median;
+  const profile = stringValue(manifest.capture_profile) ?? stringValue(manifest.captureProfile);
+  if (profile) hints.captureProfile = profile;
+  const camera = firstRecordValue(manifest.initial_camera, manifest.initialCamera);
+  if (camera) {
+    const position = finiteTuple(camera.position, 3);
+    if (position) {
+      const mode = stringValue(camera.mode);
+      hints.initialCamera = {
+        position,
+        coordinateFrame: stringValue(camera.coordinate_frame) ?? stringValue(camera.coordinateFrame),
+        mode: mode === "orbit" || mode === "inside" ? mode : undefined
+      };
+    }
+  }
+  return hints;
 }
 
 function captureSplatDataparserTransform(manifest: Record<string, unknown>): number[][] | undefined {

@@ -272,6 +272,16 @@ export interface LocalWorldPackagePayload {
   jsonManifests?: LocalWorldPackageTextFile[];
   packageInsights?: LocalPackageInsight[];
   packageIssues?: LocalPackageIssue[];
+  sceneRadius?: number;
+  medianStructureDistance?: number;
+  captureProfile?: string;
+  initialCamera?: HandoffInitialCamera;
+}
+
+export interface HandoffInitialCamera {
+  position: [number, number, number];
+  coordinateFrame?: string;
+  mode?: "inside" | "orbit";
 }
 
 export interface EpisodeBundleAsset {

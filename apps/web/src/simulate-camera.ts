@@ -142,6 +142,79 @@ export function rotateFirstPersonCamera(camera: FirstPersonCamera, dx: number, d
   return { ...camera, rotation: normalizeQuaternion(multiplyQuaternion(yaw, multiplyQuaternion(pitch, camera.rotation))) };
 }
 
+export function interpolateFrameCameras(a: FrameCamera, b: FrameCamera, t: number): FrameCamera {
+  const clamped = Math.max(0, Math.min(1, t));
+  return {
+    ...a,
+    translation: [
+      a.translation[0] + (b.translation[0] - a.translation[0]) * clamped,
+      a.translation[1] + (b.translation[1] - a.translation[1]) * clamped,
+      a.translation[2] + (b.translation[2] - a.translation[2]) * clamped
+    ],
+    rotation: slerpQuaternion(normalizeQuaternion(a.rotation), normalizeQuaternion(b.rotation), clamped),
+    fx: a.fx + (b.fx - a.fx) * clamped,
+    fy: a.fy + (b.fy - a.fy) * clamped
+  };
+}
+
+export function insideLookCameraFromFrames(
+  frameCameras: Array<FrameCamera | undefined>,
+  orientation: WorldOrientation | undefined,
+  fov = 60
+): FirstPersonCamera | null {
+  const leveled = frameCameras
+    .filter((camera): camera is FrameCamera => Boolean(camera))
+    .map((camera) => applyWorldOrientationToFrameCamera(camera, orientation));
+  if (!leveled.length) return null;
+  const component = (index: number) => {
+    const values = leveled.map((camera) => camera.translation[index]).sort((a, b) => a - b);
+    return values[Math.floor(values.length / 2)];
+  };
+  const position: [number, number, number] = [component(0), component(1), component(2)];
+  const target: [number, number, number] = [0, position[1], 0];
+  const forward = normalize3([target[0] - position[0], target[1] - position[1], target[2] - position[2]]);
+  const rotation = forward
+    ? multiplyQuaternion(
+        quaternionFromAxisAngle([0, 1, 0], Math.atan2(forward[0], forward[2])),
+        quaternionFromAxisAngle([1, 0, 0], -Math.asin(Math.max(-1, Math.min(1, forward[1]))))
+      )
+    : normalizeQuaternion(leveled[0].rotation);
+  return {
+    position,
+    rotation,
+    fov,
+    coordinateFrame: leveled[0].coordinateFrame,
+    authority: "inside preset · median frame camera position"
+  };
+}
+
+function slerpQuaternion(a: [number, number, number, number], b: [number, number, number, number], t: number): [number, number, number, number] {
+  let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  let end: [number, number, number, number] = b;
+  if (dot < 0) {
+    dot = -dot;
+    end = [-b[0], -b[1], -b[2], -b[3]];
+  }
+  if (dot > 0.9995) {
+    return normalizeQuaternion([
+      a[0] + (end[0] - a[0]) * t,
+      a[1] + (end[1] - a[1]) * t,
+      a[2] + (end[2] - a[2]) * t,
+      a[3] + (end[3] - a[3]) * t
+    ]);
+  }
+  const theta = Math.acos(Math.max(-1, Math.min(1, dot)));
+  const sinTheta = Math.sin(theta);
+  const wa = Math.sin((1 - t) * theta) / sinTheta;
+  const wb = Math.sin(t * theta) / sinTheta;
+  return normalizeQuaternion([
+    a[0] * wa + end[0] * wb,
+    a[1] * wa + end[1] * wb,
+    a[2] * wa + end[2] * wb,
+    a[3] * wa + end[3] * wb
+  ]);
+}
+
 export const maxFirstPersonPitchDeg = 70;
 
 export function rotateFirstPersonCameraClamped(camera: FirstPersonCamera, dx: number, dy: number, maxPitchDeg = maxFirstPersonPitchDeg): FirstPersonCamera {
