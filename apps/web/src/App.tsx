@@ -1512,12 +1512,13 @@ export function App() {
   const nudgeSimulateCamera = useCallback((command: "left" | "right" | "up" | "down" | "in" | "out") => {
     setSimulateCameraMode("orbit");
     setCamera((current) => {
+      const dollyStep = 0.6 * simulateStepsRef.current.scale;
       if (command === "left") return { ...current, yaw: current.yaw - 0.18 };
       if (command === "right") return { ...current, yaw: current.yaw + 0.18 };
       if (command === "up") return { ...current, pitch: Math.max(0.05, current.pitch - 0.12) };
       if (command === "down") return { ...current, pitch: Math.min(1.2, current.pitch + 0.12) };
-      if (command === "in") return { ...current, distance: Math.max(2.4, current.distance - 0.6) };
-      return { ...current, distance: Math.min(14, current.distance + 0.6) };
+      if (command === "in") return { ...current, distance: Math.max(2.4, current.distance - dollyStep) };
+      return { ...current, distance: Math.min(14, current.distance + dollyStep) };
     });
     setLastAction(`orbit ${command}`);
   }, []);
