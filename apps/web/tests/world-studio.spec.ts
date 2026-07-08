@@ -1356,9 +1356,9 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.getByText("review proposal")).toBeVisible();
   await expect(page.getByTestId("simulate-comparison-panel")).toContainText("source evidence");
   await expect(page.locator(".ws-frame-row", { hasText: "frame_000001" }).getByAltText("frame_000001 preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
-  await page.getByRole("button", { name: "Orbit right" }).click();
+  await page.getByRole("button", { name: "Orbit", exact: true }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");
-  await page.getByRole("button", { name: "Reset frame camera" }).click();
+  await page.getByRole("button", { name: "Frame", exact: true }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
   await page.getByRole("button", { name: "Free" }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
