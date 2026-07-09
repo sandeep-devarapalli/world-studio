@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload packaged desktop smoke screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packaged-desktop-smoke-screenshots
           path: ${{ env.WORLD_STUDIO_DESKTOP_SMOKE_ARTIFACTS }}
