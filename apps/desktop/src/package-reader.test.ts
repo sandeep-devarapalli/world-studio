@@ -339,6 +339,54 @@ end_header
     expect(payload.packageIssues).toEqual([]);
   });
 
+  it("samples handoff frame previews evenly across the full capture", async () => {
+    const root = await makePackage("capture-splat-sampling");
+    await mkdir(join(root, "rgb"), { recursive: true });
+    const framePaths: string[] = [];
+    for (let index = 1; index <= 60; index += 1) {
+      const name = `frame_${String(index).padStart(6, "0")}.png`;
+      await writeFile(join(root, "rgb", name), onePixelPng);
+      framePaths.push(`rgb/${name}`);
+    }
+    await writeJson(root, "capture-splat.world-studio.json", {
+      schema: "capture_splat.world_studio_handoff.v0.1",
+      status: "visual_evidence_with_3dgs_proposal",
+      source_frames: framePaths
+    });
+
+    const payload = await readLocalPackage(root);
+    const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ rgb_path?: string }>;
+    };
+    const frameNumbers = (mediaFrames.frames ?? []).map((frame) => Number(frame.rgb_path?.match(/(\d+)\.png$/)?.[1]));
+
+    expect(mediaFrames.frames).toHaveLength(24);
+    expect(frameNumbers[0]).toBe(1);
+    expect(frameNumbers[23]).toBe(60);
+    expect(frameNumbers).toEqual([...frameNumbers].sort((a, b) => a - b));
+    expect(new Set(frameNumbers).size).toBe(24);
+  });
+
+  it("samples image-folder frame previews evenly across the full capture", async () => {
+    const root = await makePackage("capture-splat-folder-sampling");
+    await mkdir(join(root, "images"));
+    for (let index = 1; index <= 30; index += 1) {
+      await writeFile(join(root, "images", `frame_${String(index).padStart(6, "0")}.png`), onePixelPng);
+    }
+
+    const payload = await readLocalPackage(root);
+    const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ rgb_path?: string }>;
+    };
+    const frameNumbers = (mediaFrames.frames ?? []).map((frame) => Number(frame.rgb_path?.match(/(\d+)\.png$/)?.[1]));
+
+    expect(mediaFrames.frames).toHaveLength(24);
+    expect(frameNumbers[0]).toBe(1);
+    expect(frameNumbers[23]).toBe(30);
+    expect(frameNumbers).toEqual([...frameNumbers].sort((a, b) => a - b));
+    expect(new Set(frameNumbers).size).toBe(24);
+  });
+
   it("loads explicit Capture Splat handoff manifests with source frames and renderable artifacts", async () => {
     const root = await makePackage("capture-splat-handoff");
     await mkdir(join(root, "rgb"), { recursive: true });
