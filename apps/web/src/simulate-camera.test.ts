@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, stepsForSceneRadius } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -209,6 +209,87 @@ describe("simulate camera controls", () => {
     const forwardX = 2 * (inside!.rotation[0] * inside!.rotation[2] + inside!.rotation[1] * inside!.rotation[3]);
     expect(forwardX).toBeLessThan(-0.9);
     expect(insideLookCameraFromFrames([undefined], undefined)).toBeNull();
+  });
+
+  it("center 360 preset faces outward with zero pitch and roll, and spinning never rolls", () => {
+    const frame = (x: number, z: number) => ({
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [x, 1, z] as [number, number, number],
+      rotation: [1, 0, 0, 0] as [number, number, number, number]
+    });
+    const center = centerSpinCameraFromFrames([frame(2, 0), frame(2.2, 0.1), frame(1.8, -0.1)], undefined);
+
+    expect(center).not.toBeNull();
+    const forwardOf = (q: [number, number, number, number]): [number, number, number] => [
+      2 * (q[1] * q[3] + q[0] * q[2]),
+      2 * (q[2] * q[3] - q[0] * q[1]),
+      1 - 2 * (q[1] * q[1] + q[2] * q[2])
+    ];
+    const upOf = (q: [number, number, number, number]): [number, number, number] => [
+      2 * (q[1] * q[2] - q[0] * q[3]),
+      1 - 2 * (q[1] * q[1] + q[3] * q[3]),
+      2 * (q[2] * q[3] + q[0] * q[1])
+    ];
+    const forward = forwardOf(center!.rotation);
+    expect(forward[0]).toBeGreaterThan(0.9);
+    expect(Math.abs(forward[1])).toBeLessThan(1e-6);
+    expect(upOf(center!.rotation)[1]).toBeCloseTo(1);
+
+    let spun = center!;
+    for (let step = 0; step < 8; step += 1) {
+      spun = spinFirstPersonCamera(spun, Math.PI / 4);
+      expect(Math.abs(forwardOf(spun.rotation)[1])).toBeLessThan(1e-6);
+      expect(upOf(spun.rotation)[1]).toBeCloseTo(1);
+    }
+    const roundTrip = forwardOf(spun.rotation);
+    expect(roundTrip[0]).toBeCloseTo(forward[0]);
+    expect(roundTrip[2]).toBeCloseTo(forward[2]);
+  });
+
+  it("refines world orientation so a tilted floor becomes level", () => {
+    const tilt = (12 * Math.PI) / 180;
+    const points: Array<{ x: number; y: number; z: number }> = [];
+    for (let index = 0; index < 900; index += 1) {
+      const x = ((index % 30) - 15) / 5;
+      const z = (Math.floor(index / 30) - 15) / 5;
+      const y = 0;
+      points.push({
+        x,
+        y: y * Math.cos(tilt) - z * Math.sin(tilt),
+        z: y * Math.sin(tilt) + z * Math.cos(tilt)
+      });
+    }
+    for (let index = 0; index < 300; index += 1) {
+      points.push({ x: ((index % 20) - 10) / 5, y: 0.5 + (index % 7) * 0.3, z: 2.5 });
+    }
+    const orientation = refineWorldOrientationWithFloorNormal(points, {
+      rotation: [1, 0, 0, 0],
+      center: [0, 0, 0],
+      sourceUp: [0, 1, 0],
+      authority: "test"
+    });
+
+    expect(orientation).toBeDefined();
+    expect(orientation!.authority).toContain("floor-normal refined");
+    const q = orientation!.rotation;
+    const floorNormalWorld: [number, number, number] = [0, Math.cos(tilt), Math.sin(tilt)];
+    const rotated = [
+      floorNormalWorld[0] * (1 - 2 * (q[2] * q[2] + q[3] * q[3])) + floorNormalWorld[1] * 2 * (q[1] * q[2] - q[0] * q[3]) + floorNormalWorld[2] * 2 * (q[1] * q[3] + q[0] * q[2]),
+      floorNormalWorld[0] * 2 * (q[1] * q[2] + q[0] * q[3]) + floorNormalWorld[1] * (1 - 2 * (q[1] * q[1] + q[3] * q[3])) + floorNormalWorld[2] * 2 * (q[2] * q[3] - q[0] * q[1]),
+      floorNormalWorld[0] * 2 * (q[1] * q[3] - q[0] * q[2]) + floorNormalWorld[1] * 2 * (q[2] * q[3] + q[0] * q[1]) + floorNormalWorld[2] * (1 - 2 * (q[1] * q[1] + q[2] * q[2]))
+    ];
+    expect(rotated[1]).toBeGreaterThan(0.999);
+  });
+
+  it("leaves orientation unchanged when no floor band exists", () => {
+    const sparse = Array.from({ length: 150 }, (_, index) => ({ x: index * 0.01, y: index * 0.01, z: 0 }));
+    const original = { rotation: [1, 0, 0, 0] as [number, number, number, number], center: [0, 0, 0] as [number, number, number], sourceUp: [0, 1, 0] as [number, number, number], authority: "test" };
+    expect(refineWorldOrientationWithFloorNormal(sparse, original)).toBe(original);
   });
 
   it("scales first-person dolly and pan by the scene scale", () => {

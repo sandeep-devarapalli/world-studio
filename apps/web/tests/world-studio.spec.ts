@@ -1366,7 +1366,11 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await page.getByRole("button", { name: "Free" }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
   await expect(page.locator(".ws-sim-camera-status")).toContainText("free · frame seeded");
+  await page.getByRole("button", { name: "Center 360 spin" }).click();
+  await expect(page.locator(".ws-sim-camera-status")).toContainText("free · 360 spin");
+  await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("center 360 spin");
   await page.keyboard.press("w");
+  await expect(page.locator(".ws-sim-camera-status")).not.toContainText("free · 360 spin");
   await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("inside forward");
   await page.keyboard.press("a");
   await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("inside left");
