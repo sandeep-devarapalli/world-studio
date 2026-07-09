@@ -92,6 +92,67 @@ export function estimateWorldOrientation(frameCameras: Array<FrameCamera | undef
   };
 }
 
+export function refineWorldOrientationWithFloorNormal(
+  points: Array<{ x: number; y: number; z: number }>,
+  orientation: WorldOrientation | undefined,
+  maxCorrectionDeg = 30
+): WorldOrientation | undefined {
+  if (!orientation || points.length < 200) return orientation;
+  const stride = Math.max(1, Math.floor(points.length / 20000));
+  const leveled: Array<[number, number, number]> = [];
+  for (let index = 0; index < points.length; index += stride) {
+    const point = points[index];
+    const rotated = rotateVector(orientation.rotation, [
+      point.x - orientation.center[0],
+      point.y - orientation.center[1],
+      point.z - orientation.center[2]
+    ]);
+    if (rotated.every(Number.isFinite)) leveled.push(rotated);
+  }
+  if (leveled.length < 100) return orientation;
+  const heights = leveled.map((point) => point[1]).sort((a, b) => a - b);
+  const low = heights[Math.floor(heights.length * 0.02)];
+  const high = heights[Math.floor(heights.length * 0.12)];
+  const band = leveled.filter((point) => point[1] >= low && point[1] <= high);
+  if (band.length < 50) return orientation;
+  const mean: [number, number, number] = [0, 0, 0];
+  for (const point of band) {
+    mean[0] += point[0];
+    mean[1] += point[1];
+    mean[2] += point[2];
+  }
+  mean[0] /= band.length;
+  mean[1] /= band.length;
+  mean[2] /= band.length;
+  const covariance = [0, 0, 0, 0, 0, 0];
+  for (const point of band) {
+    const dx = point[0] - mean[0];
+    const dy = point[1] - mean[1];
+    const dz = point[2] - mean[2];
+    covariance[0] += dx * dx;
+    covariance[1] += dx * dy;
+    covariance[2] += dx * dz;
+    covariance[3] += dy * dy;
+    covariance[4] += dy * dz;
+    covariance[5] += dz * dz;
+  }
+  const normal = smallestEigenvector3([
+    [covariance[0], covariance[1], covariance[2]],
+    [covariance[1], covariance[3], covariance[4]],
+    [covariance[2], covariance[4], covariance[5]]
+  ]);
+  if (!normal) return orientation;
+  const up: [number, number, number] = normal[1] < 0 ? [-normal[0], -normal[1], -normal[2]] : normal;
+  const tilt = Math.acos(clamp(up[1], -1, 1));
+  if (tilt > (maxCorrectionDeg * Math.PI) / 180 || tilt < 1e-4) return orientation;
+  const correction = quaternionFromUnitVectors(up, [0, 1, 0]);
+  return {
+    ...orientation,
+    rotation: normalizeQuaternion(multiplyQuaternion(correction, orientation.rotation)),
+    authority: `${orientation.authority} · floor-normal refined`
+  };
+}
+
 export function applyWorldOrientationToFrameCamera(frameCamera: FrameCamera, orientation: WorldOrientation | undefined): FrameCamera {
   if (!orientation) return frameCamera;
   return {
@@ -186,6 +247,81 @@ export function insideLookCameraFromFrames(
     coordinateFrame: leveled[0].coordinateFrame,
     authority: "inside preset · median frame camera position"
   };
+}
+
+export const centerSpinRadiansPerSecond = 0.4;
+
+export function centerSpinCameraFromFrames(
+  frameCameras: Array<FrameCamera | undefined>,
+  orientation: WorldOrientation | undefined,
+  fov = 70
+): FirstPersonCamera | null {
+  const inside = insideLookCameraFromFrames(frameCameras, orientation, fov);
+  if (!inside) return null;
+  const outward = normalize3([inside.position[0], 0, inside.position[2]]);
+  const forward = outward ?? horizontalForward(inside.rotation) ?? [0, 0, 1];
+  const yaw = Math.atan2(forward[0], forward[2]);
+  return {
+    ...inside,
+    rotation: quaternionFromAxisAngle([0, 1, 0], yaw),
+    fov,
+    authority: "center 360 preset · leveled yaw-only"
+  };
+}
+
+export function spinFirstPersonCamera(camera: FirstPersonCamera, yawRadians: number): FirstPersonCamera {
+  return {
+    ...camera,
+    rotation: normalizeQuaternion(multiplyQuaternion(quaternionFromAxisAngle([0, 1, 0], yawRadians), camera.rotation))
+  };
+}
+
+function horizontalForward(rotation: [number, number, number, number]): [number, number, number] | undefined {
+  const forward = rotateVector(rotation, [0, 0, 1]);
+  return normalize3([forward[0], 0, forward[2]]);
+}
+
+function smallestEigenvector3(matrix: number[][]): [number, number, number] | undefined {
+  let a = matrix.map((row) => [...row]);
+  let v = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+  ];
+  for (let sweep = 0; sweep < 24; sweep += 1) {
+    let off = 0;
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]] as const) {
+      off += a[p][q] * a[p][q];
+      if (Math.abs(a[p][q]) < 1e-12) continue;
+      const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const c = 1 / Math.sqrt(t * t + 1);
+      const s = t * c;
+      const rotate = (m: number[][]) => {
+        for (let k = 0; k < 3; k += 1) {
+          const mkp = m[k][p];
+          const mkq = m[k][q];
+          m[k][p] = c * mkp - s * mkq;
+          m[k][q] = s * mkp + c * mkq;
+        }
+      };
+      const rotateRows = (m: number[][]) => {
+        for (let k = 0; k < 3; k += 1) {
+          const mpk = m[p][k];
+          const mqk = m[q][k];
+          m[p][k] = c * mpk - s * mqk;
+          m[q][k] = s * mpk + c * mqk;
+        }
+      };
+      rotateRows(a);
+      rotate(a);
+      rotate(v);
+    }
+    if (off < 1e-18) break;
+  }
+  const eigenvalues = [a[0][0], a[1][1], a[2][2]];
+  const smallest = eigenvalues.indexOf(Math.min(...eigenvalues));
+  return normalize3([v[0][smallest], v[1][smallest], v[2][smallest]]);
 }
 
 function slerpQuaternion(a: [number, number, number, number], b: [number, number, number, number], t: number): [number, number, number, number] {

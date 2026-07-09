@@ -19,9 +19,13 @@ import {
   commandForKey,
   applyWorldOrientationToFirstPersonCamera,
   applyWorldOrientationToFrameCamera,
+  centerSpinCameraFromFrames,
+  centerSpinRadiansPerSecond,
   dollyCamera,
   dollyFirstPersonCamera,
   estimateWorldOrientation,
+  refineWorldOrientationWithFloorNormal,
+  spinFirstPersonCamera,
   firstPersonCameraFromFrame,
   floorHeightFromWorldPoints,
   holdRepeatStepsPerSecond,
@@ -580,7 +584,11 @@ export function App() {
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
   const simulateSourceFrame = simulateComparisonCapture ? null : selectedSourceFrame;
   const worldOrientation = useMemo<WorldOrientation | undefined>(
-    () => estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), centerFromWorldPoints(worldPoints)),
+    () =>
+      refineWorldOrientationWithFloorNormal(
+        worldPoints,
+        estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), centerFromWorldPoints(worldPoints))
+      ),
     [captureFrames, worldPoints]
   );
   const sceneRadius = useMemo(
@@ -607,7 +615,9 @@ export function App() {
   useEffect(() => {
     simulateStepsRef.current = simulateSteps;
   }, [simulateSteps]);
+  const [autoSpin, setAutoSpin] = useState(false);
   const applySimulateCommand = useCallback((command: SimulateKeyCommand, fraction = 1) => {
+    setAutoSpin(false);
     const leveled = leveledSourceFrameCameraRef.current;
     const steps = simulateStepsRef.current;
     if (firstPersonCameraRef.current || leveled) {
@@ -640,6 +650,7 @@ export function App() {
     };
     const onMove = (event: MouseEvent) => {
       if (document.pointerLockElement !== canvasRef.current) return;
+      setAutoSpin(false);
       setFirstPersonCamera((current) => (current ? rotateFirstPersonCameraClamped(current, event.movementX, event.movementY) : current));
     };
     document.addEventListener("pointerlockchange", onChange);
@@ -674,9 +685,11 @@ export function App() {
         : "frame camera missing"
       : simulateCameraMode === "free"
         ? firstPersonCamera
-          ? pointerLocked
-            ? "free · mouse look"
-            : "free · frame seeded"
+          ? autoSpin
+            ? "free · 360 spin"
+            : pointerLocked
+              ? "free · mouse look"
+              : "free · frame seeded"
           : "free · orbit fallback"
       : simulateCameraMode;
   const episodeSourceMatch = useMemo(
@@ -1574,10 +1587,47 @@ export function App() {
       return;
     }
     setPlaying(false);
+    setAutoSpin(false);
     setSimulateCameraMode("free");
     setFirstPersonCamera(inside);
     setLastAction("inside preset");
   }, [captureFrames, worldOrientation]);
+
+  const toggleCenterSpin = useCallback(() => {
+    if (autoSpin) {
+      setAutoSpin(false);
+      setLastAction("360 spin paused");
+      return;
+    }
+    const center = centerSpinCameraFromFrames(captureFrames.map((frame) => frame.frameCamera), worldOrientation);
+    if (!center) {
+      setLastAction("360 preset unavailable");
+      return;
+    }
+    setPlaying(false);
+    setSimulateCameraMode("free");
+    setFirstPersonCamera(center);
+    setAutoSpin(true);
+    setLastAction("center 360 spin");
+  }, [autoSpin, captureFrames, worldOrientation]);
+
+  useEffect(() => {
+    if (!autoSpin) return;
+    if (mode !== "simulate" || simulateCameraMode !== "free") {
+      setAutoSpin(false);
+      return;
+    }
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      setFirstPersonCamera((current) => (current ? spinFirstPersonCamera(current, centerSpinRadiansPerSecond * dt) : current));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [autoSpin, mode, simulateCameraMode]);
 
   useEffect(() => {
     if (!playing || mode !== "simulate" || simulateCameraMode !== "frame" || captureFrames.length < 2) {
@@ -2818,6 +2868,7 @@ export function App() {
                       </div>
                       <div className="ws-sim-nudge-group" data-testid="simulate-camera-dpad">
                         <button aria-label="Inside preset" onClick={enterInsidePreset}>Inside</button>
+                        <button aria-label="Center 360 spin" className={autoSpin ? "on" : ""} onClick={toggleCenterSpin}>360</button>
                         <button aria-label="Fullscreen" onClick={() => void requestStageFullscreen()}>F11</button>
                       </div>
                       <div className="ws-sim-shortcuts" aria-label="Simulate controls">
