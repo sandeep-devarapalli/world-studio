@@ -371,8 +371,8 @@ async function readCaptureFrameManifestFromPaths(
 ): Promise<LocalWorldPackageTextFile | undefined> {
   if (!framePaths.length) return undefined;
   const frames = [];
-  for (const relativePath of uniquePaths(framePaths).slice(0, maxCapturePreviewFrames)) {
-    if (!imageExtensions.has(path.extname(relativePath).toLowerCase())) continue;
+  const imagePaths = uniquePaths(framePaths).filter((relativePath) => imageExtensions.has(path.extname(relativePath).toLowerCase()));
+  for (const relativePath of sampleFramesEvenly(imagePaths, maxCapturePreviewFrames)) {
     const frame = await readImagePreviewFile(root, relativePath, packageIssues);
     if (frame) frames.push(frame);
   }
@@ -390,7 +390,7 @@ async function readCaptureFrameManifestFromManifest(
   const frameCameras = await readCaptureSplatFrameCameras(root, manifest, refs, packageIssues);
   const entries = collectFrameEntries(manifest.source_frames, manifest.sourceFrames, manifest.frames, manifest.rgb_frames, manifest.images, assets.source_frames, assets.sourceFrames, assets.frames, assets.rgb);
   const frames: CaptureFramePreview[] = [];
-  for (const entry of entries.slice(0, maxCapturePreviewFrames)) {
+  for (const entry of sampleFramesEvenly(entries, maxCapturePreviewFrames)) {
     const frame = await readImagePreviewFile(root, entry.relativePath, packageIssues);
     if (frame) {
       const frameCamera = frameCameraFromRecord(firstRecordValue(entry.camera)) ?? lookupFrameCamera(frameCameras, entry.relativePath);
@@ -423,6 +423,12 @@ function collectFrameEntries(...values: unknown[]): Array<{ relativePath: string
     seen.add(entry.relativePath);
     return true;
   });
+}
+
+function sampleFramesEvenly<T>(frames: T[], limit: number): T[] {
+  if (frames.length <= limit) return frames;
+  const step = (frames.length - 1) / (limit - 1);
+  return Array.from({ length: limit }, (_, index) => frames[Math.round(index * step)]);
 }
 
 async function readCaptureSplatFrameCameras(
@@ -897,10 +903,12 @@ async function readCaptureFrameFiles(
       continue;
     }
 
-    const imageEntries = entries
-      .filter((entry) => entry.isFile() && imageExtensions.has(path.extname(entry.name).toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-      .slice(0, maxCapturePreviewFrames);
+    const imageEntries = sampleFramesEvenly(
+      entries
+        .filter((entry) => entry.isFile() && imageExtensions.has(path.extname(entry.name).toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+      maxCapturePreviewFrames
+    );
     const frames = [];
     for (const entry of imageEntries) {
       const relativePath = `${directory}/${entry.name}`;
