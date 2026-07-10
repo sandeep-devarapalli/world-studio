@@ -276,6 +276,19 @@ export interface LocalWorldPackagePayload {
   medianStructureDistance?: number;
   captureProfile?: string;
   initialCamera?: HandoffInitialCamera;
+  captureSplatMetric?: CaptureSplatMetricHandoff;
+}
+
+export interface CaptureSplatMetricHandoff {
+  walkEligibility: "eligible" | "held" | "missing";
+  walkReason: string;
+  registrationStatus: "accepted" | "held" | "unavailable";
+  registration?: Record<string, unknown>;
+  navigationMesh?: LocalWorldPackageBinaryFile;
+  measurementPoints?: LocalWorldPackageBinaryFile;
+  meshReport?: LocalWorldPackageTextFile;
+  roomSemantics?: LocalWorldPackageTextFile;
+  cameraTrajectory?: LocalWorldPackageTextFile;
 }
 
 export interface HandoffInitialCamera {

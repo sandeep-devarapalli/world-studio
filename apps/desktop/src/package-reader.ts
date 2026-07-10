@@ -1,5 +1,5 @@
 import { buildGaussianPreviewPointCloudPly } from "@world-studio/artifacts";
-import type { AuthorityStatus, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { AuthorityStatus, CaptureSplatMetricHandoff, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -14,13 +14,18 @@ const captureFrameDirs = ["source", "images", "rgb", "frames", "renders"];
 const imageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 interface CaptureSplatManifestRefs {
+  cameraTrajectoryPaths: string[];
   captureManifestPaths: string[];
   cameraPosePaths: string[];
   framePaths: string[];
   gaussianPlyPaths: string[];
   gaussianProxyPaths: string[];
+  measurementPointPaths: string[];
+  meshReportPaths: string[];
+  navigationMeshPaths: string[];
   objMeshPaths: string[];
   pointsPlyPaths: string[];
+  roomSemanticsPaths: string[];
 }
 
 interface CaptureFramePreview {
@@ -65,6 +70,9 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     : undefined;
   const pointsPly = sourcePointsPly ?? generatedPointsPly;
   const objMesh = selectedCleanedPly ? undefined : await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.objMeshPaths, "collision_mesh.obj", "mesh.obj", "model.obj"]), packageIssues);
+  const captureSplatMetric = parsedCaptureSplatManifest
+    ? await readCaptureSplatMetricHandoff(sourceRoot, parsedCaptureSplatManifest, captureSplatRefs, packageIssues)
+    : undefined;
   const sourceBudoMediaFrames = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues);
   const captureSplatManifestFrames = sourceBudoMediaFrames || selectedCleanedPly
     ? undefined
@@ -93,6 +101,11 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     sourcePointsPly?.relativePath,
     gaussianPly?.relativePath,
     objMesh?.relativePath,
+    captureSplatMetric?.navigationMesh?.relativePath,
+    captureSplatMetric?.measurementPoints?.relativePath,
+    captureSplatMetric?.meshReport?.relativePath,
+    captureSplatMetric?.roomSemantics?.relativePath,
+    captureSplatMetric?.cameraTrajectory?.relativePath,
     budoMediaFrames?.relativePath,
     articleFigureViews?.relativePath,
     verifiedExport?.relativePath,
@@ -104,6 +117,11 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     sourcePointsPly,
     gaussianPly,
     objMesh,
+    captureSplatMetric?.navigationMesh,
+    captureSplatMetric?.measurementPoints,
+    captureSplatMetric?.meshReport,
+    captureSplatMetric?.roomSemantics,
+    captureSplatMetric?.cameraTrajectory,
     budoMediaFrames,
     articleFigureViews,
     verifiedExport,
@@ -167,6 +185,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     articleFigureViews,
     verifiedExport,
     jsonManifests,
+    captureSplatMetric,
     ...extractHandoffSceneHints(parsedCaptureSplatManifest),
     packageInsights: buildPackageInsights({
       articleFigureViews,
@@ -323,6 +342,41 @@ async function readOptionalBinary(root: string, relativePath: string, packageIss
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
+}
+
+async function readCaptureSplatMetricHandoff(
+  root: string,
+  manifest: Record<string, unknown>,
+  refs: CaptureSplatManifestRefs,
+  packageIssues: LocalPackageIssue[]
+): Promise<CaptureSplatMetricHandoff | undefined> {
+  const registration = isRecord(manifest.metric_registration) ? manifest.metric_registration : undefined;
+  const eligibility = isRecord(manifest.walk_eligibility) ? manifest.walk_eligibility : undefined;
+  const navigationMesh = await readFirstBinary(root, refs.navigationMeshPaths, packageIssues);
+  const measurementPoints = await readFirstBinary(root, refs.measurementPointPaths, packageIssues);
+  const meshReport = await readFirstText(root, refs.meshReportPaths, packageIssues);
+  const roomSemantics = await readFirstText(root, refs.roomSemanticsPaths, packageIssues);
+  const cameraTrajectory = await readFirstText(root, refs.cameraTrajectoryPaths, packageIssues);
+  if (!registration && !eligibility && !navigationMesh && !measurementPoints && !meshReport && !roomSemantics && !cameraTrajectory) {
+    return undefined;
+  }
+  const registrationValue = stringValue(registration?.status);
+  const registrationStatus: CaptureSplatMetricHandoff["registrationStatus"] =
+    registrationValue === "accepted" || registrationValue === "held" ? registrationValue : "unavailable";
+  const eligibilityValue = stringValue(eligibility?.status);
+  const walkEligibility: CaptureSplatMetricHandoff["walkEligibility"] =
+    eligibilityValue === "eligible" || eligibilityValue === "held" ? eligibilityValue : "missing";
+  return {
+    walkEligibility,
+    walkReason: stringValue(eligibility?.reason) ?? "metric_geometry_missing",
+    registrationStatus,
+    registration,
+    navigationMesh,
+    measurementPoints,
+    meshReport,
+    roomSemantics,
+    cameraTrajectory
+  };
 }
 
 async function readGaussianPreviewPointCloud(
@@ -802,13 +856,18 @@ function createCaptureFrameManifest(
 
 function emptyCaptureSplatRefs(): CaptureSplatManifestRefs {
   return {
+    cameraTrajectoryPaths: [],
     captureManifestPaths: [],
     cameraPosePaths: [],
     framePaths: [],
     gaussianPlyPaths: [],
     gaussianProxyPaths: [],
+    measurementPointPaths: [],
+    meshReportPaths: [],
+    navigationMeshPaths: [],
     objMeshPaths: [],
-    pointsPlyPaths: []
+    pointsPlyPaths: [],
+    roomSemanticsPaths: []
   };
 }
 
@@ -818,6 +877,11 @@ function extractCaptureSplatManifestRefs(manifest: Record<string, unknown>): Cap
   collectPathValues(refs.framePaths, manifest.source_frames, manifest.sourceFrames, manifest.frames, manifest.rgb_frames, manifest.images, assets.source_frames, assets.sourceFrames, assets.frames, assets.rgb);
   collectPathValues(refs.pointsPlyPaths, manifest.points, manifest.points_ply, manifest.point_cloud, manifest.pointCloud, assets.points, assets.points_ply, assets.point_cloud, assets.pointCloud);
   collectPathValues(refs.objMeshPaths, manifest.mesh, manifest.collision_mesh, manifest.collisionMesh, assets.mesh, assets.collision_mesh, assets.collisionMesh);
+  collectPathValues(refs.navigationMeshPaths, manifest.navigation_mesh, manifest.navigationMesh, assets.navigation_mesh, assets.navigationMesh);
+  collectPathValues(refs.measurementPointPaths, manifest.measurement_points, manifest.measurementPoints, assets.measurement_points, assets.measurementPoints);
+  collectPathValues(refs.meshReportPaths, manifest.mesh_report, manifest.meshReport, assets.mesh_report, assets.meshReport);
+  collectPathValues(refs.roomSemanticsPaths, manifest.room_semantics, manifest.roomSemantics, assets.room_semantics, assets.roomSemantics);
+  collectPathValues(refs.cameraTrajectoryPaths, manifest.camera_trajectory, manifest.cameraTrajectory, assets.camera_trajectory, assets.cameraTrajectory);
   collectPathValues(refs.cameraPosePaths, manifest.camera_poses, manifest.cameraPoses, manifest.transforms, manifest.poses, assets.camera_poses, assets.cameraPoses, assets.transforms, assets.poses);
   collectPathValues(refs.captureManifestPaths, manifest.capture_json, manifest.captureJson, manifest.capture_manifest, manifest.captureManifest, assets.capture_json, assets.captureJson, assets.capture_manifest, assets.captureManifest);
   collectGaussianPathValues(refs, manifest.gaussian, manifest.gaussians, manifest.gaussian_ply, manifest.splat, manifest.spz, assets.gaussian, assets.gaussians, assets.gaussian_ply, assets.splat, assets.spz);
@@ -838,13 +902,18 @@ function extractCaptureSplatManifestRefs(manifest: Record<string, unknown>): Cap
   }
 
   return {
+    cameraTrajectoryPaths: uniquePaths(refs.cameraTrajectoryPaths),
     captureManifestPaths: uniquePaths(refs.captureManifestPaths),
     cameraPosePaths: uniquePaths(refs.cameraPosePaths),
     framePaths: uniquePaths(refs.framePaths),
     gaussianPlyPaths: uniquePaths(refs.gaussianPlyPaths),
     gaussianProxyPaths: uniquePaths(refs.gaussianProxyPaths),
+    measurementPointPaths: uniquePaths(refs.measurementPointPaths),
+    meshReportPaths: uniquePaths(refs.meshReportPaths),
+    navigationMeshPaths: uniquePaths(refs.navigationMeshPaths),
     objMeshPaths: uniquePaths(refs.objMeshPaths),
-    pointsPlyPaths: uniquePaths(refs.pointsPlyPaths)
+    pointsPlyPaths: uniquePaths(refs.pointsPlyPaths),
+    roomSemanticsPaths: uniquePaths(refs.roomSemanticsPaths)
   };
 }
 
@@ -1086,6 +1155,8 @@ function buildPackageInsights(input: {
     const manifest = parseJsonRecord(input.captureSplatManifest.text, input.captureSplatManifest.relativePath, packageIssues);
     const refs = extractCaptureSplatManifestRefs(manifest);
     const schema = stringValue(manifest.schema) ?? "capture_splat.world_studio_handoff.v0.1";
+    const registration = isRecord(manifest.metric_registration) ? manifest.metric_registration : {};
+    const eligibility = isRecord(manifest.walk_eligibility) ? manifest.walk_eligibility : {};
     insights.push({
       id: "capture-splat-manifest",
       kind: "capture-splat-manifest",
@@ -1096,10 +1167,12 @@ function buildPackageInsights(input: {
       metrics: [
         { label: "frames", value: refs.framePaths.length },
         { label: "points", value: refs.pointsPlyPaths[0] ?? "missing" },
-        { label: "gaussian", value: refs.gaussianPlyPaths[0] ?? refs.gaussianProxyPaths[0] ?? "missing" }
+        { label: "gaussian", value: refs.gaussianPlyPaths[0] ?? refs.gaussianProxyPaths[0] ?? "missing" },
+        { label: "walk", value: stringValue(eligibility.status) ?? "missing" }
       ],
       details: [
         { label: "schema", value: schema },
+        { label: "registration", value: stringValue(registration.status) ?? "unavailable" },
         { label: "authority", value: "source frames visual evidence; 3DGS proposal" }
       ],
       sections: [
@@ -1110,6 +1183,19 @@ function buildPackageInsights(input: {
             { label: "gaussian ply", value: refs.gaussianPlyPaths[0] ?? "missing" },
             { label: "mesh", value: refs.objMeshPaths[0] ?? "missing" },
             { label: "splat/spz", value: refs.gaussianProxyPaths[0] ?? "missing" }
+          ]
+        },
+        {
+          title: "Metric Interaction",
+          rows: [
+            { label: "walk", value: stringValue(eligibility.status) ?? "missing" },
+            { label: "reason", value: stringValue(eligibility.reason) ?? "metric geometry missing" },
+            { label: "registration", value: stringValue(registration.status) ?? "unavailable" },
+            { label: "navigation mesh", value: refs.navigationMeshPaths[0] ?? "missing" },
+            { label: "measurement points", value: refs.measurementPointPaths[0] ?? "missing" },
+            { label: "mesh report", value: refs.meshReportPaths[0] ?? "missing" },
+            { label: "room semantics", value: refs.roomSemanticsPaths[0] ?? "missing" },
+            { label: "trajectory", value: refs.cameraTrajectoryPaths[0] ?? "missing" }
           ]
         },
         {

@@ -393,6 +393,7 @@ end_header
     await mkdir(join(root, "exports"), { recursive: true });
     await mkdir(join(root, "renders"), { recursive: true });
     await mkdir(join(root, "colmap"), { recursive: true });
+    await mkdir(join(root, "metric"), { recursive: true });
     await writeFile(join(root, "rgb", "frame_000001.png"), onePixelPng);
     await writeFile(join(root, "rgb", "frame_000002.png"), onePixelPng);
     await writeFile(join(root, "exports", "points.ply"), `ply
@@ -423,6 +424,11 @@ property float rot_3
 end_header
 0 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`);
     await writeFile(join(root, "exports", "collision_mesh.obj"), "o fixture\nv 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n");
+    await writeFile(join(root, "metric", "navigation_mesh.ply"), "ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n");
+    await writeFile(join(root, "metric", "measurement_points.ply"), "ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n");
+    await writeJson(root, "metric/navigation_mesh_report.json", { status: "finite_mesh_written" });
+    await writeJson(root, "metric/room_semantics.json", { schema: "capture_splat.room_semantics.v0.1" });
+    await writeFile(join(root, "metric", "camera_trajectory.jsonl"), '{"video_frame_index":0}\n');
     await writeJson(root, "capture.json", { schema: "capture_splat.v0.1", accepted_keyframes: 2 });
     await writeJson(root, "colmap/transforms.json", { schema: "capture_splat.transforms.v0.1", frames: [] });
     await writeFile(join(root, "colmap", "cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
@@ -458,7 +464,24 @@ end_header
           "cameras.txt": "colmap/cameras.txt",
           "images.txt": "colmap/images.txt"
         },
+        navigation_mesh: "metric/navigation_mesh.ply",
+        measurement_points: "metric/measurement_points.ply",
+        mesh_report: "metric/navigation_mesh_report.json",
+        room_semantics: "metric/room_semantics.json",
+        camera_trajectory: "metric/camera_trajectory.jsonl",
         spz: "exports/scene.spz"
+      },
+      metric_registration: {
+        schema: "capture_splat.metric_registration.v0.1",
+        status: "accepted",
+        matched_cameras: 8,
+        median_residual: 0.01,
+        p95_residual: 0.03,
+        meters_per_target_unit: 0.5
+      },
+      walk_eligibility: {
+        status: "eligible",
+        reason: "registered_metric_mesh"
       },
       scene_radius: 2.4,
       median_structure_distance: 1.1,
@@ -482,6 +505,17 @@ end_header
     expect(payload.pointsPly?.relativePath).toBe("exports/points.ply");
     expect(payload.gaussianPly?.relativePath).toBe("renders/splat.ply");
     expect(payload.objMesh?.relativePath).toBe("exports/collision_mesh.obj");
+    expect(payload.captureSplatMetric).toMatchObject({
+      walkEligibility: "eligible",
+      walkReason: "registered_metric_mesh",
+      registrationStatus: "accepted",
+      registration: { matched_cameras: 8, meters_per_target_unit: 0.5 },
+      navigationMesh: { relativePath: "metric/navigation_mesh.ply" },
+      measurementPoints: { relativePath: "metric/measurement_points.ply" },
+      meshReport: { relativePath: "metric/navigation_mesh_report.json" },
+      roomSemantics: { relativePath: "metric/room_semantics.json" },
+      cameraTrajectory: { relativePath: "metric/camera_trajectory.jsonl" }
+    });
     expect(mediaFrames.source_kind).toBe("capture_splat.world_studio_handoff");
     expect(mediaFrames.frames).toHaveLength(2);
     expect(mediaFrames.frames?.[0]?.rgb_path).toBe("rgb/frame_000001.png");
@@ -502,7 +536,7 @@ end_header
     });
     expect(mediaFrames.frames?.[1]).toMatchObject({ frame_camera: { translation: [1, 0, 0] } });
     expect(payload.companionArtifacts).toEqual(
-      expect.arrayContaining(["capture-splat.world-studio.json", "exports/points.ply", "renders/splat.ply", "capture-splat.media_frames.generated.json", "exports/collision_mesh.obj", "capture.json"])
+      expect.arrayContaining(["capture-splat.world-studio.json", "exports/points.ply", "renders/splat.ply", "capture-splat.media_frames.generated.json", "exports/collision_mesh.obj", "metric/navigation_mesh.ply", "metric/measurement_points.ply", "metric/navigation_mesh_report.json", "metric/room_semantics.json", "metric/camera_trajectory.jsonl", "capture.json"])
     );
     expect(payload.packageInsights).toEqual(
       expect.arrayContaining([

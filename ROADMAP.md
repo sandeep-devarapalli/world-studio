@@ -26,6 +26,10 @@
 
 ## P1: Renderer And Editing Depth
 
+Detailed execution and progress tracking for first-person 3DGS navigation,
+metric geometry, measurements, and large-asset LoD lives in
+`docs/3dgs_walkthrough_measurement_plan.md`.
+
 - Harden the Spark + Three.js Gaussian path for larger real-world Gaussian PLYs.
 - Keep the canvas fallback for tests and degraded browser paths.
 - Add worker-backed PLY/OBJ parsing for larger files.
