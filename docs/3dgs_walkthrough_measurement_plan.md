@@ -1,6 +1,6 @@
 # 3DGS Walkthrough and Metric Measurement Plan
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 ## Objective
 
@@ -254,6 +254,30 @@ Remaining Phase 1 evidence gate:
 - Export a package from a fresh physical iPhone capture and confirm that the
   real camera-center registration is accepted. Unit fixtures prove the contract
   and decision behavior, not physical alignment quality.
+
+### 2026-07-11 - iPhone Stability Gate Before Fresh Capture
+
+The walkthrough lane remains paused after Phase 1. Xcode reproduced an
+Objective-C exception in the continuous-video recorder because its pixel-buffer
+adaptor was created after the asset-writer input had started writing. Capture
+Splat now creates the adaptor before `startWriting()`, owns the AR session
+configuration explicitly, records AR session failures and interruptions, and
+uses valid SF Symbols. The unsigned physical-device target builds successfully.
+
+The stability gate is still open because the iPhone was unavailable to Xcode
+for the runtime smoke. Before resuming Phase 2:
+
+1. connect and unlock the physical iPhone;
+2. complete two Record -> Stop -> Finalize cycles without relaunching;
+3. verify the continuous video, frame index, finalization report, and session
+   events exist;
+4. confirm no Objective-C exception, video-writer failure, duplicate-session
+   warning, or retained-ARFrame warning appears;
+5. make the fresh walkthrough capture and validate metric registration.
+
+After those checks, resume here with navigation-mesh parsing and the
+collision-aware Walk camera. Do not redo the completed Phase 1 handoff or
+ingestion work.
 
 ## Reference Boundaries
 
