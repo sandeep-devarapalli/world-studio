@@ -264,16 +264,24 @@ Splat now creates the adaptor before `startWriting()`, owns the AR session
 configuration explicitly, records AR session failures and interruptions, and
 uses valid SF Symbols. The unsigned physical-device target builds successfully.
 
-The stability gate is still open because the iPhone was unavailable to Xcode
-for the runtime smoke. Before resuming Phase 2:
+One physical Desk / Cluster pass then finalized without the previous exception:
+6,179 continuous-video frames, 93 RGB-D keyframes, 132 person masks, and a
+finite ARKit mesh were preserved. The host quality report returned `promote`,
+and corrected full-resolution preparation produced a `ready` 300-frame
+package with complete camera metadata. This is a useful Orbit/reconstruction
+fixture, not the room-walkthrough registration proof.
+
+Xcode exposed a remaining retained-`ARFrame` warning during that pass. Capture
+Splat now detaches encoder buffers from ARKit ownership, but the corrected build
+still needs a short physical-device regression because the iPhone locked and
+disconnected before installation. Before resuming Phase 2:
 
 1. connect and unlock the physical iPhone;
-2. complete two Record -> Stop -> Finalize cycles without relaunching;
-3. verify the continuous video, frame index, finalization report, and session
-   events exist;
-4. confirm no Objective-C exception, video-writer failure, duplicate-session
-   warning, or retained-ARFrame warning appears;
-5. make the fresh walkthrough capture and validate metric registration.
+2. run one short Record -> Stop -> Finalize regression on the corrected build;
+3. confirm no Objective-C exception, video-writer failure, or retained-frame
+   warning appears and inspect the recorded startup latency;
+4. make a fresh Room Walkthrough capture;
+5. validate real camera-center registration and metric mesh placement.
 
 After those checks, resume here with navigation-mesh parsing and the
 collision-aware Walk camera. Do not redo the completed Phase 1 handoff or
