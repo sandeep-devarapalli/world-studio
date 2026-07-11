@@ -271,17 +271,21 @@ and corrected full-resolution preparation produced a `ready` 300-frame
 package with complete camera metadata. This is a useful Orbit/reconstruction
 fixture, not the room-walkthrough registration proof.
 
-Xcode exposed a remaining retained-`ARFrame` warning during that pass. Capture
-Splat now detaches encoder buffers from ARKit ownership, but the corrected build
-still needs a short physical-device regression because the iPhone locked and
-disconnected before installation. Before resuming Phase 2:
+The corrected build was subsequently installed and completed fresh Desk /
+Cluster and Object Orbit Record -> Stop -> Finalize passes without a recorder
+crash. Their continuous-video writers reported zero dropped frames and startup
+latencies remained below 0.04 seconds. Both long passes reached a `serious`
+thermal state, and Xcode retained-frame telemetry still needs to be checked
+explicitly before treating recorder stability as fully closed.
 
-1. connect and unlock the physical iPhone;
-2. run one short Record -> Stop -> Finalize regression on the corrected build;
-3. confirm no Objective-C exception, video-writer failure, or retained-frame
-   warning appears and inspect the recorded startup latency;
-4. make a fresh Room Walkthrough capture;
-5. validate real camera-center registration and metric mesh placement.
+The Desk and Object exports are useful reconstruction fixtures, but they do not
+satisfy the physical room-registration gate. Before resuming Phase 2:
+
+1. confirm the corrected build no longer emits the retained-`ARFrame` warning;
+2. make a fresh Room Walkthrough capture;
+3. export a World Studio handoff with trajectory and navigation mesh evidence;
+4. validate real camera-center registration, scale, floor orientation, and
+   metric mesh placement.
 
 After those checks, resume here with navigation-mesh parsing and the
 collision-aware Walk camera. Do not redo the completed Phase 1 handoff or
