@@ -53,6 +53,24 @@ end_header
 
 const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
 const onePixelDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==";
+const evidenceMeshPly = `ply
+format ascii 1.0
+element vertex 4
+property float x
+property float y
+property float z
+element face 2
+property list uchar uint vertex_indices
+property uchar classification
+end_header
+0 0 0
+1 0 0
+1 0 1
+0 0 1
+3 0 1 2 2
+3 0 2 3 1
+`;
+const evidenceMeshDataUrl = `data:application/octet-stream;base64,${Buffer.from(evidenceMeshPly).toString("base64")}`;
 const localObj = `o local_fixture
 v -0.5 0 -0.5
 v 0.5 0 -0.5
@@ -215,6 +233,18 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
         }
       ]
     })
+  },
+  captureSplatMetric: {
+    walkEligibility: "held",
+    walkReason: "registered_visual_evidence_only",
+    registrationStatus: "accepted",
+    navigationMeshTransform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+    navigationMesh: {
+      relativePath: "metric/navigation_mesh.ply",
+      dataUrl: evidenceMeshDataUrl,
+      headerText: evidenceMeshPly.slice(0, evidenceMeshPly.indexOf("end_header") + "end_header".length),
+      sizeBytes: Buffer.byteLength(evidenceMeshPly)
+    }
   },
   packageInsights: [
     {
@@ -1357,6 +1387,14 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Free");
   await expect(page.getByText("3DGS Performance")).toBeVisible();
   await expect(page.getByText("review proposal")).toBeVisible();
+  await expect(page.getByText("registered preview only")).toBeVisible();
+  const evidenceControls = page.getByTestId("evidence-mesh-mode");
+  await expect(evidenceControls).toBeVisible();
+  await evidenceControls.getByRole("button", { name: "Splat + Mesh" }).click();
+  await expect(evidenceControls.getByRole("button", { name: "Splat + Mesh" })).toHaveClass(/on/);
+  await evidenceControls.getByRole("button", { name: "Mesh", exact: true }).click();
+  await expect(evidenceControls.getByRole("button", { name: "Mesh", exact: true })).toHaveClass(/on/);
+  await evidenceControls.getByRole("button", { name: "Splat", exact: true }).click();
   await expect(page.getByTestId("simulate-comparison-panel")).toContainText("source evidence");
   await expect(page.locator(".ws-frame-row", { hasText: "frame_000001" }).getByAltText("frame_000001 preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
   await page.getByRole("button", { name: "Orbit", exact: true }).click();
@@ -1393,6 +1431,25 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
   await page.locator(".ws-frame-row", { hasText: "frame_000002" }).click();
   await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000002");
+});
+
+test("holds navigation mesh evidence when metric registration is not accepted", async ({ page }) => {
+  const metric = { ...captureSplatSourceFramePayload.captureSplatMetric!, registrationStatus: "held" as const };
+  delete metric.navigationMeshTransform;
+  const payload: LocalWorldPackagePayload = { ...captureSplatSourceFramePayload, captureSplatMetric: metric };
+  await page.addInitScript((input) => {
+    window.worldStudioDesktop = {
+      pickFolder: async () => input.sourcePath,
+      openLocalPackage: async () => input
+    };
+  }, payload);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await expectSparkReadyForGaussianPayload(page, payload);
+  await expect(page.getByTestId("evidence-mesh-mode")).toHaveCount(0);
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await expect(page.locator(".ws-issue-panel")).toContainText("Evidence mesh held");
 });
 
 test("keeps Simulate controls visible on a mobile viewport", async ({ page }) => {

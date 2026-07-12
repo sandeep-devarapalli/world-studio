@@ -507,7 +507,8 @@ end_header
         matched_cameras: 8,
         median_residual: 0.01,
         p95_residual: 0.03,
-        meters_per_target_unit: 0.5
+        meters_per_target_unit: 0.5,
+        arkit_to_target: [[1, 0, 0, 1], [0, 0, -1, 2], [0, 1, 0, 3], [0, 0, 0, 1]]
       },
       walk_eligibility: {
         status: "eligible",
@@ -541,6 +542,7 @@ end_header
       registrationStatus: "accepted",
       registration: { matched_cameras: 8, meters_per_target_unit: 0.5 },
       navigationMesh: { relativePath: "metric/navigation_mesh.ply" },
+      navigationMeshTransform: [[1, 0, 0, 1], [0, 0, -1, 2], [0, 1, 0, 3], [0, 0, 0, 1]],
       measurementPoints: { relativePath: "metric/measurement_points.ply" },
       meshReport: { relativePath: "metric/navigation_mesh_report.json" },
       roomSemantics: { relativePath: "metric/room_semantics.json" },

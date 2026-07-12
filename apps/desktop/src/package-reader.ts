@@ -403,12 +403,16 @@ async function readCaptureSplatMetricHandoff(
   const eligibilityValue = stringValue(eligibility?.status);
   const walkEligibility: CaptureSplatMetricHandoff["walkEligibility"] =
     eligibilityValue === "eligible" || eligibilityValue === "held" ? eligibilityValue : "missing";
+  const navigationMeshTransform = registrationStatus === "accepted"
+    ? matrix4(firstValue(registration?.arkit_to_target, registration?.arkitToTarget))
+    : undefined;
   return {
     walkEligibility,
     walkReason: stringValue(eligibility?.reason) ?? "metric_geometry_missing",
     registrationStatus,
     registration,
     navigationMesh,
+    navigationMeshTransform,
     measurementPoints,
     meshReport,
     roomSemantics,

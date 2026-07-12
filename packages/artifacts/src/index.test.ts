@@ -7,6 +7,7 @@ import {
   detectPlyKind,
   parseObjMesh,
   parseObjMeshSummary,
+  parsePlyMesh,
   parsePointCloudPly,
   prepareGaussianPlyForSpark,
   validateBudoMediaFramesManifest,
@@ -217,6 +218,56 @@ end_header
       transform: [[2, 0, 0, 10], [0, 2, 0, 20], [0, 0, 2, 30], [0, 0, 0, 1]]
     });
     expect(parsePointCloudPly(preview).points).toEqual([{ x: 12, y: 24, z: 36, red: 10, green: 20, blue: 30 }]);
+  });
+
+  it("parses and transforms classified binary ARKit mesh evidence", () => {
+    const header = new TextEncoder().encode(`ply
+format binary_little_endian 1.0
+element vertex 4
+property float x
+property float y
+property float z
+element face 2
+property list uchar uint vertex_indices
+property uchar classification
+end_header
+`);
+    const rows = new Uint8Array(4 * 12 + 2 * 14);
+    const view = new DataView(rows.buffer);
+    const vertices = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]];
+    vertices.forEach((vertex, index) => {
+      const offset = index * 12;
+      view.setFloat32(offset, vertex[0]!, true);
+      view.setFloat32(offset + 4, vertex[1]!, true);
+      view.setFloat32(offset + 8, vertex[2]!, true);
+    });
+    let offset = 48;
+    for (const [indices, classification] of [[[0, 1, 2], 2], [[0, 2, 3], 1]] as Array<[number[], number]>) {
+      view.setUint8(offset, 3);
+      offset += 1;
+      indices.forEach((index) => {
+        view.setUint32(offset, index, true);
+        offset += 4;
+      });
+      view.setUint8(offset, classification);
+      offset += 1;
+    }
+    const binary = new Uint8Array(header.length + rows.length);
+    binary.set(header);
+    binary.set(rows, header.length);
+
+    const mesh = parsePlyMesh(binary, {
+      maxFaces: 1,
+      transform: [[2, 0, 0, 10], [0, 2, 0, 20], [0, 0, 2, 30], [0, 0, 0, 1]]
+    });
+
+    expect(mesh.vertices[0]).toEqual([10, 20, 30]);
+    expect(mesh.vertices[2]).toEqual([12, 22, 30]);
+    expect(mesh.sourceVertexCount).toBe(4);
+    expect(mesh.sourceFaceCount).toBe(2);
+    expect(mesh.sampledFaceCount).toBe(1);
+    expect(mesh.triangles).toEqual([{ a: 0, b: 1, c: 2, group: "floor", material: "capture_evidence" }]);
+    expect(mesh.classificationCounts).toEqual({ floor: 1, wall: 1 });
   });
 
   it("rejects ordinary point-cloud PLYs for Spark Gaussian loading", async () => {

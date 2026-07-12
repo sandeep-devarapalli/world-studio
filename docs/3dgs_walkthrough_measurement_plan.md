@@ -1,6 +1,6 @@
 # 3DGS Walkthrough and Metric Measurement Plan
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 
 ## Objective
 
@@ -53,10 +53,10 @@ Capture Splat already records:
 2. Spark splat raycasting is enabled but is not used for picking.
 3. Rapier currently approximates OBJ groups with bounding boxes instead of using
    a walkable triangle mesh and a character controller.
-4. The Capture Splat handoff does not carry the ARKit mesh, mesh report,
-   RoomPlan semantics, continuous camera trajectory, or measurement points.
-5. The ARKit, COLMAP, trainer, and World Studio coordinate frames are not yet
-   expressed as one validated transform chain in the handoff.
+4. Capture Splat metric sidecars are ingested, but the registered ARKit mesh is
+   still review evidence rather than collision or measurement authority.
+5. The current room handoff has an accepted ARKit-to-trainer transform chain;
+   packages without accepted registration remain Fly-only.
 6. Large Gaussian PLY files are loaded monolithically instead of using paged LoD.
 
 ## Execution Phases
@@ -213,9 +213,9 @@ a metric room-walkthrough test.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
-| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Visualize the registered mesh without promoting collision authority |
-| 1. World Studio metric ingestion | Complete; camera and floor accepted | The 7000 review package loads, Frame cameras align, Inside/360 stay level, and keyboard motion is controlled | Render and verify the registered navigation mesh |
-| 2. Walk and Fly cameras | Pending | Frame, Orbit, Free, pointer lock, gravity leveling, and Center 360 already exist | Add collision-aware Walk |
+| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
+| 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
+| 2. Walk and Fly cameras | Pending | Frame, Orbit, Free, pointer lock, gravity leveling, Center 360, and registered evidence-mesh review exist | Add collision-aware Walk using a validated simplified mesh |
 | 3. Surface measurement | Pending | Ground-plane ruler exists; Spark raycasting is enabled | Add metric raycast and annotation export |
 | 4. Large-asset LoD | Pending | Spark 2.1 is installed; large local fixtures are available | Add RAD preparation and paged loading |
 | 5. iPhone walkthrough evidence | In progress | Fresh capture finalized 168 RGB-D keyframes and a 6,831-frame trajectory with finite classified mesh evidence | Activate room-intent guidance and collect RoomPlan semantics |
@@ -367,6 +367,25 @@ The classified ARKit navigation mesh is finite and present, but World Studio
 does not yet render its binary PLY. Mesh placement therefore remains held, and
 collision-aware Walk and metric measurement must not start until a separate
 non-authoritative evidence-mesh path verifies overlap with the splat.
+
+### 2026-07-13 - Registered Evidence Mesh Acceptance
+
+World Studio now parses ASCII and binary little-endian classified PLY meshes,
+applies the accepted ARKit-to-reconstruction transform, and samples at most
+60,000 source faces for review. Packages without accepted registration do not
+render the mesh and receive an explicit warning.
+
+Simulate exposes `Splat`, `Splat + Mesh`, and `Mesh` states. Controlled Electron
+captures of frame `000001` show the sampled floor, wall, window-side, and
+furniture geometry overlapping the selected 7000 splat. The source mesh has
+300,000 faces; the review layer sampled 60,000. Rapier stayed at two existing
+colliders in every state, proving that the evidence mesh did not silently enter
+physics.
+
+This closes mesh-placement review for the current room handoff only. The raw
+mesh remains non-authoritative evidence. The next Phase 2 gate is a separately
+derived, simplified collision candidate with floor continuity, wall retention,
+triangle-budget, and character-controller tests before enabling Walk.
 
 ## Reference Boundaries
 

@@ -83,6 +83,18 @@ export interface ParsedObjMesh {
   triangles: ObjTriangle[];
 }
 
+export interface ParsedEvidenceMesh extends ParsedObjMesh {
+  sourceVertexCount: number;
+  sourceFaceCount: number;
+  sampledFaceCount: number;
+  classificationCounts: Record<string, number>;
+}
+
+export interface PlyMeshOptions {
+  maxFaces?: number;
+  transform?: number[][];
+}
+
 export interface LoftSceneManifest {
   dataset: string;
   version: string;
@@ -430,6 +442,76 @@ export function parsePointCloudPly(source: string, maxPoints = Number.POSITIVE_I
   return { kind: "ordinary-ply", points, bounds };
 }
 
+export function parsePlyMesh(source: Uint8Array | ArrayBuffer, options: PlyMeshOptions = {}): ParsedEvidenceMesh {
+  const bytes = source instanceof Uint8Array ? source : new Uint8Array(source);
+  const headerLength = findPlyHeaderLength(bytes);
+  if (headerLength < 0) throw new Error("PLY mesh header is missing end_header");
+  const headerText = new TextDecoder().decode(bytes.slice(0, headerLength));
+  const header = parsePlyHeader(headerText);
+  if (header.format !== "ascii" && header.format !== "binary_little_endian") {
+    throw new Error(`PLY mesh only supports ASCII or binary little-endian data, got ${header.format}`);
+  }
+  const schema = parsePlyMeshSchema(headerText);
+  const vertexElement = schema.find((element) => element.name === "vertex");
+  const faceElement = schema.find((element) => element.name === "face");
+  if (!vertexElement?.count || !faceElement?.count) throw new Error("PLY mesh requires vertex and face elements");
+  if (vertexElement.properties.some((property) => property.kind === "list")) throw new Error("PLY mesh vertex lists are unsupported");
+  const vertexProperties = vertexElement.properties as MeshScalarProperty[];
+  const vertexIndex = new Map(vertexProperties.map((property, index) => [property.name, index]));
+  const xIndex = requireProperty(vertexIndex, "x");
+  const yIndex = requireProperty(vertexIndex, "y");
+  const zIndex = requireProperty(vertexIndex, "z");
+  const vertices: Array<[number, number, number]> = [];
+  const triangles: ObjTriangle[] = [];
+  const classificationCounts: Record<string, number> = {};
+  const maxFaces = Math.max(1, Math.floor(options.maxFaces ?? 60_000));
+  const sampleStep = Math.max(1, Math.ceil(faceElement.count / maxFaces));
+
+  if (header.format === "ascii") {
+    const lines = new TextDecoder().decode(bytes.slice(headerLength)).trim().split(/\r?\n/);
+    if (lines.length < vertexElement.count + faceElement.count) throw new Error("ASCII PLY mesh rows are incomplete");
+    for (let index = 0; index < vertexElement.count; index++) {
+      const cols = lines[index]!.trim().split(/\s+/);
+      vertices.push(transformPreviewPoint(numeric(cols, xIndex), numeric(cols, yIndex), numeric(cols, zIndex), options.transform));
+    }
+    for (let index = 0; index < faceElement.count; index++) {
+      const values = lines[vertexElement.count + index]!.trim().split(/\s+/).map(Number);
+      const count = values[0] ?? 0;
+      const indices = values.slice(1, 1 + count);
+      const classification = values[1 + count] ?? 0;
+      appendEvidenceFace(triangles, indices, classification, index, sampleStep, vertices.length, classificationCounts);
+    }
+  } else {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const offsets = propertyByteOffsets(vertexProperties);
+    const stride = vertexProperties.reduce((sum, property) => sum + plyScalarSize(property.type), 0);
+    for (let index = 0; index < vertexElement.count; index++) {
+      const rowOffset = headerLength + index * stride;
+      vertices.push(transformPreviewPoint(
+        readPlyScalar(view, rowOffset + offsets[xIndex]!, vertexProperties[xIndex]!),
+        readPlyScalar(view, rowOffset + offsets[yIndex]!, vertexProperties[yIndex]!),
+        readPlyScalar(view, rowOffset + offsets[zIndex]!, vertexProperties[zIndex]!),
+        options.transform
+      ));
+    }
+    let offset = headerLength + vertexElement.count * stride;
+    for (let index = 0; index < faceElement.count; index++) {
+      const row = readBinaryMeshFace(view, offset, faceElement.properties);
+      offset = row.offset;
+      appendEvidenceFace(triangles, row.indices, row.classification, index, sampleStep, vertices.length, classificationCounts);
+    }
+  }
+
+  return {
+    vertices,
+    triangles,
+    sourceVertexCount: vertexElement.count,
+    sourceFaceCount: faceElement.count,
+    sampledFaceCount: Math.ceil(faceElement.count / sampleStep),
+    classificationCounts
+  };
+}
+
 function findPlyHeaderLength(bytes: Uint8Array): number {
   const marker = "end_header";
   for (let index = 0; index <= bytes.length - marker.length; index++) {
@@ -502,6 +584,91 @@ function normalizePlyScalarType(type: string | undefined): PlyScalarType {
     default:
       throw new Error(`Unsupported PLY scalar type: ${type ?? "missing"}`);
   }
+}
+
+interface MeshScalarProperty extends PlyScalarProperty {
+  kind: "scalar";
+}
+
+interface MeshListProperty {
+  kind: "list";
+  countType: PlyScalarType;
+  itemType: PlyScalarType;
+  name: string;
+}
+
+type MeshProperty = MeshScalarProperty | MeshListProperty;
+
+interface MeshElement {
+  name: string;
+  count: number;
+  properties: MeshProperty[];
+}
+
+function parsePlyMeshSchema(headerText: string): MeshElement[] {
+  const elements: MeshElement[] = [];
+  let current: MeshElement | undefined;
+  for (const line of headerText.split(/\r?\n/)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === "element") {
+      current = { name: parts[1] ?? "", count: Number(parts[2] ?? 0), properties: [] };
+      elements.push(current);
+    } else if (parts[0] === "property" && current) {
+      current.properties.push(parts[1] === "list"
+        ? { kind: "list", countType: normalizePlyScalarType(parts[2]), itemType: normalizePlyScalarType(parts[3]), name: parts[4] ?? "" }
+        : { kind: "scalar", type: normalizePlyScalarType(parts[1]), name: parts[2] ?? "" });
+    }
+  }
+  return elements;
+}
+
+function readBinaryMeshFace(view: DataView, startOffset: number, properties: MeshProperty[]): { offset: number; indices: number[]; classification: number } {
+  let offset = startOffset;
+  let indices: number[] = [];
+  let classification = 0;
+  for (const property of properties) {
+    if (property.kind === "scalar") {
+      const value = readPlyScalar(view, offset, property);
+      if (property.name === "classification") classification = value;
+      offset += plyScalarSize(property.type);
+      continue;
+    }
+    const countProperty: PlyScalarProperty = { type: property.countType, name: `${property.name}_count` };
+    const itemProperty: PlyScalarProperty = { type: property.itemType, name: property.name };
+    const count = readPlyScalar(view, offset, countProperty);
+    offset += plyScalarSize(property.countType);
+    const values: number[] = [];
+    for (let index = 0; index < count; index++) {
+      values.push(readPlyScalar(view, offset, itemProperty));
+      offset += plyScalarSize(property.itemType);
+    }
+    if (property.name === "vertex_indices" || property.name === "vertex_index") indices = values;
+  }
+  return { offset, indices, classification };
+}
+
+function appendEvidenceFace(
+  triangles: ObjTriangle[],
+  indices: number[],
+  classification: number,
+  faceIndex: number,
+  sampleStep: number,
+  vertexCount: number,
+  classificationCounts: Record<string, number>
+): void {
+  const group = arkitMeshClassificationName(classification);
+  classificationCounts[group] = (classificationCounts[group] ?? 0) + 1;
+  if (faceIndex % sampleStep !== 0 || indices.length < 3) return;
+  if (indices.some((index) => !Number.isInteger(index) || index < 0 || index >= vertexCount)) {
+    throw new Error(`PLY mesh face ${faceIndex} has an invalid vertex index`);
+  }
+  for (let index = 1; index < indices.length - 1; index++) {
+    triangles.push({ a: indices[0]!, b: indices[index]!, c: indices[index + 1]!, group, material: "capture_evidence" });
+  }
+}
+
+function arkitMeshClassificationName(value: number): string {
+  return ["none", "wall", "floor", "ceiling", "table", "seat", "window", "door"][Math.round(value)] ?? `class_${Math.round(value)}`;
 }
 
 function plyScalarSize(type: PlyScalarType): number {

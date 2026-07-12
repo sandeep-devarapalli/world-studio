@@ -139,6 +139,7 @@ export interface RenderOptions {
   frameCamera?: FrameCamera;
   firstPersonCamera?: FirstPersonCamera;
   worldOrientation?: WorldOrientation;
+  evidenceMeshMode?: "off" | "overlay" | "only";
   density: number;
   exposure: number;
   accent: string;
@@ -286,6 +287,7 @@ export interface CaptureSplatMetricHandoff {
   registrationStatus: "accepted" | "held" | "unavailable";
   registration?: Record<string, unknown>;
   navigationMesh?: LocalWorldPackageBinaryFile;
+  navigationMeshTransform?: number[][];
   measurementPoints?: LocalWorldPackageBinaryFile;
   meshReport?: LocalWorldPackageTextFile;
   roomSemantics?: LocalWorldPackageTextFile;

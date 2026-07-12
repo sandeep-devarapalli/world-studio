@@ -4,8 +4,10 @@ import {
   detectPlyKind,
   parseObjMesh,
   parseObjMeshSummary,
+  parsePlyMesh,
   parsePointCloudPly,
   type LoftSceneManifest,
+  type ParsedEvidenceMesh,
   type ParsedObjMesh,
   type PointRecord
 } from "@world-studio/artifacts";
@@ -167,6 +169,9 @@ interface AssetSummary {
   objFaces: number;
   objGroups: number;
   pointCount: number;
+  evidenceMeshFaces: number;
+  evidenceMeshSourceFaces: number;
+  evidenceMeshClasses: number;
 }
 
 interface CaptureFrame {
@@ -211,6 +216,7 @@ interface LoadedWorldInput {
   gaussianHeaderText?: string;
   gaussianUrl?: string;
   objText?: string;
+  evidenceMesh?: ParsedEvidenceMesh;
   loadedVia: string;
   sourcePath: string;
   sourceKind: string;
@@ -460,6 +466,7 @@ export function App() {
   const [scale, setScale] = useState(1);
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
+  const [evidenceMeshMode, setEvidenceMeshMode] = useState<"off" | "overlay" | "only">("off");
   const [accentName, setAccentName] = useStoredState<keyof typeof accents>("ws-app-accent", "ember");
   const [dense, setDense] = useStoredState("ws-app-density", false);
   const [docked, setDocked] = useStoredState("ws-app-docked", false);
@@ -729,6 +736,7 @@ export function App() {
       frameCamera: simulateFrameCamera,
       firstPersonCamera: simulateFirstPersonCamera,
       worldOrientation: activeWorldOrientation,
+      evidenceMeshMode: mode === "simulate" ? evidenceMeshMode : "off",
       density,
       exposure,
       accent,
@@ -748,7 +756,7 @@ export function App() {
       cropBounds: cropRegion?.bounds,
       pointTransforms
     }),
-    [accent, activeWorldOrientation, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, exposure, firstPersonCamera, isolatedClass, mode, pointTransforms, renderMode, replayAgent, sceneFloorY, selected, selectedSensorId, sensors, showDeleted, simulateFirstPersonCamera, simulateFrameCamera, spawn, trajectory]
+    [accent, activeWorldOrientation, agent, bodyPreset?.radius, camera, cropRegion, debugCollision, deleted, density, evidenceMeshMode, exposure, firstPersonCamera, isolatedClass, mode, pointTransforms, renderMode, replayAgent, sceneFloorY, selected, selectedSensorId, sensors, showDeleted, simulateFirstPersonCamera, simulateFrameCamera, spawn, trajectory]
   );
   const activePackageInsight = useMemo(
     () => (selectedInsightId ? packageInsights.find((insight) => insight.id === selectedInsightId) ?? null : null),
@@ -1037,6 +1045,7 @@ export function App() {
   }, []);
 
   const applyLocalPackage = useCallback((payload: LocalWorldPackagePayload, options?: LoadedWorldOptions) => {
+    const evidence = parseCaptureSplatEvidenceMesh(payload);
     applyLoadedWorld({
       name: payload.name,
       scene: payload.sceneJson as LoftSceneManifest | undefined,
@@ -1044,6 +1053,7 @@ export function App() {
       gaussianHeaderText: payload.gaussianPly?.headerText,
       gaussianUrl: payload.gaussianPly?.dataUrl,
       objText: payload.objMesh?.text,
+      evidenceMesh: evidence.mesh,
       loadedVia: payload.loadedVia,
       sourcePath: payload.sourcePath,
       sourceKind: payload.sourceKind,
@@ -1053,7 +1063,7 @@ export function App() {
       assetManifest: payload.assetManifest,
       authorityStatus: payload.authorityStatus,
       packageInsights: payload.packageInsights,
-      packageIssues: payload.packageIssues,
+      packageIssues: [...(payload.packageIssues ?? []), ...(evidence.issue ? [evidence.issue] : [])],
       sceneRadius: payload.sceneRadius,
       medianStructureDistance: payload.medianStructureDistance,
       captureProfile: payload.captureProfile,
@@ -1091,7 +1101,7 @@ export function App() {
       setRendererDiagnostics(null);
       setWorldPoints([]);
       setCaptureFrames(input.captureFrames ?? []);
-      setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0 });
+      setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0, evidenceMeshFaces: 0, evidenceMeshSourceFaces: 0, evidenceMeshClasses: 0 });
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
       setSelectedInsightId(null);
@@ -1133,6 +1143,7 @@ export function App() {
       pointCloud,
       classes: worldSession.classes,
       mesh,
+      evidenceMesh: input.evidenceMesh,
       gaussianUrl: input.gaussianUrl,
       sparkProfile: sparkProfileForLoadedWorld(input),
       onDiagnosticsChange: setRendererDiagnostics
@@ -1145,8 +1156,12 @@ export function App() {
       gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded",
       objFaces: meshSummary.faces,
       objGroups: meshSummary.groups.length,
-      pointCount: pointCloud.points.length
+      pointCount: pointCloud.points.length,
+      evidenceMeshFaces: input.evidenceMesh?.triangles.length ?? 0,
+      evidenceMeshSourceFaces: input.evidenceMesh?.sourceFaceCount ?? 0,
+      evidenceMeshClasses: Object.keys(input.evidenceMesh?.classificationCounts ?? {}).length
     });
+    setEvidenceMeshMode("off");
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
     setSelectedInsightId(null);
@@ -2475,6 +2490,14 @@ export function App() {
                     <span>authority</span>
                     <b>review proposal</b>
                   </div>
+                  <div className="ws-kv">
+                    <span>mesh evidence</span>
+                    <b>{assetSummary?.evidenceMeshFaces ? `${assetSummary.evidenceMeshFaces} sampled · ${assetSummary.evidenceMeshSourceFaces} source` : "missing"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>mesh authority</span>
+                    <b>{assetSummary?.evidenceMeshFaces ? "registered preview only" : "unavailable"}</b>
+                  </div>
                 </WSPanel>
                 <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
                   <ModeCard mode={mode} renderMode={renderMode} session={session} assetSummary={assetSummary} playhead={playhead} />
@@ -2870,6 +2893,13 @@ export function App() {
                           Free
                         </button>
                       </div>
+                      {assetSummary?.evidenceMeshFaces ? (
+                        <div className="ws-sim-evidence-group" aria-label="Evidence mesh view" data-testid="evidence-mesh-mode">
+                          <button className={evidenceMeshMode === "off" ? "on" : ""} onClick={() => { setRenderMode("splat"); setEvidenceMeshMode("off"); }}>Splat</button>
+                          <button className={evidenceMeshMode === "overlay" ? "on" : ""} onClick={() => { setRenderMode("splat"); setEvidenceMeshMode("overlay"); }}>Splat + Mesh</button>
+                          <button className={evidenceMeshMode === "only" ? "on" : ""} onClick={() => { setRenderMode("splat"); setEvidenceMeshMode("only"); }}>Mesh</button>
+                        </div>
+                      ) : null}
                       <div className="ws-sim-nudge-group" data-testid="simulate-camera-dpad">
                         <button aria-label="Inside preset" onClick={enterInsidePreset}>Inside</button>
                         <button aria-label="Center 360 spin" className={autoSpin ? "on" : ""} onClick={toggleCenterSpin}>360</button>
@@ -4080,6 +4110,45 @@ function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
     }));
   } catch {
     return [];
+  }
+}
+
+function parseCaptureSplatEvidenceMesh(payload: LocalWorldPackagePayload): { mesh?: ParsedEvidenceMesh; issue?: LocalPackageIssue } {
+  const metric = payload.captureSplatMetric;
+  const source = metric?.navigationMesh;
+  if (!source) return {};
+  if (metric.registrationStatus !== "accepted" || !metric.navigationMeshTransform) {
+    return {
+      issue: {
+        id: "capture-splat-navigation-mesh-unregistered",
+        severity: "warning",
+        code: "unsupported_layout",
+        title: "Evidence mesh held",
+        message: "Navigation mesh was not rendered because accepted ARKit-to-reconstruction registration is missing.",
+        artifact: source.relativePath
+      }
+    };
+  }
+  try {
+    return {
+      mesh: parsePlyMesh(dataUrlToBytes(source.dataUrl), {
+        maxFaces: 60_000,
+        transform: metric.navigationMeshTransform
+      })
+    };
+  } catch (error) {
+    return {
+      issue: {
+        id: "capture-splat-navigation-mesh-preview",
+        severity: "warning",
+        code: "unsupported_layout",
+        title: "Evidence mesh unavailable",
+        message: error instanceof Error
+          ? `Could not prepare navigation mesh evidence: ${error.message}`
+          : "Could not prepare navigation mesh evidence.",
+        artifact: source.relativePath
+      }
+    };
   }
 }
 

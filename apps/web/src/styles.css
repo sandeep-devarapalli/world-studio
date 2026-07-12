@@ -524,6 +524,7 @@ body {
 }
 
 .ws-sim-mode-group,
+.ws-sim-evidence-group,
 .ws-sim-nudge-group,
 .ws-sim-shortcuts {
   align-items: center;
@@ -537,6 +538,7 @@ body {
 }
 
 .ws-sim-mode-group button,
+.ws-sim-evidence-group button,
 .ws-sim-nudge-group button {
   align-items: center;
   background: rgba(255, 255, 255, 0.045);
@@ -555,7 +557,8 @@ body {
   text-transform: uppercase;
 }
 
-.ws-sim-mode-group button.on {
+.ws-sim-mode-group button.on,
+.ws-sim-evidence-group button.on {
   background: var(--acc);
   border-color: color-mix(in oklab, var(--acc) 70%, white);
   color: #160c06;
@@ -565,6 +568,11 @@ body {
 .ws-sim-nudge-group button {
   aspect-ratio: 1;
   padding: 0;
+}
+
+.ws-sim-evidence-group {
+  border-right: 1px solid var(--line);
+  padding-right: 10px;
 }
 
 .ws-sim-shortcuts {
@@ -602,12 +610,14 @@ body {
 }
 
 .ws-sim-mode-group button:hover,
+.ws-sim-evidence-group button:hover,
 .ws-sim-nudge-group button:hover {
   border-color: color-mix(in oklab, var(--acc) 48%, var(--line));
   color: var(--acc);
 }
 
-.ws-sim-mode-group button.on:hover {
+.ws-sim-mode-group button.on:hover,
+.ws-sim-evidence-group button.on:hover {
   color: #160c06;
 }
 

@@ -1,4 +1,4 @@
-import { prepareGaussianPlyForSpark, type ParsedObjMesh, type ParsedPointCloud, type PointRecord } from "@world-studio/artifacts";
+import { prepareGaussianPlyForSpark, type ParsedEvidenceMesh, type ParsedObjMesh, type ParsedPointCloud, type PointRecord } from "@world-studio/artifacts";
 import type {
   FrameCamera,
   RendererDiagnostics,
@@ -23,6 +23,7 @@ export interface ThreeRendererInput {
   pointCloud: ParsedPointCloud;
   classes: WorldClass[];
   mesh?: ParsedObjMesh;
+  evidenceMesh?: ParsedEvidenceMesh;
   gaussianUrl?: string;
   sparkProfile?: SparkRenderProfile;
   onDiagnosticsChange?: (diagnostics: RendererDiagnostics) => void;
@@ -90,6 +91,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private readonly points: PointRecord[];
   private readonly classColors: Map<number, THREE.Color>;
   private readonly mesh?: ParsedObjMesh;
+  private readonly evidenceMesh?: ParsedEvidenceMesh;
   private readonly gaussianUrl?: string;
   private readonly sparkProfile: SparkRenderProfile;
   private readonly onDiagnosticsChange?: (diagnostics: RendererDiagnostics) => void;
@@ -102,6 +104,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private pointPositions: Float32Array;
   private pointColors: Float32Array;
   private meshGroup?: THREE.Group;
+  private evidenceMeshGroup?: THREE.Group;
   private collisionDebugGroup?: THREE.Group;
   private grid?: THREE.GridHelper;
   private frustums?: THREE.Group;
@@ -129,6 +132,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
   constructor(input: ThreeRendererInput) {
     this.points = input.pointCloud.points;
     this.mesh = input.mesh;
+    this.evidenceMesh = input.evidenceMesh;
     this.gaussianUrl = input.gaussianUrl;
     this.sparkProfile = input.sparkProfile ?? "world-studio-default";
     if (this.gaussianUrl) this.releaseSparkWarnings = retainSparkConsoleWarningFilter();
@@ -153,6 +157,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.syncSize(canvas, options);
     this.syncPointCloud(options);
     this.syncMesh(options);
+    this.syncEvidenceMesh(options);
     this.syncSpark(options);
     this.syncAgent(options);
     this.syncTrajectory(options);
@@ -266,6 +271,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.camera = undefined;
     this.pointCloud = undefined;
     this.meshGroup = undefined;
+    this.evidenceMeshGroup = undefined;
     this.collisionDebugGroup = undefined;
     this.grid = undefined;
     this.frustums = undefined;
@@ -311,6 +317,9 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
     this.meshGroup = this.createMeshGroup();
     this.scene.add(this.meshGroup);
+
+    this.evidenceMeshGroup = this.createEvidenceMeshGroup();
+    this.scene.add(this.evidenceMeshGroup);
 
     this.collisionDebugGroup = createCollisionDebugGroup(this.mesh);
     this.scene.add(this.collisionDebugGroup);
@@ -466,7 +475,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private syncPointCloud(options: RenderOptions): void {
     if (!this.pointCloud || !this.camera) return;
     const sparkActive = options.mode === "splat" && this.sparkState === "ready" && this.sparkRenderable;
-    this.pointCloud.visible = options.mode !== "mesh" && !sparkActive;
+    this.pointCloud.visible = options.mode !== "mesh" && options.evidenceMeshMode !== "only" && !sparkActive;
     if (!this.pointCloud.visible) return;
 
     const material = this.pointCloud.material as THREE.PointsMaterial;
@@ -603,9 +612,57 @@ export class ThreeWorldRenderer implements RenderAdapter {
     this.applyWorldObjectTransform(this.meshGroup, options);
   }
 
+  private createEvidenceMeshGroup(): THREE.Group {
+    const group = new THREE.Group();
+    if (!this.evidenceMesh?.triangles.length) return group;
+    const positions = new Float32Array(this.evidenceMesh.triangles.length * 9);
+    const colors = new Float32Array(this.evidenceMesh.triangles.length * 9);
+    for (let index = 0; index < this.evidenceMesh.triangles.length; index++) {
+      const triangle = this.evidenceMesh.triangles[index]!;
+      const a = this.evidenceMesh.vertices[triangle.a];
+      const b = this.evidenceMesh.vertices[triangle.b];
+      const c = this.evidenceMesh.vertices[triangle.c];
+      if (!a || !b || !c) continue;
+      positions.set([...a, ...b, ...c], index * 9);
+      const color = evidenceMeshColor(triangle.group);
+      colors.set([color.r, color.g, color.b, color.r, color.g, color.b, color.r, color.g, color.b], index * 9);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const solid = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    }));
+    solid.userData.evidenceSolid = true;
+    group.add(solid);
+    const wire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(geometry),
+      new THREE.LineBasicMaterial({ color: "#86d7c4", transparent: true, opacity: 0.34, depthWrite: false })
+    );
+    wire.userData.evidenceWire = true;
+    group.add(wire);
+    return group;
+  }
+
+  private syncEvidenceMesh(options: RenderOptions): void {
+    if (!this.evidenceMeshGroup) return;
+    const mode = options.evidenceMeshMode ?? "off";
+    this.evidenceMeshGroup.visible = mode !== "off";
+    if (!this.evidenceMeshGroup.visible) return;
+    for (const child of this.evidenceMeshGroup.children) {
+      const material = (child as THREE.Mesh | THREE.LineSegments).material as THREE.MeshBasicMaterial | THREE.LineBasicMaterial;
+      material.opacity = child.userData.evidenceSolid ? (mode === "only" ? 0.62 : 0.2) : (mode === "only" ? 0.72 : 0.34);
+    }
+    this.applyWorldObjectTransform(this.evidenceMeshGroup, options);
+  }
+
   private syncSpark(options: RenderOptions): void {
     if (this.sparkState === "idle") void this.initializeSpark();
-    const visible = options.mode === "splat" && this.sparkState === "ready" && this.sparkRenderable;
+    const visible = options.mode === "splat" && options.evidenceMeshMode !== "only" && this.sparkState === "ready" && this.sparkRenderable;
     if (this.sparkMesh) {
       this.sparkMesh.visible = visible;
       this.applyWorldObjectTransform(this.sparkMesh, options);
@@ -826,6 +883,20 @@ export class ThreeWorldRenderer implements RenderAdapter {
   private notifyDiagnostics(): void {
     this.onDiagnosticsChange?.(this.getDiagnostics());
   }
+}
+
+function evidenceMeshColor(group: string): THREE.Color {
+  const colors: Record<string, string> = {
+    wall: "#73a9d8",
+    floor: "#69c58c",
+    ceiling: "#b7a7d8",
+    table: "#e0aa61",
+    seat: "#d984a8",
+    window: "#66cbd0",
+    door: "#e47a5d",
+    none: "#9d9488"
+  };
+  return new THREE.Color(colors[group] ?? "#9d9488");
 }
 
 export const CanvasWorldRenderer = ThreeWorldRenderer;
