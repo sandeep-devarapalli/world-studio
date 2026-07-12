@@ -1,4 +1,4 @@
-import { buildGaussianPreviewPointCloudPly } from "@world-studio/artifacts";
+import { buildGaussianPreviewPointCloudPly, buildPointCloudPreviewPly } from "@world-studio/artifacts";
 import type { AuthorityStatus, CaptureSplatMetricHandoff, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -59,9 +59,10 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     ? parseJsonRecord(captureSplatManifest.text, captureSplatManifest.relativePath, packageIssues)
     : undefined;
   const captureSplatRefs = parsedCaptureSplatManifest ? extractCaptureSplatManifestRefs(parsedCaptureSplatManifest) : emptyCaptureSplatRefs();
+  const captureSplatPointsTransform = parsedCaptureSplatManifest ? captureSplatPointTransform(parsedCaptureSplatManifest) : undefined;
   const sceneFile = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "scene.json", packageIssues);
   const sourcePointsPly = selectedCleanedPly
-    ?? await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.pointsPlyPaths, "points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates]), packageIssues);
+    ?? await readFirstPointCloud(sourceRoot, uniquePaths([...captureSplatRefs.pointsPlyPaths, "points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates]), packageIssues, captureSplatPointsTransform);
   const cleanedPointPly = isWorldStudioCleanedPly(sourcePointsPly);
   const selectedGaussianPlyPaths = selectedGaussianPly ? [selectedGaussianPly] : [];
   const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, uniquePaths([...selectedGaussianPlyPaths, ...captureSplatRefs.gaussianPlyPaths, "gaussians.ply", "splats.ply", "splat.ply"]), packageIssues);
@@ -256,6 +257,42 @@ async function readFirstText(root: string, relativePaths: string[], packageIssue
   for (const relativePath of relativePaths) {
     const file = await readOptionalText(root, relativePath, packageIssues);
     if (file) return file;
+  }
+  return undefined;
+}
+
+async function readFirstPointCloud(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[], transform?: number[][]): Promise<LocalWorldPackageTextFile | undefined> {
+  for (const relativePath of relativePaths) {
+    const filePath = resolveInside(root, relativePath);
+    try {
+      const info = await stat(filePath);
+      if (!info.isFile()) continue;
+      if (info.size > maxBinaryBytes) {
+        pushIssue(packageIssues, {
+          artifact: relativePath,
+          code: "file_too_large",
+          message: `${relativePath} is ${info.size} bytes; World Studio reads point-cloud assets up to ${maxBinaryBytes} bytes in this desktop bridge.`,
+          severity: "error",
+          title: "File too large"
+        });
+        continue;
+      }
+      const bytes = await readFile(filePath);
+      const headerText = bytes.subarray(0, 32 * 1024).toString("utf8");
+      const text = headerText.includes("format ascii 1.0") && !transform
+        ? bytes.toString("utf8")
+        : buildPointCloudPreviewPly(bytes, { maxPoints: maxGaussianPreviewPoints, transform });
+      return { relativePath, text, sizeBytes: bytes.byteLength, checksum: checksumBytes(bytes) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      pushIssue(packageIssues, {
+        artifact: relativePath,
+        code: "unsupported_layout",
+        message: error instanceof Error ? `Could not prepare point-cloud preview: ${error.message}` : "Could not prepare point-cloud preview.",
+        severity: "warning",
+        title: "Point-cloud preview unavailable"
+      });
+    }
   }
   return undefined;
 }
@@ -522,6 +559,7 @@ function extractHandoffSceneHints(manifest: Record<string, unknown> | undefined)
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  worldUp?: [number, number, number];
   initialCamera?: { position: [number, number, number]; coordinateFrame?: string; mode?: "inside" | "orbit" };
 } {
   if (!manifest) return {};
@@ -532,6 +570,14 @@ function extractHandoffSceneHints(manifest: Record<string, unknown> | undefined)
   if (median !== undefined && median > 0) hints.medianStructureDistance = median;
   const profile = stringValue(manifest.capture_profile) ?? stringValue(manifest.captureProfile);
   if (profile) hints.captureProfile = profile;
+  const registration = firstRecordValue(manifest.metric_registration, manifest.metricRegistration);
+  const registrationStatus = stringValue(registration?.status);
+  const accepted = registration?.accepted === true || registrationStatus === "accepted";
+  const arkitToTarget = accepted ? matrix4(firstValue(registration?.arkit_to_target, registration?.arkitToTarget)) : undefined;
+  if (arkitToTarget) {
+    const up = normalizeVector3([arkitToTarget[0][1], arkitToTarget[1][1], arkitToTarget[2][1]]);
+    if (up) hints.worldUp = up;
+  }
   const camera = firstRecordValue(manifest.initial_camera, manifest.initialCamera);
   if (camera) {
     const position = finiteTuple(camera.position, 3);
@@ -545,6 +591,28 @@ function extractHandoffSceneHints(manifest: Record<string, unknown> | undefined)
     }
   }
   return hints;
+}
+
+function captureSplatPointTransform(manifest: Record<string, unknown>): number[][] | undefined {
+  const assets = isRecord(manifest.assets) ? manifest.assets : {};
+  const points = firstRecordValue(assets.points);
+  const measurementPoints = firstRecordValue(assets.measurement_points, assets.measurementPoints);
+  const pointsFrame = stringValue(firstValue(points?.coordinate_frame, points?.coordinateFrame));
+  const measurementFrame = stringValue(firstValue(measurementPoints?.coordinate_frame, measurementPoints?.coordinateFrame));
+  const sharesMetricEvidence = Boolean(
+    points && measurementPoints && (
+      stringValue(points.path) === stringValue(measurementPoints.path) ||
+      stringValue(points.checksum) === stringValue(measurementPoints.checksum)
+    )
+  );
+  if (pointsFrame !== "colmap_world" && !(sharesMetricEvidence && measurementFrame === "colmap_world")) return undefined;
+  return captureSplatDataparserTransform(manifest);
+}
+
+function normalizeVector3(value: [number, number, number]): [number, number, number] | undefined {
+  const length = Math.hypot(...value);
+  if (!Number.isFinite(length) || length <= 1e-12) return undefined;
+  return [value[0] / length, value[1] / length, value[2] / length];
 }
 
 function captureSplatDataparserTransform(manifest: Record<string, unknown>): number[][] | undefined {

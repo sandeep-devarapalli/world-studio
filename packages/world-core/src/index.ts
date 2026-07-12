@@ -275,6 +275,7 @@ export interface LocalWorldPackagePayload {
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  worldUp?: [number, number, number];
   initialCamera?: HandoffInitialCamera;
   captureSplatMetric?: CaptureSplatMetricHandoff;
 }

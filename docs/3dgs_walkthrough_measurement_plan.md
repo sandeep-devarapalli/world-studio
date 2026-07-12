@@ -213,8 +213,8 @@ a metric room-walkthrough test.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
-| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Visually validate floor orientation and mesh placement |
-| 1. World Studio metric ingestion | Complete | Desktop reader preserves all metric sidecars and reports eligible, held, or missing without promoting collision authority | Parse and transform the navigation mesh for Walk |
+| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Visualize the registered mesh without promoting collision authority |
+| 1. World Studio metric ingestion | Complete; camera and floor accepted | The 7000 review package loads, Frame cameras align, Inside/360 stay level, and keyboard motion is controlled | Render and verify the registered navigation mesh |
 | 2. Walk and Fly cameras | Pending | Frame, Orbit, Free, pointer lock, gravity leveling, and Center 360 already exist | Add collision-aware Walk |
 | 3. Surface measurement | Pending | Ground-plane ruler exists; Spark raycasting is enabled | Add metric raycast and annotation export |
 | 4. Large-asset LoD | Pending | Spark 2.1 is installed; large local fixtures are available | Add RAD preparation and paged loading |
@@ -347,6 +347,26 @@ mesh evidence, and 310 verified file checksums. The splat remains a visual
 review proposal; collision, navigation, semantic, and quality authority are
 all false. The next World Studio gate is visual floor orientation and mesh
 placement, followed by collision-aware Walk.
+
+### 2026-07-12 - World Studio Visual Acceptance
+
+The selected 7000 review package initially failed to open because its ordinary
+metric `points.ply` was binary little-endian. World Studio now converts binary
+ordinary PLYs into capped ASCII previews while preserving the source file size
+and checksum. Capture Splat metric points are mapped through the handoff
+dataparser transform only when the manifest identifies them as COLMAP-world
+measurement evidence.
+
+Frame mode visually matches the selected source camera. Free, Inside, and 360
+now use the accepted ARKit-to-trainer up vector instead of treating portrait
+image-camera up as gravity, and generated first-person presets use the same
+OpenCV camera convention as COLMAP. The doorway and wall edges remain level
+during 360 rotation, and one-step W/arrow input remains controlled.
+
+The classified ARKit navigation mesh is finite and present, but World Studio
+does not yet render its binary PLY. Mesh placement therefore remains held, and
+collision-aware Walk and metric measurement must not start until a separate
+non-authoritative evidence-mesh path verifies overlap with the splat.
 
 ## Reference Boundaries
 

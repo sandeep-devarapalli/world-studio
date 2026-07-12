@@ -92,6 +92,18 @@ export function estimateWorldOrientation(frameCameras: Array<FrameCamera | undef
   };
 }
 
+export function worldOrientationFromUp(sourceUp: [number, number, number] | undefined, center: [number, number, number]): WorldOrientation | undefined {
+  if (!sourceUp) return undefined;
+  const normalized = normalize3(sourceUp);
+  if (!normalized) return undefined;
+  return {
+    rotation: quaternionFromUnitVectors(normalized, [0, 1, 0]),
+    center,
+    sourceUp: normalized,
+    authority: "accepted ARKit metric registration up"
+  };
+}
+
 export function refineWorldOrientationWithFloorNormal(
   points: Array<{ x: number; y: number; z: number }>,
   orientation: WorldOrientation | undefined,
@@ -236,8 +248,11 @@ export function insideLookCameraFromFrames(
   const forward = normalize3([target[0] - position[0], target[1] - position[1], target[2] - position[2]]);
   const rotation = forward
     ? multiplyQuaternion(
-        quaternionFromAxisAngle([0, 1, 0], Math.atan2(forward[0], forward[2])),
-        quaternionFromAxisAngle([1, 0, 0], -Math.asin(Math.max(-1, Math.min(1, forward[1]))))
+        multiplyQuaternion(
+          quaternionFromAxisAngle([0, 1, 0], Math.atan2(forward[0], forward[2])),
+          quaternionFromAxisAngle([1, 0, 0], -Math.asin(Math.max(-1, Math.min(1, forward[1]))))
+        ),
+        quaternionFromAxisAngle([0, 0, 1], Math.PI)
       )
     : normalizeQuaternion(leveled[0].rotation);
   return {
@@ -263,7 +278,10 @@ export function centerSpinCameraFromFrames(
   const yaw = Math.atan2(forward[0], forward[2]);
   return {
     ...inside,
-    rotation: quaternionFromAxisAngle([0, 1, 0], yaw),
+    rotation: multiplyQuaternion(
+      quaternionFromAxisAngle([0, 1, 0], yaw),
+      quaternionFromAxisAngle([0, 0, 1], Math.PI)
+    ),
     fov,
     authority: "center 360 preset · leveled yaw-only"
   };

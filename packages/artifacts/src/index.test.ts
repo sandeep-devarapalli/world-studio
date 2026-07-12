@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   buildGaussianPreviewPointCloudPly,
+  buildPointCloudPreviewPly,
   createLoftWorldSession,
   detectPlyKind,
   parseObjMesh,
@@ -183,6 +184,39 @@ end_header
     expect(parsed.points.length).toBeLessThanOrEqual(32);
     expect(parsed.points[0]?.red).toBeGreaterThanOrEqual(0);
     expect(parsed.points[0]?.red).toBeLessThanOrEqual(255);
+  });
+
+  it("builds capped ordinary preview points from binary point-cloud PLYs", () => {
+    const header = new TextEncoder().encode(`ply
+format binary_little_endian 1.0
+element vertex 2
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+`);
+    const rows = new Uint8Array(30);
+    const view = new DataView(rows.buffer);
+    view.setFloat32(0, 1, true);
+    view.setFloat32(4, 2, true);
+    view.setFloat32(8, 3, true);
+    rows.set([10, 20, 30], 12);
+    view.setFloat32(15, 4, true);
+    view.setFloat32(19, 5, true);
+    view.setFloat32(23, 6, true);
+    rows.set([40, 50, 60], 27);
+    const binary = new Uint8Array(header.length + rows.length);
+    binary.set(header);
+    binary.set(rows, header.length);
+
+    const preview = buildPointCloudPreviewPly(binary, {
+      maxPoints: 1,
+      transform: [[2, 0, 0, 10], [0, 2, 0, 20], [0, 0, 2, 30], [0, 0, 0, 1]]
+    });
+    expect(parsePointCloudPly(preview).points).toEqual([{ x: 12, y: 24, z: 36, red: 10, green: 20, blue: 30 }]);
   });
 
   it("rejects ordinary point-cloud PLYs for Spark Gaussian loading", async () => {

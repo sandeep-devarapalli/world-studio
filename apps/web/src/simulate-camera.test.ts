@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius, worldOrientationFromUp } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -108,6 +108,13 @@ describe("simulate camera controls", () => {
     expect(leveled.coordinateFrame).toBe("colmap_world_leveled");
   });
 
+  it("uses accepted metric world up instead of portrait image-camera up", () => {
+    const orientation = worldOrientationFromUp([0, 0, 1], [1, 2, 3]);
+    expect(orientation?.sourceUp).toEqual([0, 0, 1]);
+    expect(orientation?.center).toEqual([1, 2, 3]);
+    expect(orientation?.authority).toContain("ARKit metric registration");
+  });
+
   it("derives movement steps from the scene radius with clamped bounds", () => {
     expect(stepsForSceneRadius(undefined)).toEqual(defaultSimulateSteps);
     expect(stepsForSceneRadius(-3)).toEqual(defaultSimulateSteps);
@@ -206,12 +213,13 @@ describe("simulate camera controls", () => {
     expect(inside).not.toBeNull();
     expect(inside!.position[0]).toBeCloseTo(2);
     expect(inside!.position[1]).toBeCloseTo(1);
+    expect(quaternionLocalYWorldY(inside!.rotation)).toBeCloseTo(-1);
     const forwardX = 2 * (inside!.rotation[0] * inside!.rotation[2] + inside!.rotation[1] * inside!.rotation[3]);
     expect(forwardX).toBeLessThan(-0.9);
     expect(insideLookCameraFromFrames([undefined], undefined)).toBeNull();
   });
 
-  it("center 360 preset faces outward with zero pitch and roll, and spinning never rolls", () => {
+  it("center 360 preset faces outward and preserves level OpenCV camera down while spinning", () => {
     const frame = (x: number, z: number) => ({
       width: 10,
       height: 10,
@@ -238,13 +246,13 @@ describe("simulate camera controls", () => {
     const forward = forwardOf(center!.rotation);
     expect(forward[0]).toBeGreaterThan(0.9);
     expect(Math.abs(forward[1])).toBeLessThan(1e-6);
-    expect(upOf(center!.rotation)[1]).toBeCloseTo(1);
+    expect(upOf(center!.rotation)[1]).toBeCloseTo(-1);
 
     let spun = center!;
     for (let step = 0; step < 8; step += 1) {
       spun = spinFirstPersonCamera(spun, Math.PI / 4);
       expect(Math.abs(forwardOf(spun.rotation)[1])).toBeLessThan(1e-6);
-      expect(upOf(spun.rotation)[1]).toBeCloseTo(1);
+      expect(upOf(spun.rotation)[1]).toBeCloseTo(-1);
     }
     const roundTrip = forwardOf(spun.rotation);
     expect(roundTrip[0]).toBeCloseTo(forward[0]);
@@ -314,4 +322,8 @@ describe("simulate camera controls", () => {
 
 function quaternionForwardY([w, x, y, z]: [number, number, number, number]): number {
   return 2 * (y * z - w * x);
+}
+
+function quaternionLocalYWorldY([, x, , z]: [number, number, number, number]): number {
+  return 1 - 2 * (x * x + z * z);
 }

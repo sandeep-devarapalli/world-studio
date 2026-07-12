@@ -40,6 +40,7 @@ import {
   rotateFirstPersonCameraClamped,
   rotateCamera,
   stepsForSceneRadius,
+  worldOrientationFromUp,
   type SimulateCameraMode,
   type SimulateDragKind,
   type SimulateKeyCommand
@@ -223,6 +224,7 @@ interface LoadedWorldInput {
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  worldUp?: [number, number, number];
 }
 
 interface LoadedWorldOptions {
@@ -515,7 +517,7 @@ export function App() {
   const [tourCamera, setTourCamera] = useState<FrameCamera | null>(null);
   const [tourSpeed, setTourSpeed] = useState(1.5);
   const tourProgressRef = useRef(0);
-  const [handoffSceneHints, setHandoffSceneHints] = useState<{ radius?: number; median?: number; profile?: string }>({});
+  const [handoffSceneHints, setHandoffSceneHints] = useState<{ radius?: number; median?: number; profile?: string; worldUp?: [number, number, number] }>({});
   const [simulateCameraMode, setSimulateCameraMode] = useState<SimulateCameraMode>("frame");
   const [firstPersonCamera, setFirstPersonCamera] = useState<FirstPersonCamera | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
@@ -584,12 +586,13 @@ export function App() {
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
   const simulateSourceFrame = simulateComparisonCapture ? null : selectedSourceFrame;
   const worldOrientation = useMemo<WorldOrientation | undefined>(
-    () =>
-      refineWorldOrientationWithFloorNormal(
-        worldPoints,
-        estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), centerFromWorldPoints(worldPoints))
-      ),
-    [captureFrames, worldPoints]
+    () => {
+      const center = centerFromWorldPoints(worldPoints);
+      const base = worldOrientationFromUp(handoffSceneHints.worldUp, center)
+        ?? estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), center);
+      return refineWorldOrientationWithFloorNormal(worldPoints, base);
+    },
+    [captureFrames, handoffSceneHints.worldUp, worldPoints]
   );
   const sceneRadius = useMemo(
     () => handoffSceneHints.radius ?? radiusFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints)),
@@ -1054,6 +1057,7 @@ export function App() {
       sceneRadius: payload.sceneRadius,
       medianStructureDistance: payload.medianStructureDistance,
       captureProfile: payload.captureProfile,
+      worldUp: payload.worldUp,
       captureFrames: parseCaptureFrames(payload)
     }, options);
   }, []);
@@ -1146,7 +1150,7 @@ export function App() {
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
     setSelectedInsightId(null);
-    setHandoffSceneHints({ radius: input.sceneRadius, median: input.medianStructureDistance, profile: input.captureProfile });
+    setHandoffSceneHints({ radius: input.sceneRadius, median: input.medianStructureDistance, profile: input.captureProfile, worldUp: input.worldUp });
     if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
       setMode("simulate");
       setSimulateCameraMode("frame");

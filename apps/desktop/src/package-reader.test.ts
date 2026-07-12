@@ -66,6 +66,36 @@ end_header
     expect(payload.packageIssues).toEqual([]);
   });
 
+  it("converts binary ordinary PLYs into renderer-safe previews", async () => {
+    const root = await makePackage("binary-points");
+    const header = Buffer.from(`ply
+format binary_little_endian 1.0
+element vertex 1
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+`);
+    const row = Buffer.alloc(15);
+    row.writeFloatLE(1, 0);
+    row.writeFloatLE(2, 4);
+    row.writeFloatLE(3, 8);
+    row.set([10, 20, 30], 12);
+    const source = Buffer.concat([header, row]);
+    await writeFile(join(root, "points.ply"), source);
+
+    const payload = await readLocalPackage(root);
+
+    expect(payload.pointsPly?.relativePath).toBe("points.ply");
+    expect(payload.pointsPly?.text).toContain("format ascii 1.0");
+    expect(payload.pointsPly?.text).toContain("1 2 3 10 20 30");
+    expect(payload.assetManifest).toContainEqual(expect.objectContaining({ relativePath: "points.ply", sizeBytes: source.byteLength, checksum: expect.stringMatching(/^fnv1a32:/) }));
+    expect(payload.packageIssues).toEqual([]);
+  });
+
   it("reports malformed JSON and invalid scene shape from real files", async () => {
     const root = await makePackage("bad-json");
     await mkdir(join(root, "metadata"));
@@ -561,6 +591,7 @@ end_header
     const root = await makePackage("capture-splat-handoff-dataparser");
     await mkdir(join(root, "rgb"), { recursive: true });
     await mkdir(join(root, "colmap"), { recursive: true });
+    await writeFile(join(root, "points.ply"), "ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n1 2 3\n");
     await writeFile(join(root, "rgb", "frame_000001.png"), onePixelPng);
     await writeFile(join(root, "colmap", "cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
     await writeFile(join(root, "colmap", "images.txt"), "1 1 0 0 0 -1 0 0 1 frame_000001.png\n\n");
@@ -575,10 +606,16 @@ end_header
       ],
       source_frames: [{ path: "rgb/frame_000001.png" }],
       assets: {
+        points: { path: "points.ply", checksum: "sha256:shared" },
+        measurement_points: { path: "measurement_points.ply", checksum: "sha256:shared", coordinate_frame: "colmap_world" },
         colmap_sparse: {
           "cameras.txt": "colmap/cameras.txt",
           "images.txt": "colmap/images.txt"
         }
+      },
+      metric_registration: {
+        status: "accepted",
+        arkit_to_target: [[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
       }
     });
 
@@ -592,6 +629,8 @@ end_header
       rotation: [1, 0, 0, 0],
       coordinateFrame: "trainer_normalized_world"
     });
+    expect(payload.pointsPly?.text).toContain("12 4 6");
+    expect(payload.worldUp).toEqual([0, 0, 1]);
   });
 
   it("keeps generic JSON folders external and proposal-scoped", async () => {
