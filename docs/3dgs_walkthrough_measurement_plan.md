@@ -1,6 +1,6 @@
 # 3DGS Walkthrough and Metric Measurement Plan
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
 
 ## Objective
 
@@ -213,12 +213,12 @@ a metric room-walkthrough test.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
-| 1. Capture Splat metric handoff | Complete | Exporter emits navigation mesh, mesh report, RoomPlan semantics, trajectory, optional measurement points, composed transform, residuals, scale conversion, and conservative eligibility | Validate on a fresh physical capture |
+| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Visually validate floor orientation and mesh placement |
 | 1. World Studio metric ingestion | Complete | Desktop reader preserves all metric sidecars and reports eligible, held, or missing without promoting collision authority | Parse and transform the navigation mesh for Walk |
 | 2. Walk and Fly cameras | Pending | Frame, Orbit, Free, pointer lock, gravity leveling, and Center 360 already exist | Add collision-aware Walk |
 | 3. Surface measurement | Pending | Ground-plane ruler exists; Spark raycasting is enabled | Add metric raycast and annotation export |
 | 4. Large-asset LoD | Pending | Spark 2.1 is installed; large local fixtures are available | Add RAD preparation and paged loading |
-| 5. iPhone walkthrough evidence | Pending | Gravity, path, loop, overlap, RGB-D, mesh, and RoomPlan evidence already exist | Add navigability coverage and physical-device validation |
+| 5. iPhone walkthrough evidence | In progress | Fresh capture finalized 168 RGB-D keyframes and a 6,831-frame trajectory with finite classified mesh evidence | Activate room-intent guidance and collect RoomPlan semantics |
 | Final validation | Pending | Evidence gates defined above | Pass desktop, mobile, metric, and large-asset gates |
 
 ## Progress Notes
@@ -290,6 +290,63 @@ satisfy the physical room-registration gate. Before resuming Phase 2:
 After those checks, resume here with navigation-mesh parsing and the
 collision-aware Walk camera. Do not redo the completed Phase 1 handoff or
 ingestion work.
+
+### 2026-07-12 - Fresh Room Registration Evidence
+
+The fresh Room Walkthrough export finalized without a recorder crash. It
+contains 168 accepted RGB-D keyframes, 6,831 continuous-video frames with zero
+writer drops, 40 person masks, and a finite classified ARKit mesh with 172,716
+vertices and 300,000 triangles. Host capture QA returned `promote`, and
+preparation produced a 300-frame package with complete per-frame camera and
+mask evidence. The device reached a `serious` thermal state. RoomPlan semantics
+were not exported, and room-specific overlap/loop guidance remained idle
+because the scan target stayed in the shared Video 3DGS mode.
+
+On an A100, pinned HLOC NetVLAD top-32 retrieval, ALIKED-N16, LightGlue, and the
+integrated COLMAP global mapper registered 291 of 300 prepared images. One
+continuous-video image, `000064.jpg`, had zero registered points and an extreme
+camera center. The original model is preserved; a derived model deregistered
+only that frame and retained 290 cameras and 24,387 sparse points. A separate
+168-RGB-D-only global model registered every image but failed the physical
+camera-center residual gate, so registration count alone did not promote it.
+
+The filtered 290-camera model matched all 168 authoritative RGB-D cameras with
+a median residual of 0.163 COLMAP units (2.81% of scene radius) and p95 residual
+of 0.336 (5.77%). The metric seed contains 156,969 confidence-filtered points.
+The exported World Studio handoff reports accepted metric registration and
+eligible metric mesh evidence while retaining false collision, navigation,
+semantic, and quality authority. This closes the physical Phase 1
+camera-center registration gate. It does not yet prove correct floor
+orientation, mesh placement, collision-safe Walk behavior, or trained 3DGS
+quality.
+
+### 2026-07-12 - A100 3DGS Review Proposal
+
+The same filtered 290-camera metric package was trained at full resolution on
+an A100 with gsplat and bilateral-grid post-processing. All three outputs are
+finite. Strict raw source/render QA used the same 37 held-out cameras:
+
+| Rung | Splats | Mean PSNR | Mean SSIM | Mean MAE | Weak frames | Decision |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 3000 | 683,558 | 23.149 | 0.9429 | 0.04926 | 6 | Hold |
+| 7000 | 1,226,209 | 23.510 | 0.9500 | 0.04963 | 5 | Hold; selected review proposal |
+| 15000 | 1,612,183 | 23.781 | 0.9491 | 0.04906 | 5 | Hold; individual regressions |
+
+The 15000 rung improved aggregate PSNR but regressed four individual cameras,
+including large SSIM/correlation drops on prepared frames `000218` and
+`000226`; its maximum splat radius also rose from 0.59 to 3.01. The controlled
+ladder therefore stopped before 30000. This is a quality-gate decision, not a
+claim that longer training can never help.
+
+For interactive review, alpha pruning retained 601,786 finite 7000-rung
+splats and dropped 50.9% near-transparent splats, below the 60% refusal gate.
+The standalone handoff is
+`room_walkthrough_world_studio_gsplat_7000_pruned_review`: 300 source frames,
+168 matched metric cameras, accepted metric registration, eligible metric
+mesh evidence, and 310 verified file checksums. The splat remains a visual
+review proposal; collision, navigation, semantic, and quality authority are
+all false. The next World Studio gate is visual floor orientation and mesh
+placement, followed by collision-aware Walk.
 
 ## Reference Boundaries
 
