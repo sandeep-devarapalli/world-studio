@@ -288,6 +288,7 @@ export interface CaptureSplatMetricHandoff {
   registration?: Record<string, unknown>;
   navigationMesh?: LocalWorldPackageBinaryFile;
   navigationMeshTransform?: number[][];
+  metersPerTargetUnit?: number;
   measurementPoints?: LocalWorldPackageBinaryFile;
   meshReport?: LocalWorldPackageTextFile;
   roomSemantics?: LocalWorldPackageTextFile;

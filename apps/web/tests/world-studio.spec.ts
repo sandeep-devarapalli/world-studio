@@ -211,7 +211,7 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
           height: 6,
           intrinsics: { fx: 8, fy: 6, cx: 4, cy: 3 },
           pose: {
-            translation: [0, 0, 0],
+            translation: [0.25, 1.6, 0.25],
             rotation: [1, 0, 0, 0],
             coordinate_frame: "colmap_world",
             authority: "COLMAP sparse reconstruction"
@@ -225,7 +225,7 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
           height: 6,
           intrinsics: { fx: 8, fy: 6, cx: 4, cy: 3 },
           pose: {
-            translation: [1, 0, 0],
+            translation: [0.5, 1.6, 0.5],
             rotation: [1, 0, 0, 0],
             coordinate_frame: "colmap_world",
             authority: "COLMAP sparse reconstruction"
@@ -235,15 +235,27 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
     })
   },
   captureSplatMetric: {
-    walkEligibility: "held",
-    walkReason: "registered_visual_evidence_only",
+    walkEligibility: "eligible",
+    walkReason: "registered_metric_mesh",
     registrationStatus: "accepted",
+    metersPerTargetUnit: 1,
     navigationMeshTransform: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
     navigationMesh: {
       relativePath: "metric/navigation_mesh.ply",
       dataUrl: evidenceMeshDataUrl,
       headerText: evidenceMeshPly.slice(0, evidenceMeshPly.indexOf("end_header") + "end_header".length),
       sizeBytes: Buffer.byteLength(evidenceMeshPly)
+    },
+    meshReport: {
+      relativePath: "metric/navigation_mesh_report.json",
+      text: JSON.stringify({
+        schema: "capture_splat.arkit_mesh_report.v0.1",
+        status: "finite_mesh_written",
+        truncated: false,
+        vertex_count: 4,
+        triangle_count: 2,
+        non_finite_vertex_count: 0
+      })
     }
   },
   packageInsights: [
@@ -1384,7 +1396,8 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.locator(".ws-view-tag.metric")).toContainText("3DGS visual proxy");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Frame");
-  await expect(page.getByTestId("simulate-camera-mode")).toContainText("Free");
+  await expect(page.getByTestId("simulate-camera-mode")).toContainText("Walk");
+  await expect(page.getByTestId("simulate-camera-mode")).toContainText("Fly");
   await expect(page.getByText("3DGS Performance")).toBeVisible();
   await expect(page.getByText("review proposal")).toBeVisible();
   await expect(page.getByText("registered preview only")).toBeVisible();
@@ -1395,13 +1408,17 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await evidenceControls.getByRole("button", { name: "Mesh", exact: true }).click();
   await expect(evidenceControls.getByRole("button", { name: "Mesh", exact: true })).toHaveClass(/on/);
   await evidenceControls.getByRole("button", { name: "Splat", exact: true }).click();
+  await page.getByRole("button", { name: "Walk", exact: true }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("walk · collision preview");
+  await expect(page.getByTestId("walk-collision-status")).toContainText("accepted preview");
+  await page.getByRole("button", { name: "Frame", exact: true }).click();
   await expect(page.getByTestId("simulate-comparison-panel")).toContainText("source evidence");
   await expect(page.locator(".ws-frame-row", { hasText: "frame_000001" }).getByAltText("frame_000001 preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
   await page.getByRole("button", { name: "Orbit", exact: true }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");
   await page.getByRole("button", { name: "Frame", exact: true }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
-  await page.getByRole("button", { name: "Free" }).click();
+  await page.getByRole("button", { name: "Fly" }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
   await expect(page.locator(".ws-sim-camera-status")).toContainText("free · frame seeded");
   await page.getByRole("button", { name: "Center 360 spin" }).click();
@@ -1427,7 +1444,7 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
     await page.keyboard.up("Alt");
   }
   await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");
-  await canvas.dblclick();
+  await canvas.dispatchEvent("dblclick");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
   await page.locator(".ws-frame-row", { hasText: "frame_000002" }).click();
   await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000002");
@@ -1498,7 +1515,7 @@ test("does not claim frame alignment when source cameras are missing", async ({ 
   await expectSparkReadyForGaussianPayload(page, payload);
   await page.getByRole("button", { name: "Simulate" }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame camera missing");
-  await page.getByRole("button", { name: "Free" }).click();
+  await page.getByRole("button", { name: "Fly" }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("free · orbit fallback");
 });
 

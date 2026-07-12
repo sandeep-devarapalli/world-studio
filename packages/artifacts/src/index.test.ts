@@ -14,6 +14,7 @@ import {
   validateVerifiedSemanticExportManifest,
   type LoftSceneManifest
 } from "./index";
+import { buildWalkCollisionCandidate } from "./collision-candidate";
 
 const fixture = (name: string) => new URL(`../../../apps/web/public/fixtures/loft_04/${name}`, import.meta.url);
 
@@ -268,6 +269,97 @@ end_header
     expect(mesh.sampledFaceCount).toBe(1);
     expect(mesh.triangles).toEqual([{ a: 0, b: 1, c: 2, group: "floor", material: "capture_evidence" }]);
     expect(mesh.classificationCounts).toEqual({ floor: 1, wall: 1 });
+  });
+
+  it("accepts complete floor and wall mesh only as a local collision preview", () => {
+    const mesh = parsePlyMesh(new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 6
+property float x
+property float y
+property float z
+element face 4
+property list uchar uint vertex_indices
+property uchar classification
+end_header
+0 0 0
+2 0 0
+2 0 2
+0 0 2
+2 2 0
+2 2 2
+3 0 1 2 2
+3 0 2 3 2
+3 1 4 5 1
+3 1 5 2 1
+`), { maxFaces: 10 });
+    const candidate = buildWalkCollisionCandidate(mesh, {
+      status: "finite_mesh_written",
+      truncated: false,
+      vertex_count: 6,
+      triangle_count: 4,
+      non_finite_vertex_count: 0
+    });
+
+    expect(candidate.report).toMatchObject({
+      status: "accepted_preview",
+      authority: "local_collision_preview_not_metric_authority",
+      candidateTriangles: 4,
+      floorAreaRatio: 1,
+      wallAreaRatio: 1
+    });
+    expect(candidate.mesh?.triangles).toHaveLength(4);
+  });
+
+  it("holds a finite but truncated capture mesh out of collision", () => {
+    const mesh = parsePlyMesh(new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 4
+property float x
+property float y
+property float z
+element face 2
+property list uchar uint vertex_indices
+property uchar classification
+end_header
+0 0 0
+1 0 0
+1 0 1
+0 0 1
+3 0 1 2 2
+3 0 2 3 1
+`), { maxFaces: 10 });
+    const candidate = buildWalkCollisionCandidate(mesh, {
+      status: "finite_mesh_written",
+      truncated: true,
+      vertex_count: 4,
+      triangle_count: 2,
+      non_finite_vertex_count: 0
+    });
+
+    expect(candidate.mesh).toBeUndefined();
+    expect(candidate.report).toMatchObject({ status: "held", reason: "source_mesh_truncated", truncated: true });
+  });
+
+  it("rejects invalid unsampled mesh faces", () => {
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 3
+property float x
+property float y
+property float z
+element face 2
+property list uchar uint vertex_indices
+property uchar classification
+end_header
+0 0 0
+1 0 0
+0 1 0
+3 0 1 2 2
+3 0 1 9 1
+`);
+
+    expect(() => parsePlyMesh(source, { maxFaces: 1 })).toThrow("face 1 has an invalid vertex index");
   });
 
   it("rejects ordinary point-cloud PLYs for Spark Gaussian loading", async () => {

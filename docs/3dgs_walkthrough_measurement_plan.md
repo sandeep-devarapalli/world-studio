@@ -215,7 +215,7 @@ a metric room-walkthrough test.
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
 | 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
 | 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
-| 2. Walk and Fly cameras | Pending | Frame, Orbit, Free, pointer lock, gravity leveling, Center 360, and registered evidence-mesh review exist | Add collision-aware Walk using a validated simplified mesh |
+| 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
 | 3. Surface measurement | Pending | Ground-plane ruler exists; Spark raycasting is enabled | Add metric raycast and annotation export |
 | 4. Large-asset LoD | Pending | Spark 2.1 is installed; large local fixtures are available | Add RAD preparation and paged loading |
 | 5. iPhone walkthrough evidence | In progress | Fresh capture finalized 168 RGB-D keyframes and a 6,831-frame trajectory with finite classified mesh evidence | Activate room-intent guidance and collect RoomPlan semantics |
@@ -386,6 +386,30 @@ This closes mesh-placement review for the current room handoff only. The raw
 mesh remains non-authoritative evidence. The next Phase 2 gate is a separately
 derived, simplified collision candidate with floor continuity, wall retention,
 triangle-budget, and character-controller tests before enabling Walk.
+
+### 2026-07-13 - Collision Candidate Gate
+
+World Studio now validates every PLY vertex and face before preview sampling.
+The local collision-candidate path checks source report counts, finiteness,
+classification support, degenerate triangles, floor and wall connectivity, and
+a 60,000-triangle budget. It does not hand-roll browser-side decimation: a
+larger complete mesh is held for an offline, topology-preserving simplifier.
+An accepted candidate remains labeled `local collision preview`, not metric,
+navigation, or collision authority.
+
+The accepted path uses a separate Rapier kinematic capsule, triangle-mesh
+collider, slope limits, autostep, and snap-to-ground. It never uses the Pilot
+OBJ bounding boxes and never creates an artificial fallback floor. Simulate now
+labels unrestricted first-person inspection as `Fly`; `Walk` is enabled only
+for an accepted local candidate.
+
+The current 7000 room package is correctly held. Its source report declares
+172,716 vertices and 300,000 triangles with `truncated: true`; the iPhone export
+stopped at its triangle cap without proving coverage preservation. Deterministic
+Electron verification showed `Walk` disabled with `source mesh truncated`,
+while `Fly`, Frame, Orbit, and evidence-mesh review remained available. The
+next gate is a complete or coverage-preserving iPhone mesh export plus a new
+checksum-bound candidate report. Metric measurement remains blocked.
 
 ## Reference Boundaries
 

@@ -60,6 +60,15 @@ externally validated collision, semantic, or navigation authority. RoomPlan
 semantics remain unregistered proposals unless a separate RoomPlan-to-ARKit
 registration is supplied and validated.
 
+World Studio may derive a bounded `local collision preview` from a registered
+navigation mesh. This path is fail-closed: complete source counts, finite
+vertices, valid faces, non-truncated coverage, floor/wall continuity, and the
+triangle budget must pass before the Walk control is enabled. Larger meshes
+require an offline topology-preserving simplifier. A local preview drives only the interactive Rapier character
+controller; it does not change the handoff's collision or navigation authority.
+Truncated capture meshes remain available for visual evidence but cannot create
+Walk colliders or synthetic fallback floors.
+
 ## Article / 3D Sidecar Views
 
 World Studio keeps compatibility with:

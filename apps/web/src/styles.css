@@ -621,6 +621,11 @@ body {
   color: #160c06;
 }
 
+.ws-sim-mode-group button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .ws-sim-camera-status {
   border-left: 1px solid var(--line);
   color: var(--ink-faint);

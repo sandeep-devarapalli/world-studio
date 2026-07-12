@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./collision-candidate": "./src/collision-candidate.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

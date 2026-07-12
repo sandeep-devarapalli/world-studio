@@ -413,6 +413,7 @@ async function readCaptureSplatMetricHandoff(
     registration,
     navigationMesh,
     navigationMeshTransform,
+    metersPerTargetUnit: numberValue(registration?.meters_per_target_unit),
     measurementPoints,
     meshReport,
     roomSemantics,

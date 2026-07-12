@@ -1,6 +1,6 @@
 import type { CameraState, FirstPersonCamera, FrameCamera, WorldOrientation } from "@world-studio/world-core";
 
-export type SimulateCameraMode = "frame" | "orbit" | "free";
+export type SimulateCameraMode = "frame" | "orbit" | "walk" | "free";
 export type SimulateDragKind = "rotate" | "orbit" | "pan";
 export type SimulateMoveCommand = "forward" | "back" | "left" | "right" | "rise" | "descend" | "rollLeft" | "rollRight";
 export type SimulateLookCommand = "lookLeft" | "lookRight" | "lookUp" | "lookDown";
@@ -206,6 +206,27 @@ export function moveFirstPersonCamera(camera: FirstPersonCamera, command: Simula
   if (command === "rise") delta = [0, riseStep, 0];
   if (command === "descend") delta = [0, -riseStep, 0];
   return { ...camera, position: add3(camera.position, delta) };
+}
+
+export function walkDirectionForCommands(camera: FirstPersonCamera, commands: Iterable<SimulateKeyCommand>): [number, number] {
+  const forward = rotateVector(camera.rotation, [0, 0, 1]);
+  const right = rotateVector(camera.rotation, [1, 0, 0]);
+  let x = 0;
+  let z = 0;
+  for (const command of commands) {
+    if (command === "forward" || command === "back") {
+      const sign = command === "forward" ? 1 : -1;
+      x += forward[0] * sign;
+      z += forward[2] * sign;
+    }
+    if (command === "right" || command === "left") {
+      const sign = command === "right" ? 1 : -1;
+      x += right[0] * sign;
+      z += right[2] * sign;
+    }
+  }
+  const length = Math.hypot(x, z);
+  return length > 1e-8 ? [x / length, z / length] : [0, 0];
 }
 
 export function rotateFirstPersonCamera(camera: FirstPersonCamera, dx: number, dy: number): FirstPersonCamera {

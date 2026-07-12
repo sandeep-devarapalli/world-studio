@@ -11,11 +11,19 @@ import {
   type ParsedObjMesh,
   type PointRecord
 } from "@world-studio/artifacts";
+import {
+  buildWalkCollisionCandidate,
+  orientCollisionMesh,
+  sampleEvidenceMesh,
+  type CaptureMeshIntegrityReport,
+  type WalkCollisionCandidate,
+  type WalkCollisionCandidateReport
+} from "@world-studio/artifacts/collision-candidate";
 import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel, WSPill, WSRamp, WSSliderRow, WSStatusBar, WSSwitch, WSWordmark, type WSIconName } from "@world-studio/design-system";
 import { ThreeWorldRenderer } from "@world-studio/renderer";
 import { buildCleanedPointCloudPly, cleanedPointRows } from "./edit-ply-export";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
-import { RapierSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
+import { RapierSimulation, RapierWalkSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
 import {
   classifySimulateDrag,
   commandForKey,
@@ -42,6 +50,7 @@ import {
   rotateFirstPersonCameraClamped,
   rotateCamera,
   stepsForSceneRadius,
+  walkDirectionForCommands,
   worldOrientationFromUp,
   type SimulateCameraMode,
   type SimulateDragKind,
@@ -172,6 +181,7 @@ interface AssetSummary {
   evidenceMeshFaces: number;
   evidenceMeshSourceFaces: number;
   evidenceMeshClasses: number;
+  walkCollisionReport?: WalkCollisionCandidateReport;
 }
 
 interface CaptureFrame {
@@ -217,6 +227,8 @@ interface LoadedWorldInput {
   gaussianUrl?: string;
   objText?: string;
   evidenceMesh?: ParsedEvidenceMesh;
+  walkCollisionCandidate?: WalkCollisionCandidate;
+  metersPerTargetUnit?: number;
   loadedVia: string;
   sourcePath: string;
   sourceKind: string;
@@ -458,6 +470,8 @@ export function App() {
   const brushStrokeRef = useRef<Set<number>>(new Set());
   const transformDragRef = useRef<TransformDrag | null>(null);
   const simulationRef = useRef<RapierSimulation | null>(null);
+  const walkSimulationRef = useRef<RapierWalkSimulation | null>(null);
+  const walkSimulationTokenRef = useRef(0);
   const simulationTokenRef = useRef(0);
   const propSeqRef = useRef(defaultProps.length);
   const episodeFrameRef = useRef(0);
@@ -467,6 +481,7 @@ export function App() {
   const [mode, setMode] = useStoredState<StudioMode>("ws-app-mode", "view");
   const [renderMode, setRenderMode] = useStoredState<RenderMode>("ws-app-vmode", "splat");
   const [evidenceMeshMode, setEvidenceMeshMode] = useState<"off" | "overlay" | "only">("off");
+  const [walkCollisionCandidate, setWalkCollisionCandidate] = useState<WalkCollisionCandidate | null>(null);
   const [accentName, setAccentName] = useStoredState<keyof typeof accents>("ws-app-accent", "ember");
   const [dense, setDense] = useStoredState("ws-app-density", false);
   const [docked, setDocked] = useStoredState("ws-app-docked", false);
@@ -524,7 +539,7 @@ export function App() {
   const [tourCamera, setTourCamera] = useState<FrameCamera | null>(null);
   const [tourSpeed, setTourSpeed] = useState(1.5);
   const tourProgressRef = useRef(0);
-  const [handoffSceneHints, setHandoffSceneHints] = useState<{ radius?: number; median?: number; profile?: string; worldUp?: [number, number, number] }>({});
+  const [handoffSceneHints, setHandoffSceneHints] = useState<{ radius?: number; median?: number; profile?: string; worldUp?: [number, number, number]; metersPerTargetUnit?: number }>({});
   const [simulateCameraMode, setSimulateCameraMode] = useState<SimulateCameraMode>("frame");
   const [firstPersonCamera, setFirstPersonCamera] = useState<FirstPersonCamera | null>(null);
   const [pressed, setPressed] = useState<Set<string>>(new Set());
@@ -647,7 +662,7 @@ export function App() {
       document.exitPointerLock();
       return;
     }
-    setSimulateCameraMode("free");
+    setSimulateCameraMode((current) => current === "walk" ? current : "free");
     const leveled = leveledSourceFrameCameraRef.current;
     setFirstPersonCamera((current) => current ?? (leveled ? firstPersonCameraFromFrame(leveled) : current));
     canvas.requestPointerLock();
@@ -680,7 +695,7 @@ export function App() {
         ? leveledTourCamera
         : leveledSourceFrameCamera
       : undefined;
-  const simulateFirstPersonCamera = mode === "simulate" && simulateCameraMode === "free" ? firstPersonCamera ?? undefined : undefined;
+  const simulateFirstPersonCamera = mode === "simulate" && (simulateCameraMode === "free" || simulateCameraMode === "walk") ? firstPersonCamera ?? undefined : undefined;
   const simulateRenderEvidenceUrl = mode === "simulate" && simulateCameraMode === "frame" ? simulateSourceFrame?.renderPreviewDataUrl : undefined;
   const activeWorldOrientation =
     (mode === "simulate" && (simulateFrameCamera || simulateFirstPersonCamera)) || mode === "view" ? worldOrientation : undefined;
@@ -693,6 +708,10 @@ export function App() {
       ? simulateFrameCamera
         ? "frame · aligned camera"
         : "frame camera missing"
+      : simulateCameraMode === "walk"
+        ? firstPersonCamera
+          ? "walk · collision preview"
+          : "walk unavailable"
       : simulateCameraMode === "free"
         ? firstPersonCamera
           ? autoSpin
@@ -785,6 +804,7 @@ export function App() {
 
   useEffect(() => () => renderer?.dispose?.(), [renderer]);
   useEffect(() => () => simulationRef.current?.dispose(), []);
+  useEffect(() => () => walkSimulationRef.current?.dispose(), []);
 
   useEffect(() => {
     setPublishStatus("idle");
@@ -859,8 +879,18 @@ export function App() {
       const simulateCommand = mode === "simulate" && !event.metaKey && !event.ctrlKey && !event.altKey ? commandForKey(event.key, event.shiftKey) : undefined;
       if (simulateCommand) {
         event.preventDefault();
+        const walkAllowed = isWalkTranslationCommand(simulateCommand) || isWalkLookCommand(simulateCommand);
+        if (simulateCameraMode === "walk" && !walkAllowed) {
+          setLastAction("walk keeps eye height and level roll");
+          return;
+        }
         heldSimulateKeysRef.current.set(event.key.toLowerCase(), simulateCommand);
         if (event.repeat) return;
+        if (simulateCameraMode === "walk") {
+          if (isWalkLookCommand(simulateCommand)) applySimulateCommand(simulateCommand, 1);
+          setLastAction(`walk ${simulateCommand}`);
+          return;
+        }
         setSimulateCameraMode("free");
         applySimulateCommand(simulateCommand, 1);
         setLastAction(`inside ${simulateCommand}`);
@@ -893,7 +923,7 @@ export function App() {
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", clearHeld);
     };
-  }, [applySimulateCommand, episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, togglePointerLock, trajectory]);
+  }, [applySimulateCommand, episodeEvents, episodeTotalFrames, firstPersonCamera, history, leveledSourceFrameCamera, mode, selected, selectedEpisodeEventId, simulateCameraMode, togglePointerLock, trajectory]);
 
   useEffect(() => {
     if (mode !== "simulate") {
@@ -908,13 +938,21 @@ export function App() {
       const held = heldSimulateKeysRef.current;
       if (held.size > 0 && dt > 0) {
         const fraction = dt * holdRepeatStepsPerSecond;
-        for (const command of held.values()) applySimulateCommand(command, fraction);
+        if (simulateCameraMode === "walk" && firstPersonCameraRef.current && walkSimulationRef.current) {
+          const commands = [...held.values()];
+          const step = walkSimulationRef.current.step(walkDirectionForCommands(firstPersonCameraRef.current, commands), dt);
+          setFirstPersonCamera((current) => current ? { ...current, position: step.position, roll: 0 } : current);
+          setPhysicsDiagnostics(walkSimulationRef.current.diagnostics());
+          for (const command of commands.filter(isWalkLookCommand)) applySimulateCommand(command, fraction);
+        } else {
+          for (const command of held.values()) applySimulateCommand(command, fraction);
+        }
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [applySimulateCommand, mode]);
+  }, [applySimulateCommand, mode, simulateCameraMode]);
 
   const initializeSimulation = useCallback((worldSession: WorldSession, mesh: ParsedObjMesh | undefined, nextSpawn: AgentState, body: AgentBodyPreset) => {
     const token = simulationTokenRef.current + 1;
@@ -1054,6 +1092,8 @@ export function App() {
       gaussianUrl: payload.gaussianPly?.dataUrl,
       objText: payload.objMesh?.text,
       evidenceMesh: evidence.mesh,
+      walkCollisionCandidate: evidence.walkCollisionCandidate,
+      metersPerTargetUnit: payload.captureSplatMetric?.metersPerTargetUnit,
       loadedVia: payload.loadedVia,
       sourcePath: payload.sourcePath,
       sourceKind: payload.sourceKind,
@@ -1063,7 +1103,7 @@ export function App() {
       assetManifest: payload.assetManifest,
       authorityStatus: payload.authorityStatus,
       packageInsights: payload.packageInsights,
-      packageIssues: [...(payload.packageIssues ?? []), ...(evidence.issue ? [evidence.issue] : [])],
+      packageIssues: [...(payload.packageIssues ?? []), ...evidence.issues],
       sceneRadius: payload.sceneRadius,
       medianStructureDistance: payload.medianStructureDistance,
       captureProfile: payload.captureProfile,
@@ -1089,6 +1129,9 @@ export function App() {
 
   const applyLoadedWorld = useCallback((input: LoadedWorldInput, options?: LoadedWorldOptions) => {
     setLoadError(null);
+    walkSimulationTokenRef.current += 1;
+    walkSimulationRef.current?.dispose();
+    walkSimulationRef.current = null;
 
     if (!input.pointsText) {
       const mesh = input.objText ? parseObjMesh(input.objText) : undefined;
@@ -1101,7 +1144,8 @@ export function App() {
       setRendererDiagnostics(null);
       setWorldPoints([]);
       setCaptureFrames(input.captureFrames ?? []);
-      setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0, evidenceMeshFaces: 0, evidenceMeshSourceFaces: 0, evidenceMeshClasses: 0 });
+      setAssetSummary({ gaussianKind: input.gaussianHeaderText ? detectPlyKind(input.gaussianHeaderText) : "unloaded", objFaces: 0, objGroups: 0, pointCount: 0, evidenceMeshFaces: 0, evidenceMeshSourceFaces: 0, evidenceMeshClasses: 0, walkCollisionReport: input.walkCollisionCandidate?.report });
+      setWalkCollisionCandidate(input.walkCollisionCandidate ?? null);
       setPackageInsights(nextInsights);
       setPackageIssues(nextIssues);
       setSelectedInsightId(null);
@@ -1159,13 +1203,15 @@ export function App() {
       pointCount: pointCloud.points.length,
       evidenceMeshFaces: input.evidenceMesh?.triangles.length ?? 0,
       evidenceMeshSourceFaces: input.evidenceMesh?.sourceFaceCount ?? 0,
-      evidenceMeshClasses: Object.keys(input.evidenceMesh?.classificationCounts ?? {}).length
+      evidenceMeshClasses: Object.keys(input.evidenceMesh?.classificationCounts ?? {}).length,
+      walkCollisionReport: input.walkCollisionCandidate?.report
     });
+    setWalkCollisionCandidate(input.walkCollisionCandidate ?? null);
     setEvidenceMeshMode("off");
     setPackageInsights(nextInsights);
     setPackageIssues(nextIssues);
     setSelectedInsightId(null);
-    setHandoffSceneHints({ radius: input.sceneRadius, median: input.medianStructureDistance, profile: input.captureProfile, worldUp: input.worldUp });
+    setHandoffSceneHints({ radius: input.sceneRadius, median: input.medianStructureDistance, profile: input.captureProfile, worldUp: input.worldUp, metersPerTargetUnit: input.metersPerTargetUnit });
     if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
       setMode("simulate");
       setSimulateCameraMode("frame");
@@ -1556,7 +1602,15 @@ export function App() {
     setEpisodeSaveStatus(null);
   }, []);
 
+  const stopWalkSimulation = useCallback(() => {
+    walkSimulationTokenRef.current += 1;
+    walkSimulationRef.current?.dispose();
+    walkSimulationRef.current = null;
+    setPhysicsDiagnostics(simulationRef.current?.diagnostics() ?? unavailablePhysicsDiagnostics());
+  }, []);
+
   const applySourceFrameCamera = useCallback((frame: CaptureFrame | null, action: string) => {
+    stopWalkSimulation();
     setSimulateCameraMode("frame");
     if (frame?.frameCamera) {
       setFirstPersonCamera(firstPersonCameraFromFrame(applyWorldOrientationToFrameCamera(frame.frameCamera, worldOrientation)));
@@ -1565,9 +1619,10 @@ export function App() {
       setFirstPersonCamera(null);
       setLastAction("frame camera unavailable");
     }
-  }, [worldOrientation]);
+  }, [stopWalkSimulation, worldOrientation]);
 
   const enterFreeCamera = useCallback((action = "inside free camera") => {
+    stopWalkSimulation();
     setSimulateCameraMode("free");
     if (leveledSourceFrameCamera) {
       setFirstPersonCamera((current) => current ?? firstPersonCameraFromFrame(leveledSourceFrameCamera));
@@ -1575,7 +1630,45 @@ export function App() {
     } else {
       setLastAction("free camera");
     }
-  }, [leveledSourceFrameCamera]);
+  }, [leveledSourceFrameCamera, stopWalkSimulation]);
+
+  const enterWalkCamera = useCallback(async () => {
+    const candidate = walkCollisionCandidate;
+    const metersPerTargetUnit = handoffSceneHints.metersPerTargetUnit;
+    const seed = firstPersonCamera ?? (leveledSourceFrameCamera ? firstPersonCameraFromFrame(leveledSourceFrameCamera) : null);
+    if (candidate?.report.status !== "accepted_preview" || !candidate.mesh) {
+      setLastAction(`walk held · ${candidate?.report.reason.replaceAll("_", " ") ?? "collision candidate missing"}`);
+      return;
+    }
+    if (!seed || !metersPerTargetUnit || !Number.isFinite(metersPerTargetUnit)) {
+      setLastAction("walk held · metric camera or scale missing");
+      return;
+    }
+    const token = walkSimulationTokenRef.current + 1;
+    walkSimulationTokenRef.current = token;
+    walkSimulationRef.current?.dispose();
+    walkSimulationRef.current = null;
+    try {
+      const simulation = await RapierWalkSimulation.create({
+        mesh: orientCollisionMesh(candidate.mesh, worldOrientation),
+        camera: seed,
+        worldUnitsPerMeter: 1 / metersPerTargetUnit
+      });
+      if (walkSimulationTokenRef.current !== token) {
+        simulation.dispose();
+        return;
+      }
+      walkSimulationRef.current = simulation;
+      const step = simulation.snapshot();
+      setFirstPersonCamera({ ...seed, position: step.position, roll: 0 });
+      setSimulateCameraMode("walk");
+      setAutoSpin(false);
+      setPhysicsDiagnostics(simulation.diagnostics());
+      setLastAction("walk collision preview");
+    } catch (error) {
+      setLastAction(error instanceof Error ? `walk held · ${error.message}` : "walk held · controller unavailable");
+    }
+  }, [firstPersonCamera, handoffSceneHints.metersPerTargetUnit, leveledSourceFrameCamera, walkCollisionCandidate, worldOrientation]);
 
   const selectSourceFrame = useCallback((index: number) => {
     setCaptureCompareIds([]);
@@ -1606,11 +1699,12 @@ export function App() {
       return;
     }
     setPlaying(false);
+    stopWalkSimulation();
     setAutoSpin(false);
     setSimulateCameraMode("free");
     setFirstPersonCamera(inside);
     setLastAction("inside preset");
-  }, [captureFrames, worldOrientation]);
+  }, [captureFrames, stopWalkSimulation, worldOrientation]);
 
   const toggleCenterSpin = useCallback(() => {
     if (autoSpin) {
@@ -1624,11 +1718,12 @@ export function App() {
       return;
     }
     setPlaying(false);
+    stopWalkSimulation();
     setSimulateCameraMode("free");
     setFirstPersonCamera(center);
     setAutoSpin(true);
     setLastAction("center 360 spin");
-  }, [autoSpin, captureFrames, worldOrientation]);
+  }, [autoSpin, captureFrames, stopWalkSimulation, worldOrientation]);
 
   useEffect(() => {
     if (!autoSpin) return;
@@ -2056,12 +2151,20 @@ export function App() {
     } else {
       const dragKind = mode === "simulate" ? classifySimulateDrag(event) : "orbit";
       if (mode === "simulate") {
+        if (simulateCameraMode === "walk" && dragKind === "pan") {
+          setLastAction("walk pan disabled");
+          return;
+        }
         if (dragKind === "orbit") {
+          stopWalkSimulation();
           setSimulateCameraMode("orbit");
+        } else if (simulateCameraMode === "walk") {
+          setLastAction("walk look");
         } else {
           enterFreeCamera(dragKind === "pan" ? "inside pan" : "inside look");
+          setLastAction(dragKind === "pan" ? "inside pan" : "inside look");
         }
-        setLastAction(dragKind === "orbit" ? "orbit" : dragKind === "pan" ? "inside pan" : "inside look");
+        if (dragKind === "orbit") setLastAction("orbit");
       }
       interactionRef.current = { kind: "camera", x: event.clientX, y: event.clientY, dragKind };
     }
@@ -2102,7 +2205,7 @@ export function App() {
       setCamera((current) => panCamera(current, dx, dy));
       return;
     }
-    if (interaction.kind === "camera" && mode === "simulate" && simulateCameraMode === "free" && firstPersonCamera && interaction.dragKind !== "orbit") {
+    if (interaction.kind === "camera" && mode === "simulate" && (simulateCameraMode === "free" || simulateCameraMode === "walk") && firstPersonCamera && interaction.dragKind !== "orbit") {
       setFirstPersonCamera((current) => current ? rotateFirstPersonCamera(current, dx, dy) : current);
       return;
     }
@@ -2167,6 +2270,10 @@ export function App() {
   const onWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     if (mode === "simulate") {
+      if (simulateCameraMode === "walk") {
+        setLastAction("walk dolly disabled");
+        return;
+      }
       enterFreeCamera("inside dolly");
       if (firstPersonCamera || leveledSourceFrameCamera) {
         setFirstPersonCamera((current) => {
@@ -2497,6 +2604,16 @@ export function App() {
                   <div className="ws-kv">
                     <span>mesh authority</span>
                     <b>{assetSummary?.evidenceMeshFaces ? "registered preview only" : "unavailable"}</b>
+                  </div>
+                  <div className="ws-kv" data-testid="walk-collision-status">
+                    <span>walk collision</span>
+                    <b>{assetSummary?.walkCollisionReport
+                      ? `${assetSummary.walkCollisionReport.status.replace("_preview", " preview")} · ${assetSummary.walkCollisionReport.reason.replaceAll("_", " ")}`
+                      : "missing"}</b>
+                  </div>
+                  <div className="ws-kv">
+                    <span>walk authority</span>
+                    <b>local preview only</b>
                   </div>
                 </WSPanel>
                 <WSPanel title={activeMode.title} meta={activeMode.tag} className="ws-mode-card">
@@ -2886,11 +3003,19 @@ export function App() {
                         <button className={simulateCameraMode === "frame" ? "on" : ""} onClick={resetSimulateFrameCamera}>
                           Frame
                         </button>
-                        <button className={simulateCameraMode === "orbit" ? "on" : ""} onClick={() => setSimulateCameraMode("orbit")}>
+                        <button className={simulateCameraMode === "orbit" ? "on" : ""} onClick={() => { stopWalkSimulation(); setSimulateCameraMode("orbit"); }}>
                           Orbit
                         </button>
+                        <button
+                          className={simulateCameraMode === "walk" ? "on" : ""}
+                          disabled={walkCollisionCandidate?.report.status !== "accepted_preview"}
+                          title={walkCollisionCandidate?.report.status === "held" ? walkCollisionCandidate.report.reason.replaceAll("_", " ") : "Collision-aware local preview"}
+                          onClick={() => void enterWalkCamera()}
+                        >
+                          Walk
+                        </button>
                         <button className={simulateCameraMode === "free" ? "on" : ""} onClick={() => enterFreeCamera()}>
-                          Free
+                          Fly
                         </button>
                       </div>
                       {assetSummary?.evidenceMeshFaces ? (
@@ -4113,32 +4238,56 @@ function parseCaptureFrames(payload: LocalWorldPackagePayload): CaptureFrame[] {
   }
 }
 
-function parseCaptureSplatEvidenceMesh(payload: LocalWorldPackagePayload): { mesh?: ParsedEvidenceMesh; issue?: LocalPackageIssue } {
+function parseCaptureSplatEvidenceMesh(payload: LocalWorldPackagePayload): {
+  mesh?: ParsedEvidenceMesh;
+  walkCollisionCandidate?: WalkCollisionCandidate;
+  issues: LocalPackageIssue[];
+} {
   const metric = payload.captureSplatMetric;
   const source = metric?.navigationMesh;
-  if (!source) return {};
+  if (!source) return { issues: [] };
   if (metric.registrationStatus !== "accepted" || !metric.navigationMeshTransform) {
     return {
-      issue: {
+      issues: [{
         id: "capture-splat-navigation-mesh-unregistered",
         severity: "warning",
         code: "unsupported_layout",
         title: "Evidence mesh held",
         message: "Navigation mesh was not rendered because accepted ARKit-to-reconstruction registration is missing.",
         artifact: source.relativePath
-      }
+      }]
     };
   }
   try {
+    const integrity = parseCaptureMeshIntegrityReport(metric.meshReport?.text);
+    const collisionLoadAllowed = integrity?.truncated === false && (integrity.triangle_count ?? 0) <= 500_000;
+    const fullMesh = parsePlyMesh(dataUrlToBytes(source.dataUrl), {
+      maxFaces: collisionLoadAllowed ? 500_000 : 60_000,
+      transform: metric.navigationMeshTransform
+    });
+    const walkCollisionCandidate = buildWalkCollisionCandidate(
+      fullMesh,
+      integrity
+    );
+    const issues: LocalPackageIssue[] = [];
+    if (metric.walkEligibility === "eligible" && walkCollisionCandidate.report.status === "held") {
+      issues.push({
+        id: "capture-splat-walk-collision-held",
+        severity: "warning",
+        code: "unsupported_layout",
+        title: "Walk held",
+        message: `Collision candidate was not enabled: ${walkCollisionCandidate.report.reason.replaceAll("_", " ")}.`,
+        artifact: source.relativePath
+      });
+    }
     return {
-      mesh: parsePlyMesh(dataUrlToBytes(source.dataUrl), {
-        maxFaces: 60_000,
-        transform: metric.navigationMeshTransform
-      })
+      mesh: sampleEvidenceMesh(fullMesh, 60_000),
+      walkCollisionCandidate,
+      issues
     };
   } catch (error) {
     return {
-      issue: {
+      issues: [{
         id: "capture-splat-navigation-mesh-preview",
         severity: "warning",
         code: "unsupported_layout",
@@ -4147,8 +4296,18 @@ function parseCaptureSplatEvidenceMesh(payload: LocalWorldPackagePayload): { mes
           ? `Could not prepare navigation mesh evidence: ${error.message}`
           : "Could not prepare navigation mesh evidence.",
         artifact: source.relativePath
-      }
+      }]
     };
+  }
+}
+
+function parseCaptureMeshIntegrityReport(text: string | undefined): CaptureMeshIntegrityReport | undefined {
+  if (!text) return undefined;
+  try {
+    const value = JSON.parse(text);
+    return isRecord(value) ? value as CaptureMeshIntegrityReport : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -5394,6 +5553,14 @@ function driveCommandForKey(key: string): DriveCommand {
   if (key === "s") return { move: -1, turn: 0 };
   if (key === "a") return { move: 0, turn: -1 };
   return { move: 0, turn: 1 };
+}
+
+function isWalkTranslationCommand(command: SimulateKeyCommand): boolean {
+  return command === "forward" || command === "back" || command === "left" || command === "right";
+}
+
+function isWalkLookCommand(command: SimulateKeyCommand): boolean {
+  return command === "lookLeft" || command === "lookRight" || command === "lookUp" || command === "lookDown";
 }
 
 function driveActionLabel(key: string): string {

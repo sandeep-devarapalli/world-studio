@@ -543,6 +543,7 @@ end_header
       registration: { matched_cameras: 8, meters_per_target_unit: 0.5 },
       navigationMesh: { relativePath: "metric/navigation_mesh.ply" },
       navigationMeshTransform: [[1, 0, 0, 1], [0, 0, -1, 2], [0, 1, 0, 3], [0, 0, 0, 1]],
+      metersPerTargetUnit: 0.5,
       measurementPoints: { relativePath: "metric/measurement_points.ply" },
       meshReport: { relativePath: "metric/navigation_mesh_report.json" },
       roomSemantics: { relativePath: "metric/room_semantics.json" },

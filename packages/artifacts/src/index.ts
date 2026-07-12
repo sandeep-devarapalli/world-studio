@@ -472,7 +472,10 @@ export function parsePlyMesh(source: Uint8Array | ArrayBuffer, options: PlyMeshO
     if (lines.length < vertexElement.count + faceElement.count) throw new Error("ASCII PLY mesh rows are incomplete");
     for (let index = 0; index < vertexElement.count; index++) {
       const cols = lines[index]!.trim().split(/\s+/);
-      vertices.push(transformPreviewPoint(numeric(cols, xIndex), numeric(cols, yIndex), numeric(cols, zIndex), options.transform));
+      vertices.push(requireFiniteMeshVertex(
+        transformPreviewPoint(numeric(cols, xIndex), numeric(cols, yIndex), numeric(cols, zIndex), options.transform),
+        index
+      ));
     }
     for (let index = 0; index < faceElement.count; index++) {
       const values = lines[vertexElement.count + index]!.trim().split(/\s+/).map(Number);
@@ -487,12 +490,12 @@ export function parsePlyMesh(source: Uint8Array | ArrayBuffer, options: PlyMeshO
     const stride = vertexProperties.reduce((sum, property) => sum + plyScalarSize(property.type), 0);
     for (let index = 0; index < vertexElement.count; index++) {
       const rowOffset = headerLength + index * stride;
-      vertices.push(transformPreviewPoint(
+      vertices.push(requireFiniteMeshVertex(transformPreviewPoint(
         readPlyScalar(view, rowOffset + offsets[xIndex]!, vertexProperties[xIndex]!),
         readPlyScalar(view, rowOffset + offsets[yIndex]!, vertexProperties[yIndex]!),
         readPlyScalar(view, rowOffset + offsets[zIndex]!, vertexProperties[zIndex]!),
         options.transform
-      ));
+      ), index));
     }
     let offset = headerLength + vertexElement.count * stride;
     for (let index = 0; index < faceElement.count; index++) {
@@ -658,14 +661,21 @@ function appendEvidenceFace(
 ): void {
   const group = arkitMeshClassificationName(classification);
   classificationCounts[group] = (classificationCounts[group] ?? 0) + 1;
-  if (faceIndex % sampleStep !== 0 || indices.length < 3) return;
+  if (indices.length < 3) throw new Error(`PLY mesh face ${faceIndex} has fewer than three vertices`);
   if (indices.some((index) => !Number.isInteger(index) || index < 0 || index >= vertexCount)) {
     throw new Error(`PLY mesh face ${faceIndex} has an invalid vertex index`);
   }
+  if (faceIndex % sampleStep !== 0) return;
   for (let index = 1; index < indices.length - 1; index++) {
     triangles.push({ a: indices[0]!, b: indices[index]!, c: indices[index + 1]!, group, material: "capture_evidence" });
   }
 }
+
+function requireFiniteMeshVertex(vertex: [number, number, number], index: number): [number, number, number] {
+  if (!vertex.every(Number.isFinite)) throw new Error(`PLY mesh vertex ${index} is non-finite`);
+  return vertex;
+}
+
 
 function arkitMeshClassificationName(value: number): string {
   return ["none", "wall", "floor", "ceiling", "table", "seat", "window", "door"][Math.round(value)] ?? `class_${Math.round(value)}`;

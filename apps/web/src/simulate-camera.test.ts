@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius, worldOrientationFromUp } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius, walkDirectionForCommands, worldOrientationFromUp } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -87,6 +87,24 @@ describe("simulate camera controls", () => {
     expect(moveFirstPersonCamera(inside, "right").position[0]).toBeGreaterThan(inside.position[0]);
     expect(moveFirstPersonCamera(inside, "lookLeft").rotation).not.toEqual(inside.rotation);
     expect(rotateFirstPersonCamera(inside, 20, 0).rotation).not.toEqual(inside.rotation);
+  });
+
+  it("derives level Walk movement from camera heading while ignoring pitch", () => {
+    const inside = firstPersonCameraFromFrame({
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [0, 1.6, 0],
+      rotation: [1, 0, 0, 0]
+    });
+    const direction = walkDirectionForCommands(rotateFirstPersonCamera(inside, 0, 80), ["forward", "right"]);
+
+    expect(Math.hypot(...direction)).toBeCloseTo(1);
+    expect(direction[0]).toBeGreaterThan(0);
+    expect(direction[1]).toBeGreaterThan(0);
   });
 
   it("levels frame cameras from the source camera up vector", () => {
