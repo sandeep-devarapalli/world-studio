@@ -254,34 +254,24 @@ export function interpolateFrameCameras(a: FrameCamera, b: FrameCamera, t: numbe
 export function insideLookCameraFromFrames(
   frameCameras: Array<FrameCamera | undefined>,
   orientation: WorldOrientation | undefined,
-  fov = 60
+  fov?: number,
+  preferredFrameCamera?: FrameCamera
 ): FirstPersonCamera | null {
   const leveled = frameCameras
     .filter((camera): camera is FrameCamera => Boolean(camera))
     .map((camera) => applyWorldOrientationToFrameCamera(camera, orientation));
   if (!leveled.length) return null;
-  const component = (index: number) => {
-    const values = leveled.map((camera) => camera.translation[index]).sort((a, b) => a - b);
-    return values[Math.floor(values.length / 2)];
-  };
-  const position: [number, number, number] = [component(0), component(1), component(2)];
-  const target: [number, number, number] = [0, position[1], 0];
-  const forward = normalize3([target[0] - position[0], target[1] - position[1], target[2] - position[2]]);
-  const rotation = forward
-    ? multiplyQuaternion(
-        multiplyQuaternion(
-          quaternionFromAxisAngle([0, 1, 0], Math.atan2(forward[0], forward[2])),
-          quaternionFromAxisAngle([1, 0, 0], -Math.asin(Math.max(-1, Math.min(1, forward[1]))))
-        ),
-        quaternionFromAxisAngle([0, 0, 1], Math.PI)
-      )
-    : normalizeQuaternion(leveled[0].rotation);
+  const preferred = preferredFrameCamera
+    ? applyWorldOrientationToFrameCamera(preferredFrameCamera, orientation)
+    : undefined;
+  const seed = preferred ?? observedCameraNearestMedian(leveled);
+  const camera = firstPersonCameraFromFrame(seed);
   return {
-    position,
-    rotation,
-    fov,
-    coordinateFrame: leveled[0].coordinateFrame,
-    authority: "inside preset · median frame camera position"
+    ...camera,
+    fov: fov ?? camera.fov,
+    authority: preferred
+      ? "inside preset · selected source camera"
+      : "inside preset · observed source camera nearest median"
   };
 }
 
@@ -290,12 +280,12 @@ export const centerSpinRadiansPerSecond = 0.4;
 export function centerSpinCameraFromFrames(
   frameCameras: Array<FrameCamera | undefined>,
   orientation: WorldOrientation | undefined,
-  fov = 70
+  fov = 70,
+  preferredFrameCamera?: FrameCamera
 ): FirstPersonCamera | null {
-  const inside = insideLookCameraFromFrames(frameCameras, orientation, fov);
+  const inside = insideLookCameraFromFrames(frameCameras, orientation, fov, preferredFrameCamera);
   if (!inside) return null;
-  const outward = normalize3([inside.position[0], 0, inside.position[2]]);
-  const forward = outward ?? horizontalForward(inside.rotation) ?? [0, 0, 1];
+  const forward = horizontalForward(inside.rotation) ?? [0, 0, 1];
   const yaw = Math.atan2(forward[0], forward[2]);
   return {
     ...inside,
@@ -306,6 +296,23 @@ export function centerSpinCameraFromFrames(
     fov,
     authority: "center 360 preset · leveled yaw-only"
   };
+}
+
+function observedCameraNearestMedian(cameras: FrameCamera[]): FrameCamera {
+  const median = [0, 1, 2].map((index) => {
+    const values = cameras.map((camera) => camera.translation[index]).sort((a, b) => a - b);
+    return values[Math.floor(values.length / 2)];
+  }) as [number, number, number];
+  return cameras.reduce((best, camera) =>
+    squaredDistance3(camera.translation, median) < squaredDistance3(best.translation, median) ? camera : best
+  );
+}
+
+function squaredDistance3(a: [number, number, number], b: [number, number, number]): number {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  const dz = a[2] - b[2];
+  return dx * dx + dy * dy + dz * dz;
 }
 
 export function spinFirstPersonCamera(camera: FirstPersonCamera, yawRadians: number): FirstPersonCamera {

@@ -242,6 +242,7 @@ interface LoadedWorldInput {
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  splatTrainer?: string;
   worldUp?: [number, number, number];
 }
 
@@ -1107,6 +1108,7 @@ export function App() {
       sceneRadius: payload.sceneRadius,
       medianStructureDistance: payload.medianStructureDistance,
       captureProfile: payload.captureProfile,
+      splatTrainer: payload.splatTrainer,
       worldUp: payload.worldUp,
       captureFrames: parseCaptureFrames(payload)
     }, options);
@@ -1693,7 +1695,12 @@ export function App() {
   }, [applySourceFrameCamera, captureFrames]);
 
   const enterInsidePreset = useCallback(() => {
-    const inside = insideLookCameraFromFrames(captureFrames.map((frame) => frame.frameCamera), worldOrientation);
+    const inside = insideLookCameraFromFrames(
+      captureFrames.map((frame) => frame.frameCamera),
+      worldOrientation,
+      undefined,
+      simulateSourceFrame?.frameCamera
+    );
     if (!inside) {
       setLastAction("inside preset unavailable");
       return;
@@ -1704,7 +1711,7 @@ export function App() {
     setSimulateCameraMode("free");
     setFirstPersonCamera(inside);
     setLastAction("inside preset");
-  }, [captureFrames, stopWalkSimulation, worldOrientation]);
+  }, [captureFrames, simulateSourceFrame?.frameCamera, stopWalkSimulation, worldOrientation]);
 
   const toggleCenterSpin = useCallback(() => {
     if (autoSpin) {
@@ -1712,7 +1719,12 @@ export function App() {
       setLastAction("360 spin paused");
       return;
     }
-    const center = centerSpinCameraFromFrames(captureFrames.map((frame) => frame.frameCamera), worldOrientation);
+    const center = centerSpinCameraFromFrames(
+      captureFrames.map((frame) => frame.frameCamera),
+      worldOrientation,
+      70,
+      simulateSourceFrame?.frameCamera
+    );
     if (!center) {
       setLastAction("360 preset unavailable");
       return;
@@ -1723,7 +1735,7 @@ export function App() {
     setFirstPersonCamera(center);
     setAutoSpin(true);
     setLastAction("center 360 spin");
-  }, [autoSpin, captureFrames, stopWalkSimulation, worldOrientation]);
+  }, [autoSpin, captureFrames, simulateSourceFrame?.frameCamera, stopWalkSimulation, worldOrientation]);
 
   useEffect(() => {
     if (!autoSpin) return;
@@ -3905,7 +3917,10 @@ function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagno
 
 function sparkProfileForLoadedWorld(input: LoadedWorldInput): SparkRenderProfile {
   if (input.packageKind === "capture-splat-local-folder" || input.sourceKind === "capture_splat.local_folder") {
-    return "capture-splat-vksplat";
+    const trainer = input.splatTrainer?.trim().toLowerCase();
+    if (trainer === "gsplat") return "capture-splat-gsplat";
+    if (trainer === "vksplat" || trainer === "vulkan") return "capture-splat-vksplat";
+    return "capture-splat-generic";
   }
   return "world-studio-default";
 }

@@ -192,6 +192,7 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
   sourcePath: "/tmp/world-studio/capture_splat_7k",
   sourceKind: "capture_splat.local_folder",
   packageKind: "capture-splat-local-folder",
+  splatTrainer: "gsplat",
   companionArtifacts: [...localPackagePayload.companionArtifacts, "capture-splat.world-studio.json", "capture-splat.media_frames.generated.json"],
   jsonManifests: [{
     relativePath: "capture-splat.world-studio.json",
@@ -1399,6 +1400,7 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Walk");
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Fly");
   await expect(page.getByText("3DGS Performance")).toBeVisible();
+  await expect(page.getByText("capture-splat-gsplat", { exact: true })).toBeVisible();
   await expect(page.getByText("review proposal")).toBeVisible();
   await expect(page.getByText("registered preview only")).toBeVisible();
   const evidenceControls = page.getByTestId("evidence-mesh-mode");
@@ -1448,6 +1450,9 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
   await page.locator(".ws-frame-row", { hasText: "frame_000002" }).click();
   await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000002");
+  await page.getByRole("button", { name: "Inside preset" }).click();
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
+  await expect(page.locator(".ws-bottom-tray .ws-card", { hasText: "Agent state" })).toContainText("inside preset");
 });
 
 test("holds navigation mesh evidence when metric registration is not accepted", async ({ page }) => {

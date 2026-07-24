@@ -47,12 +47,18 @@ Supported fields:
 - `assets.measurement_points` for optional metric point evidence
 - `metric_registration` for the ARKit-to-COLMAP-to-trainer transform chain,
   scale conversion, matched cameras, and residual gates
+- `scene_transform.trainer` for truthful renderer-profile labeling such as
+  `vksplat` or `gsplat`; package kind alone does not identify the trainer
 - `walk_eligibility.status = eligible|held|missing`
 - `artifacts[]` entries with `kind` and `path` for equivalent references
 
 World Studio treats source frames as visual evidence. Trained Gaussian/splat
 outputs are review proposals, not metric, collision, semantic, or navigation
 authority unless separately validated.
+
+Simulate `Inside` and `360` presets seed from an observed source-frame camera,
+preferring the selected frame. World Studio must not synthesize an unobserved
+position by combining independent camera-coordinate medians.
 
 An `eligible` Walk status means a metric mesh is present and its camera-center
 registration passed the declared residual gate. It does not promote the mesh to

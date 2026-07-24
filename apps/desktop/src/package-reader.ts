@@ -564,6 +564,7 @@ function extractHandoffSceneHints(manifest: Record<string, unknown> | undefined)
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  splatTrainer?: string;
   worldUp?: [number, number, number];
   initialCamera?: { position: [number, number, number]; coordinateFrame?: string; mode?: "inside" | "orbit" };
 } {
@@ -575,6 +576,9 @@ function extractHandoffSceneHints(manifest: Record<string, unknown> | undefined)
   if (median !== undefined && median > 0) hints.medianStructureDistance = median;
   const profile = stringValue(manifest.capture_profile) ?? stringValue(manifest.captureProfile);
   if (profile) hints.captureProfile = profile;
+  const sceneTransform = firstRecordValue(manifest.scene_transform, manifest.sceneTransform);
+  const trainer = stringValue(sceneTransform?.trainer);
+  if (trainer) hints.splatTrainer = trainer;
   const registration = firstRecordValue(manifest.metric_registration, manifest.metricRegistration);
   const registrationStatus = stringValue(registration?.status);
   const accepted = registration?.accepted === true || registrationStatus === "accepted";

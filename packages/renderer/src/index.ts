@@ -57,6 +57,15 @@ const knownSparkDeprecationWarnings = new Set([
   sparkDeprecatedWasmInitWarning,
   sparkDeprecatedThreeClockWarning
 ]);
+const captureSplatRuntimeProfile: SparkRuntimeProfile = {
+  minAlpha: 0.5 / 255,
+  maxPixelRadius: 512,
+  focalAdjustment: 1,
+  sortRadial: true,
+  maxGaussianScale: 0.3,
+  maxGaussianPositionRadius: 25
+};
+
 const sparkRuntimeProfiles: Record<SparkRenderProfile, SparkRuntimeProfile> = {
   "world-studio-default": {
     minAlpha: 1 / 255,
@@ -64,16 +73,10 @@ const sparkRuntimeProfiles: Record<SparkRenderProfile, SparkRuntimeProfile> = {
     focalAdjustment: 1.5
   },
   // Spark defaults (as proven by Budo Studio on Bonsai PLYs) plus preview-only tail handling:
-  // VkSplat scenes keep most mass in faint splats, so raising minAlpha darkens them, and clamping
-  // scales below the ~99.5th percentile erases real wall/floor splats.
-  "capture-splat-vksplat": {
-    minAlpha: 0.5 / 255,
-    maxPixelRadius: 512,
-    focalAdjustment: 1,
-    sortRadial: true,
-    maxGaussianScale: 0.3,
-    maxGaussianPositionRadius: 25
-  }
+  // Capture Splat scenes keep most mass in faint splats, so raising minAlpha darkens them.
+  "capture-splat-generic": captureSplatRuntimeProfile,
+  "capture-splat-vksplat": captureSplatRuntimeProfile,
+  "capture-splat-gsplat": captureSplatRuntimeProfile
 };
 const sparkWorkerConsoleWarningFilterSource = `(() => {
   const originalWarn = console.warn.bind(console);
@@ -865,7 +868,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
     const profile = sparkRuntimeProfiles[this.sparkProfile];
     const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer(), {
       maxScale: profile.maxGaussianScale,
-      normalizeRotations: this.sparkProfile === "capture-splat-vksplat",
+      normalizeRotations: this.sparkProfile.startsWith("capture-splat-"),
       hideOutliersBeyondRadius: profile.maxGaussianPositionRadius
     });
     this.gaussianSourceFormat = prepared.sourceFormat;

@@ -215,7 +215,7 @@ describe("simulate camera controls", () => {
     expect(interpolateFrameCameras(base, { ...base, translation: [2, 0, 4] }, 0).translation).toEqual([0, 0, 0]);
   });
 
-  it("builds the inside preset at the median frame position looking at the center", () => {
+  it("builds the inside preset from an observed camera nearest the median", () => {
     const frame = (x: number, z: number) => ({
       width: 10,
       height: 10,
@@ -226,18 +226,41 @@ describe("simulate camera controls", () => {
       translation: [x, 1, z] as [number, number, number],
       rotation: [1, 0, 0, 0] as [number, number, number, number]
     });
-    const inside = insideLookCameraFromFrames([frame(2, 0), frame(2.2, 0.1), frame(1.8, -0.1)], undefined);
+    const frames = [frame(0, 0), frame(2, 3), frame(4, 1)];
+    const inside = insideLookCameraFromFrames(frames, undefined);
 
     expect(inside).not.toBeNull();
     expect(inside!.position[0]).toBeCloseTo(2);
     expect(inside!.position[1]).toBeCloseTo(1);
-    expect(quaternionLocalYWorldY(inside!.rotation)).toBeCloseTo(-1);
-    const forwardX = 2 * (inside!.rotation[0] * inside!.rotation[2] + inside!.rotation[1] * inside!.rotation[3]);
-    expect(forwardX).toBeLessThan(-0.9);
+    expect(inside!.position[2]).toBeCloseTo(3);
+    expect(inside!.authority).toContain("observed source camera");
+
+    const preferred = insideLookCameraFromFrames(frames, undefined, undefined, frames[2]);
+    expect(preferred?.position).toEqual([4, 1, 1]);
+    expect(preferred?.authority).toContain("selected source camera");
     expect(insideLookCameraFromFrames([undefined], undefined)).toBeNull();
   });
 
-  it("center 360 preset faces outward and preserves level OpenCV camera down while spinning", () => {
+  it("keeps a preferred observed camera after world-orientation leveling", () => {
+    const preferred = {
+      width: 10,
+      height: 10,
+      fx: 10,
+      fy: 10,
+      cx: 5,
+      cy: 5,
+      translation: [4, 2, 1] as [number, number, number],
+      rotation: [1, 0, 0, 0] as [number, number, number, number]
+    };
+    const orientation = worldOrientationFromUp([0, 0, 1], [1, 2, 3]);
+    const expected = applyWorldOrientationToFrameCamera(preferred, orientation);
+    const inside = insideLookCameraFromFrames([preferred], orientation, undefined, preferred);
+
+    expect(inside?.position).toEqual(expected.translation);
+    expect(inside?.rotation).toEqual(expected.rotation);
+  });
+
+  it("center 360 preset starts from an observed camera heading and stays level while spinning", () => {
     const frame = (x: number, z: number) => ({
       width: 10,
       height: 10,
@@ -248,9 +271,11 @@ describe("simulate camera controls", () => {
       translation: [x, 1, z] as [number, number, number],
       rotation: [1, 0, 0, 0] as [number, number, number, number]
     });
-    const center = centerSpinCameraFromFrames([frame(2, 0), frame(2.2, 0.1), frame(1.8, -0.1)], undefined);
+    const preferred = frame(2.2, 0.1);
+    const center = centerSpinCameraFromFrames([frame(2, 0), preferred, frame(1.8, -0.1)], undefined, 70, preferred);
 
     expect(center).not.toBeNull();
+    expect(center!.position).toEqual(preferred.translation);
     const forwardOf = (q: [number, number, number, number]): [number, number, number] => [
       2 * (q[1] * q[3] + q[0] * q[2]),
       2 * (q[2] * q[3] - q[0] * q[1]),
@@ -262,7 +287,7 @@ describe("simulate camera controls", () => {
       2 * (q[2] * q[3] + q[0] * q[1])
     ];
     const forward = forwardOf(center!.rotation);
-    expect(forward[0]).toBeGreaterThan(0.9);
+    expect(forward[2]).toBeGreaterThan(0.9);
     expect(Math.abs(forward[1])).toBeLessThan(1e-6);
     expect(upOf(center!.rotation)[1]).toBeCloseTo(-1);
 
@@ -340,8 +365,4 @@ describe("simulate camera controls", () => {
 
 function quaternionForwardY([w, x, y, z]: [number, number, number, number]): number {
   return 2 * (y * z - w * x);
-}
-
-function quaternionLocalYWorldY([, x, , z]: [number, number, number, number]): number {
-  return 1 - 2 * (x * x + z * z);
 }

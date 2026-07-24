@@ -177,7 +177,11 @@ export type SparkLoadState = "unavailable" | "idle" | "loading" | "ready" | "fai
 
 export type SplatRenderPath = "spark-gaussian" | "point-fallback";
 
-export type SparkRenderProfile = "world-studio-default" | "capture-splat-vksplat";
+export type SparkRenderProfile =
+  | "world-studio-default"
+  | "capture-splat-generic"
+  | "capture-splat-vksplat"
+  | "capture-splat-gsplat";
 
 export interface RendererDiagnostics {
   splatRenderPath: SplatRenderPath;
@@ -276,6 +280,7 @@ export interface LocalWorldPackagePayload {
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  splatTrainer?: string;
   worldUp?: [number, number, number];
   initialCamera?: HandoffInitialCamera;
   captureSplatMetric?: CaptureSplatMetricHandoff;
