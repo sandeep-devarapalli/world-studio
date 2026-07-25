@@ -60,6 +60,7 @@ import type {
   AgentState,
   AuthorityStatus,
   CameraState,
+  CaptureSplatQualityHandoff,
   CropBounds,
   FirstPersonCamera,
   FrameCamera,
@@ -242,6 +243,7 @@ interface LoadedWorldInput {
   sceneRadius?: number;
   medianStructureDistance?: number;
   captureProfile?: string;
+  captureSplatQuality?: CaptureSplatQualityHandoff;
   splatTrainer?: string;
   worldUp?: [number, number, number];
 }
@@ -1108,6 +1110,7 @@ export function App() {
       sceneRadius: payload.sceneRadius,
       medianStructureDistance: payload.medianStructureDistance,
       captureProfile: payload.captureProfile,
+      captureSplatQuality: payload.captureSplatQuality,
       splatTrainer: payload.splatTrainer,
       worldUp: payload.worldUp,
       captureFrames: parseCaptureFrames(payload)
@@ -1180,7 +1183,8 @@ export function App() {
         companionArtifacts: input.companionArtifacts,
         assetManifest: input.assetManifest,
         loadedAt: new Date().toISOString(),
-        authorityStatus: input.authorityStatus
+        authorityStatus: input.authorityStatus,
+        captureSplatQuality: input.captureSplatQuality
       }
     };
 
@@ -3440,7 +3444,7 @@ export function App() {
           </div>
           <div className="ws-kv">
             <span>decision</span>
-            <b>{simulateComparisonCapture?.rendererStatus ?? episodeProvenance?.rendererStatus ?? "no QA summary loaded"}</b>
+            <b>{simulateComparisonCapture?.rendererStatus ?? episodeProvenance?.rendererStatus ?? captureSplatQualityLabel(session?.provenance.captureSplatQuality)}</b>
           </div>
           {simulateComparisonCapture ? (
             <>
@@ -3895,9 +3899,23 @@ function createManifestOnlySession(input: LoadedWorldInput): WorldSession {
       companionArtifacts: input.companionArtifacts,
       assetManifest: input.assetManifest,
       loadedAt: new Date().toISOString(),
-      authorityStatus: input.authorityStatus
+      authorityStatus: input.authorityStatus,
+      captureSplatQuality: input.captureSplatQuality
     }
   };
+}
+
+function captureSplatQualityLabel(evidence?: CaptureSplatQualityHandoff): string {
+  if (!evidence) return "no QA summary loaded";
+  const parts = [`QA ${evidence.renderSourceDecision}`];
+  if (evidence.finitePly === true) parts.push("finite PLY");
+  if (evidence.finitePly === false) parts.push("non-finite PLY");
+  if (evidence.splatCount !== undefined) parts.push(`${evidence.splatCount.toLocaleString()} splats`);
+  if (evidence.validFrameCount !== undefined && evidence.frameCount !== undefined) {
+    parts.push(`${evidence.validFrameCount}/${evidence.frameCount} frames`);
+  }
+  if (evidence.weakFrameCount) parts.push(`${evidence.weakFrameCount} weak`);
+  return parts.join(" · ");
 }
 
 function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagnostics | null): string {
@@ -4103,7 +4121,8 @@ function createPointCloudSession(input: LoadedWorldInput, pointCount: number, cl
       companionArtifacts: input.companionArtifacts,
       assetManifest: input.assetManifest,
       loadedAt: new Date().toISOString(),
-      authorityStatus: input.authorityStatus
+      authorityStatus: input.authorityStatus,
+      captureSplatQuality: input.captureSplatQuality
     }
   };
 }

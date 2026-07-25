@@ -424,6 +424,7 @@ end_header
     await mkdir(join(root, "renders"), { recursive: true });
     await mkdir(join(root, "colmap"), { recursive: true });
     await mkdir(join(root, "metric"), { recursive: true });
+    await mkdir(join(root, "quality"), { recursive: true });
     await writeFile(join(root, "rgb", "frame_000001.png"), onePixelPng);
     await writeFile(join(root, "rgb", "frame_000002.png"), onePixelPng);
     await writeFile(join(root, "exports", "points.ply"), `ply
@@ -459,6 +460,20 @@ end_header
     await writeJson(root, "metric/navigation_mesh_report.json", { status: "finite_mesh_written" });
     await writeJson(root, "metric/room_semantics.json", { schema: "capture_splat.room_semantics.v0.1" });
     await writeFile(join(root, "metric", "camera_trajectory.jsonl"), '{"video_frame_index":0}\n');
+    await writeJson(root, "quality/render_source_qa.json", {
+      schema: "capture_splat.render_source_qa.v0.1",
+      decision: "hold",
+      frame_count: 38,
+      valid_frame_count: 38,
+      weak_frames: ["000233", "000249"]
+    });
+    await writeJson(root, "quality/ply_stats.json", {
+      schema: "capture_splat.ply_stats.v0.1",
+      path: "renders/splat.ply",
+      finite: true,
+      non_finite_count: 0,
+      splat_count: 1_000_000
+    });
     await writeJson(root, "capture.json", { schema: "capture_splat.v0.1", accepted_keyframes: 2 });
     await writeJson(root, "colmap/transforms.json", { schema: "capture_splat.transforms.v0.1", frames: [] });
     await writeFile(join(root, "colmap", "cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
@@ -499,6 +514,8 @@ end_header
         mesh_report: "metric/navigation_mesh_report.json",
         room_semantics: "metric/room_semantics.json",
         camera_trajectory: "metric/camera_trajectory.jsonl",
+        render_source_qa: "quality/render_source_qa.json",
+        ply_stats: "quality/ply_stats.json",
         spz: "exports/scene.spz"
       },
       metric_registration: {
@@ -550,6 +567,16 @@ end_header
       roomSemantics: { relativePath: "metric/room_semantics.json" },
       cameraTrajectory: { relativePath: "metric/camera_trajectory.jsonl" }
     });
+    expect(payload.captureSplatQuality).toMatchObject({
+      renderSourceDecision: "hold",
+      frameCount: 38,
+      validFrameCount: 38,
+      weakFrameCount: 2,
+      finitePly: true,
+      splatCount: 1_000_000,
+      renderSourceQa: { relativePath: "quality/render_source_qa.json" },
+      plyStats: { relativePath: "quality/ply_stats.json" }
+    });
     expect(mediaFrames.source_kind).toBe("capture_splat.world_studio_handoff");
     expect(mediaFrames.frames).toHaveLength(2);
     expect(mediaFrames.frames?.[0]?.rgb_path).toBe("rgb/frame_000001.png");
@@ -570,7 +597,7 @@ end_header
     });
     expect(mediaFrames.frames?.[1]).toMatchObject({ frame_camera: { translation: [1, 0, 0] } });
     expect(payload.companionArtifacts).toEqual(
-      expect.arrayContaining(["capture-splat.world-studio.json", "exports/points.ply", "renders/splat.ply", "capture-splat.media_frames.generated.json", "exports/collision_mesh.obj", "metric/navigation_mesh.ply", "metric/measurement_points.ply", "metric/navigation_mesh_report.json", "metric/room_semantics.json", "metric/camera_trajectory.jsonl", "capture.json"])
+      expect.arrayContaining(["capture-splat.world-studio.json", "exports/points.ply", "renders/splat.ply", "capture-splat.media_frames.generated.json", "exports/collision_mesh.obj", "metric/navigation_mesh.ply", "metric/measurement_points.ply", "metric/navigation_mesh_report.json", "metric/room_semantics.json", "metric/camera_trajectory.jsonl", "quality/render_source_qa.json", "quality/ply_stats.json", "capture.json"])
     );
     expect(payload.packageInsights).toEqual(
       expect.arrayContaining([
@@ -590,6 +617,57 @@ end_header
     expect(payload.captureProfile).toBe("room_interior");
     expect(payload.splatTrainer).toBe("gsplat");
     expect(payload.initialCamera).toEqual({ position: [0.5, -0.1, -2], coordinateFrame: "colmap_world", mode: "inside" });
+  });
+
+  it("does not trust malformed or unbound Capture Splat quality evidence", async () => {
+    const root = await makePackage("capture-splat-invalid-quality");
+    await mkdir(join(root, "images"), { recursive: true });
+    await mkdir(join(root, "quality"), { recursive: true });
+    await writeFile(join(root, "images", "000001.png"), onePixelPng);
+    await writeFile(join(root, "splat.ply"), `ply
+format ascii 1.0
+element vertex 1
+property float x
+property float y
+property float z
+end_header
+0 0 0`);
+    await writeJson(root, "quality/render_source_qa.json", {
+      schema: "unknown.qa.v1",
+      decision: "hold",
+      frame_count: 1,
+      valid_frame_count: 1,
+      weak_frames: []
+    });
+    await writeJson(root, "quality/ply_stats.json", {
+      schema: "capture_splat.ply_stats.v0.1",
+      path: "different.ply",
+      finite: true,
+      non_finite_count: 0,
+      splat_count: 1
+    });
+    await writeJson(root, "capture-splat.world-studio.json", {
+      schema: "capture_splat.world_studio_handoff.v0.2",
+      status: "visual_evidence_with_3dgs_proposal",
+      source_frames: [{ path: "images/000001.png" }],
+      assets: {
+        gaussian_ply: "splat.ply",
+        render_source_qa: "quality/render_source_qa.json",
+        ply_stats: "quality/ply_stats.json"
+      }
+    });
+
+    const payload = await readLocalPackage(root);
+
+    expect(payload.captureSplatQuality).toMatchObject({
+      renderSourceDecision: "unavailable",
+      weakFrameCount: 0
+    });
+    expect(payload.captureSplatQuality?.finitePly).toBeUndefined();
+    expect(payload.packageIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "invalid_capture_splat_render_source_qa" }),
+      expect.objectContaining({ code: "invalid_capture_splat_ply_stats" })
+    ]));
   });
 
   it("maps COLMAP frame cameras through the handoff dataparser transform", async () => {

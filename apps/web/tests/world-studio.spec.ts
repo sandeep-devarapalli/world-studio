@@ -259,6 +259,34 @@ const captureSplatSourceFramePayload: LocalWorldPackagePayload = {
       })
     }
   },
+  captureSplatQuality: {
+    renderSourceDecision: "hold",
+    frameCount: 38,
+    validFrameCount: 38,
+    weakFrameCount: 2,
+    finitePly: true,
+    splatCount: 1_000_000,
+    renderSourceQa: {
+      relativePath: "quality/render_source_qa.json",
+      text: JSON.stringify({
+        schema: "capture_splat.render_source_qa.v0.1",
+        decision: "hold",
+        frame_count: 38,
+        valid_frame_count: 38,
+        weak_frames: ["000233", "000249"]
+      })
+    },
+    plyStats: {
+      relativePath: "quality/ply_stats.json",
+      text: JSON.stringify({
+        schema: "capture_splat.ply_stats.v0.1",
+        path: "gaussians.ply",
+        finite: true,
+        non_finite_count: 0,
+        splat_count: 1_000_000
+      })
+    }
+  },
   packageInsights: [
     {
       id: "capture-splat-manifest",
@@ -1414,7 +1442,9 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.locator(".ws-view-tag.metric")).toContainText("walk · collision preview");
   await expect(page.getByTestId("walk-collision-status")).toContainText("accepted preview");
   await page.getByRole("button", { name: "Frame", exact: true }).click();
-  await expect(page.getByTestId("simulate-comparison-panel")).toContainText("source evidence");
+  const comparisonPanel = page.getByTestId("simulate-comparison-panel");
+  await expect(comparisonPanel).toContainText("source evidence");
+  await expect(comparisonPanel).toContainText("QA hold · finite PLY · 1,000,000 splats · 38/38 frames · 2 weak");
   await expect(page.locator(".ws-frame-row", { hasText: "frame_000001" }).getByAltText("frame_000001 preview")).toHaveAttribute("src", /^data:image\/png;base64,/);
   await page.getByRole("button", { name: "Orbit", exact: true }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");

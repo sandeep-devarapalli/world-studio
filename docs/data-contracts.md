@@ -45,6 +45,10 @@ Supported fields:
 - `assets.room_semantics` for unregistered RoomPlan semantic proposals
 - `assets.camera_trajectory` for the continuous ARKit frame-index trajectory
 - `assets.measurement_points` for optional metric point evidence
+- `assets.render_source_qa` for a strict
+  `capture_splat.render_source_qa.v0.1` review summary
+- `assets.ply_stats` for `capture_splat.ply_stats.v0.1` statistics bound to the
+  exact Gaussian PLY path
 - `metric_registration` for the ARKit-to-COLMAP-to-trainer transform chain,
   scale conversion, matched cameras, and residual gates
 - `scene_transform.trainer` for truthful renderer-profile labeling such as
@@ -55,6 +59,11 @@ Supported fields:
 World Studio treats source frames as visual evidence. Trained Gaussian/splat
 outputs are review proposals, not metric, collision, semantic, or navigation
 authority unless separately validated.
+
+World Studio displays attached QA as `promote`, `hold`, or `reject` evidence
+only after validating its schema and counts. It accepts finite PLY evidence only
+when the sidecar's path matches the loaded Gaussian and `finite` agrees with the
+non-finite count. These checks do not establish a high-quality reconstruction.
 
 Simulate `Inside` and `360` presets seed from an observed source-frame camera,
 preferring the selected frame. World Studio must not synthesize an unobserved

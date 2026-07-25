@@ -1,5 +1,5 @@
 import { buildGaussianPreviewPointCloudPly, buildPointCloudPreviewPly } from "@world-studio/artifacts";
-import type { AuthorityStatus, CaptureSplatMetricHandoff, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { AuthorityStatus, CaptureSplatMetricHandoff, CaptureSplatQualityHandoff, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -25,6 +25,8 @@ interface CaptureSplatManifestRefs {
   navigationMeshPaths: string[];
   objMeshPaths: string[];
   pointsPlyPaths: string[];
+  plyStatsPaths: string[];
+  renderSourceQaPaths: string[];
   roomSemanticsPaths: string[];
 }
 
@@ -74,6 +76,9 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
   const captureSplatMetric = parsedCaptureSplatManifest
     ? await readCaptureSplatMetricHandoff(sourceRoot, parsedCaptureSplatManifest, captureSplatRefs, packageIssues)
     : undefined;
+  const captureSplatQuality = parsedCaptureSplatManifest
+    ? await readCaptureSplatQualityHandoff(sourceRoot, captureSplatRefs, gaussianPly?.relativePath, packageIssues)
+    : undefined;
   const sourceBudoMediaFrames = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues);
   const captureSplatManifestFrames = sourceBudoMediaFrames || selectedCleanedPly
     ? undefined
@@ -107,6 +112,8 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     captureSplatMetric?.meshReport?.relativePath,
     captureSplatMetric?.roomSemantics?.relativePath,
     captureSplatMetric?.cameraTrajectory?.relativePath,
+    captureSplatQuality?.renderSourceQa?.relativePath,
+    captureSplatQuality?.plyStats?.relativePath,
     budoMediaFrames?.relativePath,
     articleFigureViews?.relativePath,
     verifiedExport?.relativePath,
@@ -123,6 +130,8 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     captureSplatMetric?.meshReport,
     captureSplatMetric?.roomSemantics,
     captureSplatMetric?.cameraTrajectory,
+    captureSplatQuality?.renderSourceQa,
+    captureSplatQuality?.plyStats,
     budoMediaFrames,
     articleFigureViews,
     verifiedExport,
@@ -187,6 +196,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     verifiedExport,
     jsonManifests,
     captureSplatMetric,
+    captureSplatQuality,
     ...extractHandoffSceneHints(parsedCaptureSplatManifest),
     packageInsights: buildPackageInsights({
       articleFigureViews,
@@ -419,6 +429,95 @@ async function readCaptureSplatMetricHandoff(
     roomSemantics,
     cameraTrajectory
   };
+}
+
+async function readCaptureSplatQualityHandoff(
+  root: string,
+  refs: CaptureSplatManifestRefs,
+  gaussianRelativePath: string | undefined,
+  packageIssues: LocalPackageIssue[]
+): Promise<CaptureSplatQualityHandoff | undefined> {
+  const renderSourceQa = await readFirstText(root, refs.renderSourceQaPaths, packageIssues);
+  const plyStats = await readFirstText(root, refs.plyStatsPaths, packageIssues);
+  if (!renderSourceQa && !plyStats) return undefined;
+  const parsedQa = renderSourceQa
+    ? parseJsonRecord(renderSourceQa.text, renderSourceQa.relativePath, packageIssues)
+    : undefined;
+  const parsedStats = plyStats
+    ? parseJsonRecord(plyStats.text, plyStats.relativePath, packageIssues)
+    : undefined;
+  const qa = validRenderSourceQa(parsedQa, renderSourceQa?.relativePath, packageIssues);
+  const stats = validPlyStats(parsedStats, gaussianRelativePath, plyStats?.relativePath, packageIssues);
+  const renderSourceDecision = (stringValue(qa?.decision) ?? "unavailable") as CaptureSplatQualityHandoff["renderSourceDecision"];
+  const weakFrames = Array.isArray(qa?.weak_frames) ? qa.weak_frames : [];
+  const nonFiniteCount = numberValue(stats?.non_finite_count);
+  return {
+    renderSourceDecision,
+    frameCount: numberValue(qa?.frame_count),
+    validFrameCount: numberValue(qa?.valid_frame_count),
+    weakFrameCount: weakFrames.length,
+    finitePly: stats ? stats.finite === true && nonFiniteCount === 0 : undefined,
+    splatCount: numberValue(stats?.splat_count),
+    renderSourceQa,
+    plyStats
+  };
+}
+
+function validRenderSourceQa(
+  qa: Record<string, unknown> | undefined,
+  artifact: string | undefined,
+  packageIssues: LocalPackageIssue[]
+): Record<string, unknown> | undefined {
+  if (!qa) return undefined;
+  const decision = stringValue(qa.decision);
+  const frameCount = numberValue(qa.frame_count);
+  const validFrameCount = numberValue(qa.valid_frame_count);
+  const weakFrames = qa.weak_frames;
+  const valid = qa.schema === "capture_splat.render_source_qa.v0.1"
+    && (decision === "promote" || decision === "hold" || decision === "reject")
+    && Number.isInteger(frameCount) && (frameCount ?? -1) >= 0
+    && Number.isInteger(validFrameCount) && (validFrameCount ?? -1) >= 0
+    && (validFrameCount ?? 0) <= (frameCount ?? -1)
+    && Array.isArray(weakFrames) && weakFrames.every((value) => typeof value === "string");
+  if (valid) return qa;
+  pushIssue(packageIssues, {
+    artifact,
+    code: "invalid_capture_splat_render_source_qa",
+    message: "Render/source QA evidence has an unsupported schema or invalid decision/count fields and was not trusted.",
+    severity: "warning",
+    title: "Invalid Capture Splat QA evidence"
+  });
+  return undefined;
+}
+
+function validPlyStats(
+  stats: Record<string, unknown> | undefined,
+  gaussianRelativePath: string | undefined,
+  artifact: string | undefined,
+  packageIssues: LocalPackageIssue[]
+): Record<string, unknown> | undefined {
+  if (!stats) return undefined;
+  const statsPath = stringValue(stats.path);
+  const nonFiniteCount = numberValue(stats.non_finite_count);
+  const splatCount = numberValue(stats.splat_count);
+  const boundPath = statsPath && gaussianRelativePath
+    ? path.normalize(statsPath) === path.normalize(gaussianRelativePath)
+    : false;
+  const valid = stats.schema === "capture_splat.ply_stats.v0.1"
+    && typeof stats.finite === "boolean"
+    && Number.isInteger(nonFiniteCount) && (nonFiniteCount ?? -1) >= 0
+    && stats.finite === (nonFiniteCount === 0)
+    && Number.isInteger(splatCount) && (splatCount ?? -1) >= 0
+    && boundPath;
+  if (valid) return stats;
+  pushIssue(packageIssues, {
+    artifact,
+    code: "invalid_capture_splat_ply_stats",
+    message: "PLY statistics were not trusted because their schema, finite counts, or Gaussian path binding is invalid.",
+    severity: "warning",
+    title: "Invalid Capture Splat PLY evidence"
+  });
+  return undefined;
 }
 
 async function readGaussianPreviewPointCloud(
@@ -944,6 +1043,8 @@ function emptyCaptureSplatRefs(): CaptureSplatManifestRefs {
     navigationMeshPaths: [],
     objMeshPaths: [],
     pointsPlyPaths: [],
+    plyStatsPaths: [],
+    renderSourceQaPaths: [],
     roomSemanticsPaths: []
   };
 }
@@ -959,6 +1060,8 @@ function extractCaptureSplatManifestRefs(manifest: Record<string, unknown>): Cap
   collectPathValues(refs.meshReportPaths, manifest.mesh_report, manifest.meshReport, assets.mesh_report, assets.meshReport);
   collectPathValues(refs.roomSemanticsPaths, manifest.room_semantics, manifest.roomSemantics, assets.room_semantics, assets.roomSemantics);
   collectPathValues(refs.cameraTrajectoryPaths, manifest.camera_trajectory, manifest.cameraTrajectory, assets.camera_trajectory, assets.cameraTrajectory);
+  collectPathValues(refs.renderSourceQaPaths, manifest.render_source_qa, manifest.renderSourceQa, assets.render_source_qa, assets.renderSourceQa);
+  collectPathValues(refs.plyStatsPaths, manifest.ply_stats, manifest.plyStats, assets.ply_stats, assets.plyStats);
   collectPathValues(refs.cameraPosePaths, manifest.camera_poses, manifest.cameraPoses, manifest.transforms, manifest.poses, assets.camera_poses, assets.cameraPoses, assets.transforms, assets.poses);
   collectPathValues(refs.captureManifestPaths, manifest.capture_json, manifest.captureJson, manifest.capture_manifest, manifest.captureManifest, assets.capture_json, assets.captureJson, assets.capture_manifest, assets.captureManifest);
   collectGaussianPathValues(refs, manifest.gaussian, manifest.gaussians, manifest.gaussian_ply, manifest.splat, manifest.spz, assets.gaussian, assets.gaussians, assets.gaussian_ply, assets.splat, assets.spz);
@@ -990,6 +1093,8 @@ function extractCaptureSplatManifestRefs(manifest: Record<string, unknown>): Cap
     navigationMeshPaths: uniquePaths(refs.navigationMeshPaths),
     objMeshPaths: uniquePaths(refs.objMeshPaths),
     pointsPlyPaths: uniquePaths(refs.pointsPlyPaths),
+    plyStatsPaths: uniquePaths(refs.plyStatsPaths),
+    renderSourceQaPaths: uniquePaths(refs.renderSourceQaPaths),
     roomSemanticsPaths: uniquePaths(refs.roomSemanticsPaths)
   };
 }

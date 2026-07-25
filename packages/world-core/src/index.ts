@@ -40,6 +40,7 @@ export interface WorldProvenance {
   assetManifest?: WorldAssetManifestEntry[];
   packageKind?: string;
   authorityStatus: AuthorityStatus;
+  captureSplatQuality?: CaptureSplatQualityHandoff;
 }
 
 export interface WorldAssetManifestEntry {
@@ -250,7 +251,13 @@ export interface LocalPackageInsight {
 export interface LocalPackageIssue {
   id: string;
   severity: "error" | "warning";
-  code: "file_too_large" | "malformed_json" | "missing_primary_artifact" | "unsupported_layout";
+  code:
+    | "file_too_large"
+    | "invalid_capture_splat_ply_stats"
+    | "invalid_capture_splat_render_source_qa"
+    | "malformed_json"
+    | "missing_primary_artifact"
+    | "unsupported_layout";
   title: string;
   message: string;
   artifact?: string;
@@ -284,6 +291,18 @@ export interface LocalWorldPackagePayload {
   worldUp?: [number, number, number];
   initialCamera?: HandoffInitialCamera;
   captureSplatMetric?: CaptureSplatMetricHandoff;
+  captureSplatQuality?: CaptureSplatQualityHandoff;
+}
+
+export interface CaptureSplatQualityHandoff {
+  renderSourceDecision: "promote" | "hold" | "reject" | "unavailable";
+  frameCount?: number;
+  validFrameCount?: number;
+  weakFrameCount?: number;
+  finitePly?: boolean;
+  splatCount?: number;
+  renderSourceQa?: LocalWorldPackageTextFile;
+  plyStats?: LocalWorldPackageTextFile;
 }
 
 export interface CaptureSplatMetricHandoff {
