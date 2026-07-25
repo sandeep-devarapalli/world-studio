@@ -188,6 +188,8 @@ export interface RendererDiagnostics {
   splatRenderPath: SplatRenderPath;
   sparkState: SparkLoadState;
   sparkRenderable: boolean;
+  sparkVisible: boolean;
+  pointFallbackVisible: boolean;
   hasGaussianSource: boolean;
   sparkProfile?: SparkRenderProfile;
   gaussianSourceFormat?: string;

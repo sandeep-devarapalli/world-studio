@@ -1401,6 +1401,9 @@ test("loads local packages through the desktop bridge", async ({ page }) => {
 });
 
 test("shows Capture Splat source frames beside live splat packages in Simulate mode", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("ws-app-vmode", JSON.stringify("points"));
+  });
   await page.addInitScript((payload) => {
     window.worldStudioDesktop = {
       pickFolder: async () => payload.sourcePath,
@@ -1424,6 +1427,9 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await expect(page.locator(".ws-view-tag", { hasText: "Source evidence" })).toContainText("frame_000001");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("3DGS visual proxy");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("16,060 splats");
+  await expect(page.locator(".ws-view-tag.metric")).not.toContainText("preview points");
+  await expect(page.locator(".ws-performance-card")).toContainText("spark gaussian");
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Frame");
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Walk");
   await expect(page.getByTestId("simulate-camera-mode")).toContainText("Fly");
@@ -1465,16 +1471,7 @@ test("shows Capture Splat source frames beside live splat packages in Simulate m
   await page.keyboard.press("r");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("free · frame seeded");
   const canvas = page.getByTestId("world-canvas");
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  if (box) {
-    await page.keyboard.down("Alt");
-    await page.mouse.move(box.x + box.width * 0.72, box.y + box.height * 0.48);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.76, box.y + box.height * 0.52);
-    await page.mouse.up();
-    await page.keyboard.up("Alt");
-  }
+  await page.getByRole("button", { name: "Orbit", exact: true }).click();
   await expect(page.locator(".ws-view-tag.metric")).toContainText("orbit");
   await canvas.dispatchEvent("dblclick");
   await expect(page.locator(".ws-view-tag.metric")).toContainText("frame · aligned camera");
@@ -2022,7 +2019,7 @@ async function expectSparkReadyForGaussianPayload(page: Page, payload: LocalWorl
   // renderer path is reported by the 3DGS Performance panel; View mode keeps
   // it in the statusbar accent slot. Assert Spark engaged on whichever
   // surface the loaded mode exposes.
-  const simulateSpark = page.locator(".ws-performance-card", { hasText: "ready" });
+  const simulateSpark = page.locator(".ws-performance-card", { hasText: "spark gaussian" });
   const viewSpark = page.locator(".ws-statusbar", { hasText: "spark gaussian" });
   await expect(simulateSpark.or(viewSpark).first()).toBeVisible({ timeout: 15_000 });
 }

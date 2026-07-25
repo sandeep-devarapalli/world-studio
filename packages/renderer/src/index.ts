@@ -247,6 +247,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
       splatRenderPath: sparkRenderable ? "spark-gaussian" : "point-fallback",
       sparkState: this.gaussianUrl ? this.sparkState : "unavailable",
       sparkRenderable,
+      sparkVisible: Boolean(this.sparkMesh?.visible && this.sparkRenderer?.visible),
+      pointFallbackVisible: Boolean(this.pointCloud?.visible),
       hasGaussianSource: Boolean(this.gaussianUrl),
       sparkProfile: this.gaussianUrl ? this.sparkProfile : undefined,
       gaussianSourceFormat: this.gaussianSourceFormat,
@@ -477,8 +479,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private syncPointCloud(options: RenderOptions): void {
     if (!this.pointCloud || !this.camera) return;
-    const sparkActive = options.mode === "splat" && this.sparkState === "ready" && this.sparkRenderable;
-    this.pointCloud.visible = options.mode !== "mesh" && options.evidenceMeshMode !== "only" && !sparkActive;
+    this.commitRenderLayerVisibility(options);
     if (!this.pointCloud.visible) return;
 
     const material = this.pointCloud.material as THREE.PointsMaterial;
@@ -665,12 +666,33 @@ export class ThreeWorldRenderer implements RenderAdapter {
 
   private syncSpark(options: RenderOptions): void {
     if (this.sparkState === "idle") void this.initializeSpark();
-    const visible = options.mode === "splat" && options.evidenceMeshMode !== "only" && this.sparkState === "ready" && this.sparkRenderable;
+    this.commitRenderLayerVisibility(options);
     if (this.sparkMesh) {
-      this.sparkMesh.visible = visible;
       this.applyWorldObjectTransform(this.sparkMesh, options);
     }
-    if (this.sparkRenderer) this.sparkRenderer.visible = visible;
+  }
+
+  private commitRenderLayerVisibility(options: RenderOptions): void {
+    const sparkVisible =
+      options.mode === "splat" &&
+      options.evidenceMeshMode !== "only" &&
+      this.sparkState === "ready" &&
+      this.sparkRenderable;
+    if (this.sparkMesh) this.sparkMesh.visible = sparkVisible;
+    if (this.sparkRenderer) this.sparkRenderer.visible = sparkVisible;
+    if (this.pointCloud) {
+      this.pointCloud.visible =
+        options.mode !== "mesh" &&
+        options.evidenceMeshMode !== "only" &&
+        !sparkVisible;
+    }
+  }
+
+  private refreshAfterSparkStateChange(): void {
+    if (this.lastOptions) this.commitRenderLayerVisibility(this.lastOptions);
+    if (this.lastCanvas && this.lastOptions) this.render(this.lastCanvas, this.lastOptions);
+    this.notifyDiagnostics();
+    this.requestFrame();
   }
 
   private usesSceneCenterShift(options: RenderOptions): boolean {
@@ -725,8 +747,7 @@ export class ThreeWorldRenderer implements RenderAdapter {
         onLoad: () => {
           this.sparkRenderable = this.hasRenderableSparkBounds();
           this.sparkState = "ready";
-          this.notifyDiagnostics();
-          this.requestFrame();
+          this.refreshAfterSparkStateChange();
         }
       });
       this.sparkMesh.visible = false;
@@ -734,21 +755,18 @@ export class ThreeWorldRenderer implements RenderAdapter {
       this.sparkMesh.initialized?.then(() => {
         this.sparkRenderable = this.hasRenderableSparkBounds();
         this.sparkState = "ready";
-        this.notifyDiagnostics();
-        this.requestFrame();
+        this.refreshAfterSparkStateChange();
       }).catch((error: unknown) => {
         this.sparkRenderable = false;
         this.sparkFailureReason = shortError(error);
         this.sparkState = "failed";
-        this.notifyDiagnostics();
-        this.requestFrame();
+        this.refreshAfterSparkStateChange();
       });
     } catch (error) {
       this.sparkRenderable = false;
       this.sparkFailureReason = shortError(error);
       this.sparkState = "failed";
-      this.notifyDiagnostics();
-      this.requestFrame();
+      this.refreshAfterSparkStateChange();
     }
   }
 

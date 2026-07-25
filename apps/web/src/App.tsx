@@ -724,6 +724,13 @@ export function App() {
               : "free · frame seeded"
           : "free · orbit fallback"
       : simulateCameraMode;
+  const simulateRenderLabel = describeSimulateRender(
+    session,
+    renderMode,
+    simulateRenderEvidenceUrl,
+    simulateCameraLabel,
+    rendererDiagnostics
+  );
   const episodeSourceMatch = useMemo(
     () => (episodeProvenance ? describeEpisodeSourceMatch(episodeProvenance, session) : null),
     [episodeProvenance, session]
@@ -1155,6 +1162,7 @@ export function App() {
       setPackageIssues(nextIssues);
       setSelectedInsightId(null);
       if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
+        setRenderMode("splat");
         setMode("simulate");
         setSimulateCameraMode("frame");
       }
@@ -1219,6 +1227,7 @@ export function App() {
     setSelectedInsightId(null);
     setHandoffSceneHints({ radius: input.sceneRadius, median: input.medianStructureDistance, profile: input.captureProfile, worldUp: input.worldUp, metersPerTargetUnit: input.metersPerTargetUnit });
     if (input.gaussianUrl && input.captureFrames?.some((frame) => frame.frameCamera)) {
+      setRenderMode("splat");
       setMode("simulate");
       setSimulateCameraMode("frame");
     }
@@ -2431,7 +2440,7 @@ export function App() {
                 ) : null}
                 <div className="ws-view-tag metric">
                   <span className="ws-head">3DGS visual proxy</span>
-                  <WSChip>{session ? `${simulateRenderEvidenceUrl ? "native render evidence" : simulateCameraLabel} · ${session.pointCount} pts` : "load splat package"}</WSChip>
+                  <WSChip>{simulateRenderLabel}</WSChip>
                 </div>
               </>
             ) : null}
@@ -2526,7 +2535,7 @@ export function App() {
                     <b>{session?.name ?? "none"}</b>
                   </div>
                   <div className="ws-kv">
-                    <span>points</span>
+                    <span>{assetSummary?.gaussianKind === "gaussian-ply" ? "preview points" : "points"}</span>
                     <b>{session?.pointCount ?? 0}</b>
                   </div>
                   <div className="ws-kv">
@@ -2594,8 +2603,8 @@ export function App() {
                     <b>{Math.round(density * 100)}% preview</b>
                   </div>
                   <div className="ws-kv">
-                    <span>spark</span>
-                    <b>{rendererDiagnostics?.sparkState ?? "unknown"}</b>
+                    <span>active</span>
+                    <b>{rendererStatusLabel(renderMode, rendererDiagnostics)}</b>
                   </div>
                   <div className="ws-kv">
                     <span>profile</span>
@@ -3927,10 +3936,35 @@ function rendererStatusLabel(renderMode: RenderMode, diagnostics: RendererDiagno
   if (!diagnostics?.hasGaussianSource) return "splat fallback · no gaussian";
   if (diagnostics.sparkState === "idle" || diagnostics.sparkState === "loading") return "spark loading · point fallback";
   if (diagnostics.splatRenderPath === "spark-gaussian") {
-    return `spark gaussian · ${diagnostics.sparkProfile ?? "default"} · ${diagnostics.gaussianSplatCount ?? "ready"} splats`;
+    const visibility = diagnostics.sparkVisible ? "" : " · hidden";
+    return `spark gaussian · ${diagnostics.sparkProfile ?? "default"} · ${diagnostics.gaussianSplatCount ?? "ready"} splats${visibility}`;
   }
   if (diagnostics.sparkState === "failed") return `splat fallback · ${diagnostics.sparkFailureReason ?? "spark failed"}`;
   return "splat fallback · not renderable";
+}
+
+function describeSimulateRender(
+  session: WorldSession | null,
+  renderMode: RenderMode,
+  nativeRenderEvidenceUrl: string | undefined,
+  cameraLabel: string,
+  diagnostics: RendererDiagnostics | null
+): string {
+  if (!session) return "load splat package";
+  if (nativeRenderEvidenceUrl) return `${cameraLabel} · native render evidence`;
+  const previewPointCount = session.pointCount ?? 0;
+  if (
+    renderMode === "splat" &&
+    diagnostics?.splatRenderPath === "spark-gaussian" &&
+    diagnostics.sparkVisible
+  ) {
+    return `${cameraLabel} · ${(diagnostics.gaussianSplatCount ?? 0).toLocaleString()} splats`;
+  }
+  if (renderMode === "splat") {
+    return `${cameraLabel} · point fallback · ${previewPointCount.toLocaleString()} preview points`;
+  }
+  const pointLabel = diagnostics?.hasGaussianSource ? "preview points" : "points";
+  return `${cameraLabel} · ${renderMode} · ${previewPointCount.toLocaleString()} ${pointLabel}`;
 }
 
 function sparkProfileForLoadedWorld(input: LoadedWorldInput): SparkRenderProfile {
@@ -5436,7 +5470,7 @@ function ModeCard({
       </div>
       {renderMode === "depth" ? <WSRamp from={0} to={0.978} label="magma" /> : null}
       <div className="ws-kv">
-        <span>points</span>
+        <span>{assetSummary?.gaussianKind === "gaussian-ply" ? "preview points" : "points"}</span>
         <b>{assetSummary?.pointCount ?? session?.pointCount ?? 0}</b>
       </div>
       <div className="ws-kv">

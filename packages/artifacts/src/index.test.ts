@@ -130,7 +130,7 @@ end_header
     expect(view.getFloat32(prepared.headerLength + 13 * 4, true)).toBeCloseTo(0, 5);
   });
 
-  it("hides binary Gaussian PLY coordinate outliers for preview when requested", () => {
+  it("hides and neutralizes binary Gaussian PLY coordinate outliers for preview", () => {
     const source = new TextEncoder().encode(`ply
 format ascii 1.0
 element vertex 2
@@ -162,7 +162,9 @@ end_header
     expect(prepared.droppedOutlierCount).toBe(1);
     expect(view.getFloat32(prepared.headerLength + opacityOffset, true)).toBeCloseTo(2, 5);
     expect(view.getFloat32(prepared.headerLength + stride + opacityOffset, true)).toBeLessThanOrEqual(-30);
-    expect(view.getFloat32(prepared.headerLength + stride, true)).toBeCloseTo(1000, 3);
+    expect(view.getFloat32(prepared.headerLength + stride, true)).toBeCloseTo(0, 5);
+    expect(view.getFloat32(prepared.headerLength + stride + 4, true)).toBeCloseTo(0, 5);
+    expect(view.getFloat32(prepared.headerLength + stride + 8, true)).toBeCloseTo(0, 5);
   });
 
   it("builds ordinary preview points from Gaussian PLYs", async () => {

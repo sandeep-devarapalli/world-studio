@@ -760,10 +760,11 @@ function prepareBinaryGaussianRows(
       const distance = Math.hypot(x!, y!, z!);
       if (!Number.isFinite(distance) || distance > options.hideOutliersBeyondRadius!) {
         const property = properties[opacityIndex]!;
-        if (readPlyScalar(view, rowOffset + offsets[opacityIndex]!, property) > hiddenOutlierOpacityLogit) {
-          writePlyNumber(view, rowOffset + offsets[opacityIndex]!, property, hiddenOutlierOpacityLogit);
-          droppedOutlierCount++;
+        writePlyNumber(view, rowOffset + offsets[opacityIndex]!, property, hiddenOutlierOpacityLogit);
+        for (const propertyIndex of positionIndexes) {
+          writePlyNumber(view, rowOffset + offsets[propertyIndex]!, properties[propertyIndex]!, 0);
         }
+        droppedOutlierCount++;
       }
     }
     if (options.maxLogScale !== undefined) {
