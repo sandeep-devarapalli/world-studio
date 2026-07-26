@@ -14,6 +14,7 @@
     "desktop:package:smoke": "pnpm desktop:package && pnpm desktop:smoke",
     "build": "pnpm -r build",
     "test": "vitest run",
+    "test:live-e2e": "pnpm --filter @world-studio/desktop build && node scripts/validate-live-session-e2e.mjs",
     "test:ui": "playwright test",
     "clone:upstreams": "node scripts/clone-upstreams.mjs",
     "typecheck": "pnpm -r typecheck",
