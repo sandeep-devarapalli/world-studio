@@ -22,6 +22,8 @@ verified exports, or local desktop files.
   prop spawning, collision/debug overlays, selected-prop inspection, and Episode recording.
 - Browser and Electron package loading for World Studio packages, generic JSON packages,
   Budo-compatible manifests, article figure views, and verified export folders.
+- An explicit loopback-only Capture Splat live-session receiver for replaying source-frame
+  and camera evidence into Simulate without replacing the loaded world.
 - Episode recording, playback, export, browser import, Electron import, package bundle export,
   source relink, companion asset validation, embedded asset manifests, and per-asset integrity
   drilldowns.
@@ -68,6 +70,14 @@ first use. `desktop:dev` also runs that check before opening the shell. The Elec
 wraps the same web app and adds local filesystem package loading, Episode open/save flows,
 and desktop provenance.
 
+In Simulate, `Start Listening` starts the Phase 1 receiver on
+`127.0.0.1:43127`. Listening is always an explicit desktop action. Live sessions are
+recoverably stored under the Electron user-data directory, remain proposal-only, and do
+not replace or modify the currently loaded world. The browser build keeps working without
+the Electron bridge. `WORLD_STUDIO_LIVE_PORT` changes the port;
+`WORLD_STUDIO_LIVE_HOST` is accepted only as `127.0.0.1` or `::1`, so environment
+configuration cannot widen the Phase 1 listener beyond loopback.
+
 ## Package Desktop App
 
 On macOS:
@@ -88,7 +98,16 @@ notarized distribution. The current macOS smoke build is expected at
 pnpm test
 pnpm typecheck
 pnpm test:ui
+pnpm test:live-e2e
 ```
+
+The Capture Splat repository owns the canonical
+`capture_splat.live_session.v0.1`, `capture_splat.live_frame.v0.1`, and
+`capture_splat.live_ack.v0.1` schemas and fixtures. World Studio carries
+byte-identical mirrors and verifies their fingerprints.
+`test:live-e2e` builds the pure desktop receiver, creates a temporary two-frame
+capture, runs the sibling Capture Splat replay CLI through duplicate/disconnect/resume
+simulation, finalizes it, and reopens the emitted handoff through the package reader.
 
 ## Data Formats
 

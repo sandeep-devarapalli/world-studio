@@ -13,6 +13,20 @@
 - Added desktop local package loading, package validation diagnostics, compatibility fixtures,
   and inspector drilldowns.
 
+## P0: Capture Splat Live Session Phase 1
+
+Progress and acceptance evidence lives in `docs/live_session_phase1.md`.
+
+- Replay source-frame, pose, calibration, and quality evidence over an explicit
+  loopback-only receiver.
+- Persist recoverable sessions outside Git with strict checksums, duplicate handling,
+  out-of-order buffering, resume, and fail-closed finalization.
+- Keep the live source-frame and camera-trajectory surface proposal-only and separate from
+  the loaded `WorldSession`.
+- Reopen a finalized handoff only through the existing explicit package workflow.
+- Defer the authenticated LAN sender and any live reconstruction/training pipeline to a
+  later phase.
+
 ## P0: UI Quality And Design Fidelity
 
 - Rework the visible app against the archived World Studio design source of truth:
