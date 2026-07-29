@@ -37,6 +37,32 @@ package action.
 
 Phase 1 transports source evidence. It does not run or claim live 3D Gaussian Splatting.
 
+## World Compiler Boundary
+
+The [World Compiler Blueprint](blueprints/world-compiler-v0.1/README.md) defines the target
+ownership model:
+
+- Capture Splat owns immutable source evidence and capture decisions.
+- World Studio owns world versions, coordinate frames, units, provenance, uncertainty,
+  edits, readiness, robot/task profiles, adapters, and Episodes.
+- Spark + Three.js + Rapier provides local visual composition and preview execution.
+- Isaac, ROS 2, reconstruction, and future simulator backends run through external,
+  capability-reporting workers.
+
+The canonical World Package is still a proposal. Existing local package and Episode
+contracts remain active until a runtime migration and round-trip path is implemented.
+
+## Physical Asset Calibration Boundary
+
+[Physical Asset Calibration](blueprints/world-compiler-v0.1/PHYSICAL_ASSET_CALIBRATION.md)
+spans Edit, Sensors, Simulate, and Episode. Passive Capture Splat evidence can create C0
+visual and geometry proposals. Physical parameters require calibrated apparatus,
+instrumented experiments, uncertainty, held-out real/sim validation, and task-scoped
+promotion.
+
+Visual, metric, collision, semantic, and physics representations may share transforms, but
+one role never gains another role's authority automatically.
+
 ## Renderer Boundary
 
 The renderer contract intentionally matches the prototype's `ws-render.js` behavior while

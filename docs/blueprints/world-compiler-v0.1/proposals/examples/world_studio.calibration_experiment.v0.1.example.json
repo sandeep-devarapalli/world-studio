@@ -1,0 +1,238 @@
+{
+  "schema": "world_studio.calibration_experiment.v0.1",
+  "experiment_id": "inclined_plane_001",
+  "asset": {
+    "asset_id": "desk_asset_001",
+    "version": 1,
+    "profile": {
+      "path": "assets/desk_001/physical_asset.json",
+      "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 18340,
+      "media_type": "application/json"
+    }
+  },
+  "calibration_tier": "C2",
+  "experiment_type": "inclined_plane",
+  "created_at": "2026-07-29T09:15:00Z",
+  "lifecycle_status": "complete",
+  "clock_domains": [
+    {
+      "clock_id": "iphone_media",
+      "kind": "media",
+      "synchronization_status": "estimated",
+      "offset_s": 0,
+      "uncertainty_s": 0.008
+    }
+  ],
+  "apparatus": [
+    {
+      "apparatus_id": "inclined_plane_rig_001",
+      "kind": "inclined_plane",
+      "calibration_status": "current",
+      "calibration": {
+        "path": "calibration/apparatus/inclined_plane_rig_001.json",
+        "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size_bytes": 2914,
+        "media_type": "application/json"
+      },
+      "frame_id": "inclined_plane_frame"
+    },
+    {
+      "apparatus_id": "iphone_001",
+      "kind": "camera",
+      "calibration_status": "current",
+      "calibration": {
+        "path": "calibration/sensors/iphone_001_camera.json",
+        "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "size_bytes": 4192,
+        "media_type": "application/json"
+      },
+      "frame_id": "iphone_camera"
+    }
+  ],
+  "sensors": [
+    {
+      "sensor_id": "iphone_rgb",
+      "kind": "rgb",
+      "frame_id": "iphone_camera",
+      "clock_id": "iphone_media",
+      "sample_rate_hz": 30,
+      "calibration_status": "current",
+      "calibration": {
+        "path": "calibration/sensors/iphone_001_camera.json",
+        "sha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "size_bytes": 4192,
+        "media_type": "application/json"
+      }
+    },
+    {
+      "sensor_id": "plane_angle",
+      "kind": "angle",
+      "frame_id": "inclined_plane_frame",
+      "clock_id": "iphone_media",
+      "sample_rate_hz": 30,
+      "calibration_status": "current",
+      "calibration": {
+        "path": "calibration/sensors/plane_angle_001.json",
+        "sha256": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "size_bytes": 1852,
+        "media_type": "application/json"
+      }
+    }
+  ],
+  "robot_profile": null,
+  "protocol": {
+    "protocol_id": "inclined_plane_static_friction",
+    "revision": "1.0",
+    "instructions": {
+      "path": "protocols/inclined_plane_static_friction_v1.json",
+      "sha256": "sha256:1010101010101010101010101010101010101010101010101010101010101010",
+      "size_bytes": 3401,
+      "media_type": "application/json"
+    },
+    "initial_conditions": [
+      {
+        "name": "initial_plane_angle",
+        "measurement": {
+          "value": 0,
+          "unit": "rad",
+          "uncertainty": 0.002
+        }
+      }
+    ],
+    "controlled_variables": [
+      "plane_angle",
+      "asset_orientation",
+      "surface_condition"
+    ],
+    "measured_outputs": [
+      "slip_onset_angle"
+    ]
+  },
+  "environment": {
+    "gravity_m_s2": [
+      0,
+      0,
+      -9.80665
+    ],
+    "temperature_k": 298.15,
+    "relative_humidity": 0.48,
+    "surface_material_ids": [
+      "desk_laminate",
+      "test_floor_tile"
+    ],
+    "notes": [
+      "Both contact surfaces were dry and cleaned before each trial."
+    ]
+  },
+  "trials": [
+    {
+      "trial_id": "inclined_plane_001_trial_01",
+      "repeat_index": 0,
+      "include_in_fit": true,
+      "outcome": "complete",
+      "measurements": [
+        {
+          "name": "slip_onset_angle",
+          "measurement": {
+            "value": 0.397,
+            "unit": "rad",
+            "uncertainty": 0.012
+          }
+        }
+      ],
+      "data": [
+        {
+          "path": "experiments/inclined_plane_001/trials/01/measurements.json",
+          "sha256": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+          "size_bytes": 2310,
+          "media_type": "application/json"
+        }
+      ]
+    },
+    {
+      "trial_id": "inclined_plane_001_trial_02",
+      "repeat_index": 1,
+      "include_in_fit": true,
+      "outcome": "complete",
+      "measurements": [
+        {
+          "name": "slip_onset_angle",
+          "measurement": {
+            "value": 0.409,
+            "unit": "rad",
+            "uncertainty": 0.012
+          }
+        }
+      ],
+      "data": [
+        {
+          "path": "experiments/inclined_plane_001/trials/02/measurements.json",
+          "sha256": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+          "size_bytes": 2298,
+          "media_type": "application/json"
+        }
+      ]
+    }
+  ],
+  "raw_streams": [
+    {
+      "stream_id": "iphone_rgb_stream",
+      "sensor_id": "iphone_rgb",
+      "clock_id": "iphone_media",
+      "artifact": {
+        "path": "experiments/inclined_plane_001/raw/iphone_rgb.mov",
+        "sha256": "sha256:1414141414141414141414141414141414141414141414141414141414141414",
+        "size_bytes": 42003411,
+        "media_type": "video/quicktime"
+      }
+    },
+    {
+      "stream_id": "plane_angle_stream",
+      "sensor_id": "plane_angle",
+      "clock_id": "iphone_media",
+      "artifact": {
+        "path": "experiments/inclined_plane_001/raw/plane_angle.jsonl",
+        "sha256": "sha256:1515151515151515151515151515151515151515151515151515151515151515",
+        "size_bytes": 84032,
+        "media_type": "application/x-ndjson"
+      }
+    }
+  ],
+  "exclusions": [],
+  "safety_limits": [
+    {
+      "limit_id": "maximum_plane_angle",
+      "quantity": "plane_angle",
+      "comparison": "less_than_or_equal",
+      "threshold": {
+        "value": 0.785,
+        "unit": "rad",
+        "uncertainty": 0.002
+      },
+      "response": "abort"
+    }
+  ],
+  "authority": {
+    "classification": "experimental_evidence_only",
+    "approved_for": [
+      "c2_parameter_estimation_input"
+    ],
+    "not_approved_for": [
+      "general_friction_claim",
+      "robot_safety",
+      "deployment"
+    ],
+    "limitations": [
+      "The protocol measures one dry material pair over a low-speed slip-onset regime."
+    ]
+  },
+  "provenance": {
+    "recorder": "world-studio-experiment-recorder",
+    "recorder_version": "0.1.0",
+    "configuration_sha256": "sha256:1616161616161616161616161616161616161616161616161616161616161616",
+    "operator": "operator_001",
+    "started_at": "2026-07-29T09:15:00Z",
+    "completed_at": "2026-07-29T09:24:00Z"
+  }
+}

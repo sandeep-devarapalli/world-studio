@@ -22,6 +22,11 @@ is relevant and whether it can be used as a dependency in an Apache 2.0 project.
 | `carla-simulator/carla` | MIT code, CC-BY assets, Unreal dependencies | Autonomous driving simulator reference. | Compatible for client/API study; keep simulator runtime external. |
 | `isaac-sim/IsaacLab` | BSD-3/Apache-2.0 mix, Isaac Sim dependency | Robot learning/sensor sim reference. | Compatible source reference; runtime depends on Isaac Sim. |
 | `isaac-sim/IsaacSim` | Apache-2.0 source plus NVIDIA component terms | High-fidelity robotics simulation reference. | Reference/external unless NVIDIA runtime terms are accepted. |
+| `graphdeco-inria/i3dgs` | Inria research/evaluation license | Immediate unordered 3DGS and global consistency research worker. | Isolated research only; not production-selectable or vendored. |
+| `Robbyant/lingbot-map` | Apache-2.0 code; model/data terms require review | Streaming feed-forward reconstruction and progressive world proposal reference. | Optional isolated worker after pinned reproduction and model-term audit. |
+| `nepfaff/scalable-real2sim` | MIT top-level code; submodules, weights, BundleSDF, and MOSEK require separate review | Physical Asset Calibration reference for visual/collision separation, instrumented trials, system identification, and validation. | Research reference; do not vendor the full dependency stack. |
+| Dirac Robotics public site | No source dependency | Product reference for validated physical asset values and stated confidence. | Competitive/research reference only. |
+| World Labs Real-to-Sim-to-Real | No source dependency | Task-level real/sim observation, outcome, failure-region, and policy-ranking reference. | Product/research reference only. |
 | `dimforge/salva` | Apache-2.0 | Fluid simulation future reference. | Optional future dependency. |
 | `harry7557558/vksplat` | Apache-2.0 | Vulkan 3DGS training reference. | Optional future reference/dependency after build review. |
 | `MrNeRF/LichtFeld-Studio` | GPL-3.0 | Native 3DGS studio UX reference. | Reference-only unless relicensing is intended. |

@@ -1,0 +1,148 @@
+name: Validation evidence
+description: Submit reproducible evidence for a capability, artifact, or promotion gate.
+title: "[Validation] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Evidence must be reproducible and narrowly scoped. Viewer load, visual plausibility, finite output, and task authority are separate claims.
+
+  - type: input
+    id: target
+    attributes:
+      label: Validation target
+      description: Identify the capability, artifact, contract, issue, or pull request under test.
+      placeholder: Commit, issue, PR, package ID, or contract version
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Target milestone
+      options:
+        - M0 Live Evidence Foundation
+        - M1 Authenticated LAN And Progressive World
+        - M2 Canonical World Package And Editor
+        - M3 Indoor Navigation Ready - R3
+        - M4 Physical Asset Calibration Foundation
+        - M5 Isaac/ROS Sensor Alignment - R4
+        - M6 Rigid Interaction And Field Calibration - R5
+        - M7 Expanded Embodiments
+        - Maintenance / not milestone-bound
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link prerequisite issues, versions, devices, datasets, or evidence. Write None when independent.
+      placeholder: None
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and versions
+      description: Record commit, working-tree state, OS, architecture, device, browser, GPU, and relevant runtime versions.
+      placeholder: |
+        Commit:
+        Working tree:
+        OS / architecture:
+        Device / GPU:
+        Runtime versions:
+    validations:
+      required: true
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Input provenance
+      description: Identify fixtures or datasets, licenses, source versions, schemas, and checksums without exposing private data.
+      placeholder: |
+        Input ID and source:
+        License:
+        Schema/version:
+        SHA-256:
+    validations:
+      required: true
+
+  - type: textarea
+    id: gates
+    attributes:
+      label: Acceptance gates and results
+      description: Pair each predetermined gate with its measured result and pass/hold/reject status.
+      placeholder: |
+        | Gate | Threshold | Result | Decision |
+        | --- | --- | --- | --- |
+        | ... | ... | ... | pass/hold/reject |
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction commands
+      description: Provide exact commands and configuration, including random seeds or worker versions where relevant.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: External validation artifacts
+      description: Link durable reports, screenshots, traces, or outputs stored outside Git and include content checksums.
+      placeholder: |
+        URL:
+        SHA-256:
+        Contents/schema:
+    validations:
+      required: true
+
+  - type: textarea
+    id: failures
+    attributes:
+      label: Failures, warnings, and exclusions
+      description: Record non-finite values, missing samples, regressions, exclusions, and checks not run. Write None only when verified.
+      placeholder: None
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decision
+    attributes:
+      label: Evidence decision
+      description: Choose the narrow decision supported by these results.
+      options:
+        - Promote
+        - Hold
+        - Reject
+        - Informational only
+    validations:
+      required: true
+
+  - type: textarea
+    id: authority
+    attributes:
+      label: Supported and unsupported claims
+      description: Separate visual, metric, collision, semantic, navigation, and physics conclusions.
+      placeholder: |
+        Supported:
+        Not supported:
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Evidence confirmations
+      options:
+        - label: The commands, versions, inputs, and checksums are sufficient for another contributor to reproduce this result.
+          required: true
+        - label: Raw captures, trained models, splats, simulator runs, and other generated outputs are not committed to Git.
+          required: true
+        - label: The decision does not promote Gaussian appearance into measurement, collision, semantic, navigation, or physics authority.
+          required: true

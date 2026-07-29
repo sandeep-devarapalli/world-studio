@@ -1,0 +1,144 @@
+{
+  "schema": "world_studio.world.v0.1",
+  "world_id": "demo_room_001",
+  "version": 1,
+  "parent_version": null,
+  "created_at": "2026-07-29T06:30:00Z",
+  "created_by": "world-studio",
+  "units": {
+    "length": "meter",
+    "mass": "kilogram",
+    "time": "second",
+    "angle": "radian"
+  },
+  "coordinate_system": {
+    "frame_id": "world_metric",
+    "handedness": "right",
+    "up_axis": "+Z",
+    "forward_axis": "+X",
+    "gravity_m_s2": [
+      0,
+      0,
+      -9.81
+    ]
+  },
+  "capture_sessions": [
+    {
+      "session_id": "capture_001",
+      "manifest_uri": "evidence/capture_session.json",
+      "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "reconciled": true
+    }
+  ],
+  "transforms": [
+    {
+      "transform_id": "capture_to_world",
+      "parent_frame": "world_metric",
+      "child_frame": "capture_arkit",
+      "matrix_row_major": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "source": "apriltag_alignment",
+      "status": "validated",
+      "residual": {
+        "scale_error_fraction": 0.006
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "visual_001",
+      "role": "visual_splat",
+      "uri": "reconstruction/visual/delivery.spz",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "byte_length": 0,
+      "media_type": "application/octet-stream",
+      "frame_id": "world_metric",
+      "transform_id": null,
+      "status": "promoted",
+      "provenance": {
+        "producer": "splat-transform",
+        "producer_version": "pinned",
+        "input_artifact_ids": [],
+        "job_id": "job_visual_001",
+        "seed": null
+      }
+    },
+    {
+      "artifact_id": "collision_001",
+      "role": "collision_mesh",
+      "uri": "reconstruction/collision/static_collision.glb",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "byte_length": 0,
+      "media_type": "model/gltf-binary",
+      "frame_id": "world_metric",
+      "transform_id": null,
+      "status": "validated",
+      "provenance": {
+        "producer": "world-studio-collision",
+        "producer_version": "0.1",
+        "input_artifact_ids": [],
+        "job_id": "job_collision_001",
+        "seed": 7
+      }
+    }
+  ],
+  "authorities": [
+    {
+      "domain": "visual",
+      "artifact_id": "visual_001",
+      "status": "promoted",
+      "approved_for": [
+        "human_inspection"
+      ],
+      "not_approved_for": [
+        "collision",
+        "measurement"
+      ],
+      "confidence": 0.95,
+      "reviewer": "user"
+    },
+    {
+      "domain": "collision",
+      "artifact_id": "collision_001",
+      "status": "validated",
+      "approved_for": [
+        "indoor_mobile_navigation"
+      ],
+      "not_approved_for": [
+        "precision_manipulation"
+      ],
+      "confidence": 0.86,
+      "reviewer": "validation-suite"
+    }
+  ],
+  "robots": [
+    "robots/vacuum_v1.robot.json"
+  ],
+  "tasks": [
+    "tasks/clean_two_zones.task.json"
+  ],
+  "validation": {
+    "readiness_level": "R3",
+    "status": "passed_with_limits",
+    "report_uri": "validation/latest.json"
+  },
+  "warnings": [
+    "Mass and articulated-object dynamics are not validated."
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "world_studio.task.v0.1",
+  "task_id": "clean_two_zones",
+  "domain": "indoor_mobile_robot",
+  "world_frame": "world_metric",
+  "spawn": {
+    "position_m": [
+      0.5,
+      0.5,
+      0.06
+    ],
+    "yaw_rad": 0.0
+  },
+  "goals": [
+    {
+      "type": "coverage_region",
+      "region_id": "zone_a",
+      "target_fraction": 0.95
+    },
+    {
+      "type": "coverage_region",
+      "region_id": "zone_b",
+      "target_fraction": 0.95
+    },
+    {
+      "type": "return_to_pose",
+      "position_m": [
+        0.5,
+        0.5,
+        0.06
+      ],
+      "tolerance_m": 0.12
+    }
+  ],
+  "constraints": [
+    {
+      "type": "no_entry",
+      "region_id": "fragile_floor"
+    }
+  ],
+  "failure": [
+    {
+      "type": "collision",
+      "severity": "hard"
+    },
+    {
+      "type": "timeout",
+      "seconds": 900
+    }
+  ],
+  "metrics": [
+    "coverage",
+    "collision_count",
+    "path_length_m",
+    "return_success"
+  ]
+}

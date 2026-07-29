@@ -1,0 +1,172 @@
+{
+  "schema": "world_studio.robot_profile.v0.1",
+  "robot_id": "vacuum_v1",
+  "version": 1,
+  "created_at": "2026-07-29T10:15:00Z",
+  "lifecycle_status": "proposal",
+  "embodiment": "differential_drive",
+  "units": {
+    "length": "m",
+    "mass": "kg",
+    "time": "s",
+    "angle": "rad",
+    "force": "N",
+    "torque": "N*m"
+  },
+  "base_frame": "base_link",
+  "geometry": {
+    "footprint_xy_m": [
+      [
+        0.18,
+        0.16
+      ],
+      [
+        0.18,
+        -0.16
+      ],
+      [
+        -0.18,
+        -0.16
+      ],
+      [
+        -0.18,
+        0.16
+      ]
+    ],
+    "height_m": 0.105,
+    "safety_margin_m": 0.04,
+    "geometry_status": "measured"
+  },
+  "assets": {
+    "visual": {
+      "path": "robots/vacuum_v1/visual.glb",
+      "sha256": "sha256:1919191919191919191919191919191919191919191919191919191919191919",
+      "size_bytes": 392817,
+      "media_type": "model/gltf-binary"
+    },
+    "collision": {
+      "path": "robots/vacuum_v1/collision.glb",
+      "sha256": "sha256:2020202020202020202020202020202020202020202020202020202020202020",
+      "size_bytes": 48012,
+      "media_type": "model/gltf-binary"
+    },
+    "description": {
+      "path": "robots/vacuum_v1/robot.urdf",
+      "sha256": "sha256:2121212121212121212121212121212121212121212121212121212121212121",
+      "size_bytes": 18431,
+      "media_type": "application/xml"
+    }
+  },
+  "physical_asset_profile": null,
+  "kinematics": {
+    "model": "differential_drive",
+    "limits": {
+      "linear_velocity_m_s": 0.45,
+      "linear_acceleration_m_s2": 0.6,
+      "angular_velocity_rad_s": 1.2,
+      "angular_acceleration_rad_s2": 2,
+      "minimum_turning_radius_m": 0,
+      "maximum_slope_rad": 0.12
+    },
+    "joints": []
+  },
+  "sensors": [
+    {
+      "sensor_id": "front_depth",
+      "kind": "depth",
+      "frame_id": "front_depth_optical",
+      "rate_hz": 30,
+      "clock_domain": "robot_monotonic",
+      "calibration_status": "current",
+      "calibration": {
+        "path": "robots/vacuum_v1/calibration/front_depth.json",
+        "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "size_bytes": 3218,
+        "media_type": "application/json"
+      }
+    },
+    {
+      "sensor_id": "base_imu",
+      "kind": "imu",
+      "frame_id": "imu_link",
+      "rate_hz": 100,
+      "clock_domain": "robot_monotonic",
+      "calibration_status": "current",
+      "calibration": {
+        "path": "robots/vacuum_v1/calibration/imu.json",
+        "sha256": "sha256:2323232323232323232323232323232323232323232323232323232323232323",
+        "size_bytes": 2489,
+        "media_type": "application/json"
+      }
+    }
+  ],
+  "actuators": [
+    {
+      "actuator_id": "left_wheel",
+      "kind": "wheel_velocity",
+      "command_unit": "rad/s",
+      "minimum_command": -12,
+      "maximum_command": 12,
+      "calibration_status": "current"
+    },
+    {
+      "actuator_id": "right_wheel",
+      "kind": "wheel_velocity",
+      "command_unit": "rad/s",
+      "minimum_command": -12,
+      "maximum_command": 12,
+      "calibration_status": "current"
+    }
+  ],
+  "interfaces": [
+    {
+      "interface_id": "cmd_vel",
+      "transport": "ros2_topic",
+      "endpoint": "/cmd_vel",
+      "message_type": "geometry_msgs/msg/Twist",
+      "direction": "input"
+    },
+    {
+      "interface_id": "odom",
+      "transport": "ros2_topic",
+      "endpoint": "/odom",
+      "message_type": "nav_msgs/msg/Odometry",
+      "direction": "output"
+    }
+  ],
+  "world_requirements": {
+    "required_readiness": [
+      "metric",
+      "collision",
+      "navigation"
+    ],
+    "required_authorities": [
+      "metric_floor",
+      "collision_free_space",
+      "spawn_route"
+    ],
+    "maximum_step_height_m": 0.018,
+    "minimum_clearance_m": 0.04
+  },
+  "authority": {
+    "classification": "robot_profile_proposal",
+    "approved_for": [
+      "simulation_setup_review"
+    ],
+    "not_approved_for": [
+      "physical_robot_control",
+      "safety_certification",
+      "deployment"
+    ],
+    "limitations": [
+      "Kinematic limits and sensor calibration require hardware acceptance before physical use."
+    ]
+  },
+  "provenance": {
+    "producer": "world-studio",
+    "producer_version": "0.1.0",
+    "created_at": "2026-07-29T10:15:00Z",
+    "source_sha256": "sha256:2424242424242424242424242424242424242424242424242424242424242424",
+    "reviewer": "robot_profile_review"
+  }
+}

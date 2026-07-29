@@ -38,6 +38,12 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Live session end-to-end
+        run: pnpm test:live-e2e
+
+      - name: World compiler blueprint validation
+        run: pnpm validate:blueprint
+
       - name: Build
         run: pnpm build
 

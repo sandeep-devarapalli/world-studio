@@ -4,6 +4,12 @@ World Studio is a browser-capable and desktop-ready world rendering, editing, an
 simulation studio for Gaussian splats, point clouds, semantic world artifacts, sensor
 rigs, and robotics episodes.
 
+Its long-term product role is an evidence-backed world compiler between Capture Splat and
+task-scoped simulation. The public
+[World Compiler Blueprint](docs/blueprints/world-compiler-v0.1/README.md) reconciles that
+direction with the implementation already on `main`, including milestone gates and the
+Physical Asset Calibration subsystem.
+
 This repository is the Apache 2.0 implementation of the World Studio product described
 in `docs/source-materials/World studio development.docx` and designed in
 `docs/source-materials/World Studio.zip`. The current app is intentionally explicit
@@ -97,6 +103,7 @@ notarized distribution. The current macOS smoke build is expected at
 ```bash
 pnpm test
 pnpm typecheck
+pnpm validate:blueprint
 pnpm test:ui
 pnpm test:live-e2e
 ```
@@ -145,8 +152,16 @@ adapters layered on top.
 
 ## Roadmap
 
-See `ROADMAP.md` for the current completed foundation and remaining UI, renderer, simulation,
-package, release, and integration work.
+See `ROADMAP.md` for the public M0-M7 sequence. Detailed outcomes, dependencies, and
+acceptance gates live in
+`docs/blueprints/world-compiler-v0.1/MILESTONES.md`.
+
+## Contributing
+
+See `CONTRIBUTING.md` before opening an implementation or validation PR. Contributions must
+keep source evidence, visual proposals, metric geometry, collision, semantics, navigation,
+and physics authority explicit. Generated captures, models, and simulator outputs do not
+belong in Git.
 
 ## Upstream References
 

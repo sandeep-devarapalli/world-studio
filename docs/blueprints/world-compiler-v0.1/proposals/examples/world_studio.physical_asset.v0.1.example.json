@@ -1,0 +1,268 @@
+{
+  "schema": "world_studio.physical_asset.v0.1",
+  "asset_id": "desk_asset_001",
+  "version": 1,
+  "parent_version": null,
+  "world_id": "desk_room_demo",
+  "object_id": "desk_001",
+  "created_at": "2026-07-29T09:00:00Z",
+  "lifecycle_status": "proposal",
+  "calibration_tier": "C2",
+  "coordinate_frame": {
+    "frame_id": "desk_001",
+    "handedness": "right",
+    "up_axis": "+Z",
+    "length_unit": "m"
+  },
+  "geometry": {
+    "visual": {
+      "path": "assets/desk_001/visual.spz",
+      "sha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "size_bytes": 8620041,
+      "media_type": "application/octet-stream"
+    },
+    "metric": {
+      "path": "assets/desk_001/metric.glb",
+      "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "size_bytes": 482004,
+      "media_type": "model/gltf-binary"
+    },
+    "collision": null,
+    "geometry_status": "scaled"
+  },
+  "materials": [
+    {
+      "material_id": "desk_laminate",
+      "label": "laminated wood proposal",
+      "source_class": "user_declared",
+      "status": "proposal"
+    },
+    {
+      "material_id": "test_floor_tile",
+      "label": "ceramic floor test surface",
+      "source_class": "user_declared",
+      "status": "proposal"
+    }
+  ],
+  "articulation": [],
+  "parameters": [
+    {
+      "parameter_id": "desk_dimensions",
+      "kind": "dimensions",
+      "joint_id": null,
+      "component_names": [
+        "length",
+        "width",
+        "height"
+      ],
+      "value": [
+        1.2,
+        0.62,
+        0.74
+      ],
+      "unit": "m",
+      "valid_range": {
+        "minimum": [
+          1.198,
+          0.618,
+          0.738
+        ],
+        "maximum": [
+          1.202,
+          0.622,
+          0.742
+        ]
+      },
+      "uncertainty": {
+        "model": "bounded",
+        "absolute": [
+          0.002,
+          0.002,
+          0.002
+        ],
+        "confidence_level": 0.95
+      },
+      "source_class": "measured_direct",
+      "identifiability": "identified",
+      "provenance": {
+        "experiment_ids": [
+          "caliper_measurement_001"
+        ],
+        "solver": {
+          "name": "direct_measurement",
+          "version": "1",
+          "configuration_sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        }
+      },
+      "scope": {
+        "simulator": "rapier",
+        "simulator_version": "runtime-reported",
+        "contact_model": "not_applicable",
+        "material_pair": null,
+        "task_envelope": "Desk geometry review and coarse indoor clearance checks."
+      },
+      "authority_status": "validated",
+      "approved_for": [
+        "desk_dimension_review"
+      ],
+      "not_approved_for": [
+        "precision_metrology",
+        "collision",
+        "physics",
+        "deployment"
+      ]
+    },
+    {
+      "parameter_id": "desk_mass",
+      "kind": "mass",
+      "joint_id": null,
+      "component_names": [
+        "mass"
+      ],
+      "value": [
+        24.3
+      ],
+      "unit": "kg",
+      "valid_range": {
+        "minimum": [
+          24.1
+        ],
+        "maximum": [
+          24.5
+        ]
+      },
+      "uncertainty": {
+        "model": "bounded",
+        "absolute": [
+          0.2
+        ],
+        "confidence_level": 0.95
+      },
+      "source_class": "measured_direct",
+      "identifiability": "identified",
+      "provenance": {
+        "experiment_ids": [
+          "scale_measurement_001"
+        ],
+        "solver": {
+          "name": "direct_measurement",
+          "version": "1",
+          "configuration_sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "scope": {
+        "simulator": "rapier",
+        "simulator_version": "runtime-reported",
+        "contact_model": "rigid_body",
+        "material_pair": null,
+        "task_envelope": "Static desk placement; no impact or manipulation validation."
+      },
+      "authority_status": "validated",
+      "approved_for": [
+        "static_load_proposal"
+      ],
+      "not_approved_for": [
+        "center_of_mass",
+        "inertia",
+        "impact",
+        "robot_manipulation",
+        "deployment"
+      ]
+    },
+    {
+      "parameter_id": "desk_floor_static_friction",
+      "kind": "static_friction",
+      "joint_id": null,
+      "component_names": [
+        "coefficient"
+      ],
+      "value": [
+        0.42
+      ],
+      "unit": "dimensionless",
+      "valid_range": {
+        "minimum": [
+          0.35
+        ],
+        "maximum": [
+          0.49
+        ]
+      },
+      "uncertainty": {
+        "model": "confidence_interval",
+        "absolute": [
+          0.07
+        ],
+        "confidence_level": 0.95
+      },
+      "source_class": "measured_indirect",
+      "identifiability": "weak",
+      "provenance": {
+        "experiment_ids": [
+          "inclined_plane_001"
+        ],
+        "solver": {
+          "name": "bounded_least_squares",
+          "version": "1.0",
+          "configuration_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "scope": {
+        "simulator": "rapier",
+        "simulator_version": "runtime-reported",
+        "contact_model": "coulomb_rigid_contact",
+        "material_pair": {
+          "asset_material_id": "desk_laminate",
+          "counterpart_material_id": "test_floor_tile"
+        },
+        "task_envelope": "Low-speed sliding on the recorded dry ceramic test surface."
+      },
+      "authority_status": "proposal",
+      "approved_for": [
+        "c2_friction_experiment_review"
+      ],
+      "not_approved_for": [
+        "other_material_pairs",
+        "wet_surfaces",
+        "high_speed_contact",
+        "robot_safety",
+        "deployment"
+      ]
+    }
+  ],
+  "authority": {
+    "classification": "experiment_conditioned_proposal",
+    "approved_for": [
+      "c2_calibration_review"
+    ],
+    "not_approved_for": [
+      "general_physics",
+      "collision",
+      "robot_safety",
+      "deployment"
+    ],
+    "limitations": [
+      "Only dimensions and mass have direct measurement evidence.",
+      "The friction estimate applies only to the named material pair and low-speed task envelope."
+    ]
+  },
+  "provenance": {
+    "producer": "world-studio",
+    "producer_version": "0.1.0",
+    "created_at": "2026-07-29T09:00:00Z",
+    "input_artifacts": [
+      {
+        "path": "evidence/capture_room_001/capture.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 48213,
+        "media_type": "application/json"
+      }
+    ],
+    "experiment_ids": [
+      "caliper_measurement_001",
+      "scale_measurement_001",
+      "inclined_plane_001"
+    ],
+    "run_id": "physical_asset_compile_001"
+  }
+}

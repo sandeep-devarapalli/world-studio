@@ -1,0 +1,242 @@
+{
+  "schema": "world_studio.world.v0.1",
+  "world_id": "desk_room_demo",
+  "version": 1,
+  "parent_version": null,
+  "created_at": "2026-07-29T08:00:00Z",
+  "lifecycle_status": "proposal",
+  "units": {
+    "length": "m",
+    "mass": "kg",
+    "time": "s",
+    "angle": "rad",
+    "force": "N",
+    "torque": "N*m"
+  },
+  "coordinate_frame": {
+    "frame_id": "world_metric",
+    "handedness": "right",
+    "up_axis": "+Z",
+    "forward_axis": "+X",
+    "gravity_m_s2": [
+      0,
+      0,
+      -9.80665
+    ]
+  },
+  "capture_evidence": [
+    {
+      "session_id": "capture_room_001",
+      "manifest": {
+        "path": "evidence/capture_room_001/capture.json",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 48213,
+        "media_type": "application/json"
+      },
+      "reconciliation_status": "reconciled",
+      "authority": {
+        "classification": "visual_evidence",
+        "approved_for": [
+          "reconstruction_input"
+        ],
+        "not_approved_for": [
+          "collision",
+          "navigation",
+          "physics"
+        ],
+        "limitations": [
+          "Capture evidence does not establish collision or physical-parameter authority."
+        ]
+      }
+    }
+  ],
+  "transform_graph": {
+    "nodes": [
+      "world_metric",
+      "capture_arkit"
+    ],
+    "edges": [
+      {
+        "transform_id": "capture_to_world",
+        "parent_frame": "world_metric",
+        "child_frame": "capture_arkit",
+        "matrix_row_major": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "source_class": "registration",
+        "residual_m": 0.018,
+        "lifecycle_status": "validated",
+        "authority": {
+          "classification": "metric_evidence",
+          "approved_for": [
+            "visual_metric_alignment"
+          ],
+          "not_approved_for": [
+            "collision",
+            "navigation",
+            "physics"
+          ],
+          "limitations": [
+            "The transform is validated for this capture pair only."
+          ]
+        }
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "artifact_id": "visual_splat_001",
+      "role": "visual_splat",
+      "reference": {
+        "path": "world/visual/desk_room.spz",
+        "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "size_bytes": 26310012,
+        "media_type": "application/octet-stream"
+      },
+      "frame_id": "world_metric",
+      "transform_id": null,
+      "lifecycle_status": "proposal",
+      "authority": {
+        "classification": "visual_evidence",
+        "approved_for": [
+          "human_visual_review"
+        ],
+        "not_approved_for": [
+          "measurement",
+          "collision",
+          "semantics",
+          "navigation",
+          "physics"
+        ],
+        "limitations": [
+          "Gaussian appearance is a review proposal and is not geometry authority."
+        ]
+      },
+      "provenance": {
+        "producer": "capture-splat-gsplat",
+        "producer_version": "pinned",
+        "created_at": "2026-07-29T07:45:00Z",
+        "input_ids": [
+          "capture_room_001"
+        ],
+        "run_id": "gsplat_7000_001"
+      }
+    }
+  ],
+  "profiles": {
+    "physical_assets": [],
+    "robots": [
+      {
+        "path": "profiles/robots/vacuum_v1.json",
+        "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "size_bytes": 6281,
+        "media_type": "application/json"
+      }
+    ],
+    "tasks": [
+      {
+        "path": "profiles/tasks/clean_desk_room.json",
+        "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "size_bytes": 4158,
+        "media_type": "application/json"
+      }
+    ]
+  },
+  "readiness": {
+    "visual": {
+      "status": "proposal",
+      "evidence_artifact_ids": [
+        "visual_splat_001"
+      ],
+      "report": null,
+      "limitations": [
+        "Fixed-camera render QA has not yet been attached."
+      ]
+    },
+    "metric": {
+      "status": "held",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Metric floor and scale require validation."
+      ]
+    },
+    "collision": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "No collision mesh has been promoted."
+      ]
+    },
+    "semantic": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Semantic proposals are not present."
+      ]
+    },
+    "navigation": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Navigation readiness depends on validated metric and collision lanes."
+      ]
+    },
+    "physics": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Passive capture does not identify mass, inertia, friction, or contact dynamics."
+      ]
+    }
+  },
+  "authority": {
+    "classification": "proposal_only",
+    "approved_for": [
+      "world_package_review"
+    ],
+    "not_approved_for": [
+      "measurement",
+      "collision",
+      "semantic_ground_truth",
+      "navigation",
+      "physics",
+      "deployment"
+    ],
+    "limitations": [
+      "Each readiness lane must be promoted from its own validation evidence."
+    ]
+  },
+  "provenance": {
+    "producer": "world-studio",
+    "producer_version": "0.1.0",
+    "created_at": "2026-07-29T08:00:00Z",
+    "input_ids": [
+      "capture_room_001",
+      "visual_splat_001"
+    ],
+    "run_id": "world_compile_001"
+  },
+  "warnings": [
+    "This proposal contains visual evidence only."
+  ]
+}

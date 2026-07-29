@@ -1,5 +1,21 @@
 # Data Contracts
 
+## Active And Proposed Contracts
+
+Runtime contracts live under the root `contracts/` tree and are backed by implementation
+tests. Design drafts live under
+`docs/blueprints/world-compiler-v0.1/proposals/contracts/` and must not be imported by
+runtime code until migration and round-trip tests exist.
+
+The preserved source blueprint contains an older single
+`capture_splat.live_session.v0.1` draft. It is incompatible with the active three-schema
+session/frame/ACK protocol and remains provenance-only under
+`docs/blueprints/world-compiler-v0.1/source/`.
+
+Proposed contracts cover the canonical World Package, external Isaac jobs, robot/task
+profiles, physical assets, calibration experiments, and calibration reports. Isaac runtime
+versions are capability data, not schema enums.
+
 ## Capture Splat Live Session
 
 World Studio mirrors the Capture Splat-owned schemas and fixtures byte-for-byte:
@@ -154,3 +170,18 @@ Expected fields include:
 
 Verified labels are semantic review artifacts. They are not occupancy, collision,
 navigation, or robot-command authority without separate metric validation.
+
+## Physical Calibration Contracts
+
+The proposal schemas separate:
+
+- `world_studio.physical_asset.v0.1`: versioned geometry roles and physical parameter
+  proposals;
+- `world_studio.calibration_experiment.v0.1`: apparatus, sensors, actions, conditions,
+  repetitions, exclusions, safety limits, and raw evidence;
+- `world_studio.calibration_report.v0.1`: solver provenance, fit/holdout splits, estimates,
+  residuals, baseline comparison, and promote/hold/reject decisions.
+
+Every physical value requires units, source class, uncertainty or range, provenance,
+simulator/contact-model scope, and approved/prohibited uses. Capture evidence alone cannot
+promote mass, inertia, friction, restitution, stiffness, force, or torque.

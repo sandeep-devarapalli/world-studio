@@ -1,0 +1,162 @@
+name: Upstream evaluation
+description: Evaluate an external project, model, dataset, paper, or dependency before adoption.
+title: "[Upstream] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Evaluate primary sources and pinned revisions. Do not copy license-incompatible code into World Studio's Apache-2.0 source tree.
+
+  - type: input
+    id: upstream
+    attributes:
+      label: Canonical upstream source
+      description: Link the official repository, project page, model card, dataset page, or paper.
+      placeholder: https://...
+    validations:
+      required: true
+
+  - type: input
+    id: revision
+    attributes:
+      label: Pinned revision
+      description: Provide the exact commit, tag, model revision, dataset version, or paper revision reviewed.
+      placeholder: Commit SHA, tag, or immutable version
+    validations:
+      required: true
+
+  - type: textarea
+    id: license
+    attributes:
+      label: License and source review
+      description: Record the license identifier, canonical license URL, relevant file licenses, and primary documentation reviewed.
+      placeholder: |
+        License:
+        License URL:
+        Primary sources reviewed:
+        Transitive or asset-license concerns:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Target milestone
+      options:
+        - M0 Live Evidence Foundation
+        - M1 Authenticated LAN And Progressive World
+        - M2 Canonical World Package And Editor
+        - M3 Indoor Navigation Ready - R3
+        - M4 Physical Asset Calibration Foundation
+        - M5 Isaac/ROS Sensor Alignment - R4
+        - M6 Rigid Interaction And Field Calibration - R5
+        - M7 Expanded Embodiments
+        - Research / not milestone-bound
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: List required platforms, services, models, datasets, licenses, hardware, and prerequisite issues. Write None when independent.
+      placeholder: None
+    validations:
+      required: true
+
+  - type: dropdown
+    id: intended_use
+    attributes:
+      label: Intended use
+      multiple: true
+      options:
+        - Research reference only
+        - Clean-room design inspiration
+        - Optional external tool
+        - External worker
+        - Build dependency
+        - Runtime dependency
+        - Model or checkpoint
+        - Dataset or benchmark
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: Transferable value
+      description: Describe the specific behavior, contract, method, or evidence this could add without overstating upstream claims.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Compatibility and runtime boundaries
+      description: Evaluate the six modes, Spark/Three.js/Rapier roles, external-worker isolation, formats, platforms, security, and maintenance.
+      placeholder: |
+        Mode impact:
+        Runtime impact:
+        Contract/format impact:
+        Platform and security impact:
+        Maintenance risk:
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance gates
+      description: Define licensing, correctness, performance, round-trip, migration, and evidence gates required before adoption.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Evaluation artifacts
+      description: Link reproducible experiments and externally stored outputs with versions, commands, and checksums.
+      placeholder: |
+        Commands:
+        Reports:
+        External artifact URLs and SHA-256:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decision
+    attributes:
+      label: Recommended decision
+      options:
+        - Adopt after gates pass
+        - Optional external integration
+        - Research reference only
+        - Defer
+        - Reject
+    validations:
+      required: true
+
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority boundary
+      description: State which upstream claims were independently verified and which remain proposals or vendor claims.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Upstream confirmations
+      options:
+        - label: I reviewed the canonical source, pinned revision, and applicable licenses.
+          required: true
+        - label: I have not copied GPL, proprietary, or license-unclear code into the World Studio runtime.
+          required: true
+        - label: I will keep generated models, datasets, captures, and simulator outputs out of Git.
+          required: true
+        - label: Any change to the six modes or Spark/Three.js/Rapier boundaries requires an explicit migration and rollback plan.
+          required: true
