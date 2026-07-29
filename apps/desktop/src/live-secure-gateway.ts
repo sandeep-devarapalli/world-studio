@@ -113,7 +113,8 @@ export class LiveSecureGateway {
   private readonly listeners = new Set<LiveSecurityUpdateListener>();
   private readonly sockets = new Map<Socket, string | null>();
   private readonly lastAuthenticatedAt = new Map<string, string>();
-  private pairingTransition: Promise<void> = Promise.resolve();
+  private lifecycleTransition: Promise<void> = Promise.resolve();
+  private lifecycleGeneration = 0;
   private server: HttpsServer | null = null;
   private identity: DesktopIdentity | null = null;
   private selectedInterface: LiveNetworkInterface | null = null;
@@ -163,7 +164,11 @@ export class LiveSecureGateway {
     return this.snapshot(devices);
   }
 
-  async beginPairing(interfaceId: string): Promise<LiveSecuritySnapshot> {
+  beginPairing(interfaceId: string): Promise<LiveSecuritySnapshot> {
+    return this.withLifecycleTransition(() => this.beginPairingUnlocked(interfaceId));
+  }
+
+  private async beginPairingUnlocked(interfaceId: string): Promise<LiveSecuritySnapshot> {
     if (this.server) throw new Error("A paired LAN listener is already active.");
     this.lastError = undefined;
     this.identity = await this.identityStore.loadOrCreate();
@@ -215,25 +220,25 @@ export class LiveSecureGateway {
   }
 
   async cancelPairing(): Promise<LiveSecuritySnapshot> {
-    return this.withPairingTransition(async () => {
+    return this.withLifecycleTransition(async () => {
       if (this.mode !== "pairing" && this.mode !== "pending") return this.status();
       this.sendPendingProblem(409, "pairing_consumed", false);
-      await this.stop();
+      await this.stopUnlocked();
       return this.status();
     });
   }
 
   async rejectPairing(): Promise<LiveSecuritySnapshot> {
-    return this.withPairingTransition(async () => {
+    return this.withLifecycleTransition(async () => {
       if (!this.pending) throw new Error("There is no pending pairing request.");
       this.sendPendingProblem(403, "permission_denied", false);
-      await this.stop();
+      await this.stopUnlocked();
       return this.status();
     });
   }
 
   async approvePairing(): Promise<LiveSecuritySnapshot> {
-    return this.withPairingTransition(async () => {
+    return this.withLifecycleTransition(async () => {
       const pending = this.pending;
       const identity = this.identity;
       const selected = this.selectedInterface;
@@ -242,7 +247,7 @@ export class LiveSecureGateway {
       }
       const now = this.validNow();
       if (now.getTime() >= pending.expiresAt.getTime()) {
-        await this.failClosed("Pending pairing approval expired.");
+        await this.failClosedUnlocked("Pending pairing approval expired.");
         throw new Error("Pending pairing approval expired.");
       }
       const grantId = this.randomId("csg");
@@ -293,7 +298,7 @@ export class LiveSecureGateway {
         }
       });
       if (registered.pairingEpoch !== pending.pairingEpoch) {
-        await this.failClosed("Pairing epoch changed during approval.");
+        await this.failClosedUnlocked("Pairing epoch changed during approval.");
         throw new Error("Pairing state changed during approval.");
       }
       this.pending = null;
@@ -319,7 +324,14 @@ export class LiveSecureGateway {
     });
   }
 
-  async startPairedReceiver(input: {
+  startPairedReceiver(input: {
+    interfaceId: string;
+    grantId: string;
+  }): Promise<LiveSecuritySnapshot> {
+    return this.withLifecycleTransition(() => this.startPairedReceiverUnlocked(input));
+  }
+
+  private async startPairedReceiverUnlocked(input: {
     interfaceId: string;
     grantId: string;
   }): Promise<LiveSecuritySnapshot> {
@@ -360,7 +372,11 @@ export class LiveSecureGateway {
     return this.emit();
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    return this.withLifecycleTransition(() => this.stopUnlocked());
+  }
+
+  private async stopUnlocked(): Promise<void> {
     this.sendPendingProblem(409, "receiver_not_paired", true);
     await this.stopServerOnly();
     this.lastError = undefined;
@@ -368,11 +384,17 @@ export class LiveSecureGateway {
   }
 
   async stopPairedReceiver(): Promise<LiveSecuritySnapshot> {
-    await this.stop();
-    return this.status();
+    return this.withLifecycleTransition(async () => {
+      await this.stopUnlocked();
+      return this.status();
+    });
   }
 
-  async revokeGrant(grantId: string): Promise<LiveSecuritySnapshot> {
+  revokeGrant(grantId: string): Promise<LiveSecuritySnapshot> {
+    return this.withLifecycleTransition(() => this.revokeGrantUnlocked(grantId));
+  }
+
+  private async revokeGrantUnlocked(grantId: string): Promise<LiveSecuritySnapshot> {
     const devices = await this.pairingStore.list();
     const device = devices.find((candidate) => candidate.grants.some((grant) => grant.grantId === grantId));
     if (!device) throw new Error("Pairing grant was not found.");
@@ -380,7 +402,7 @@ export class LiveSecureGateway {
     for (const [socket, socketDeviceId] of this.sockets) {
       if (socketDeviceId === device.deviceId) socket.destroy();
     }
-    if (this.activeDeviceId === device.deviceId) await this.stop();
+    if (this.activeDeviceId === device.deviceId) await this.stopUnlocked();
     return this.status();
   }
 
@@ -436,6 +458,7 @@ export class LiveSecureGateway {
       throw new Error("Secure receiver did not bind the selected interface.");
     }
     this.listeningPort = address.port;
+    this.lifecycleGeneration += 1;
     this.interfaceTimer = setInterval(() => {
       if (!this.selectedInterface || this.listInterfaces().some((entry) => entry.id === this.selectedInterface!.id)) return;
       void this.failClosed("Selected network interface changed or disappeared.");
@@ -582,7 +605,7 @@ export class LiveSecureGateway {
     const bodySha256 = `sha256:${createHash("sha256").update(body).digest("hex")}`;
     const parsedValue = JSON.parse(body.toString("utf8")) as unknown;
     const requestId = requestIdFromPairingEnvelope(parsedValue);
-    await this.withPairingTransition(async () => {
+    await this.withLifecycleTransition(async () => {
       const completed = requestId
         ? await this.pairingStore.getCompletedPairing(requestId)
         : null;
@@ -645,7 +668,7 @@ export class LiveSecureGateway {
           error instanceof LiveAuthContractError ? retryableAuthError(error.authCode) : true
         );
         if (this.invalidPairingAttempts >= 5) {
-          await this.failClosed("Pairing attempt limit reached.");
+          await this.failClosedUnlocked("Pairing attempt limit reached.");
         }
       }
     });
@@ -753,7 +776,15 @@ export class LiveSecureGateway {
     return snapshot;
   }
 
-  private async failClosed(message: string): Promise<void> {
+  private failClosed(message: string): Promise<void> {
+    const generation = this.lifecycleGeneration;
+    return this.withLifecycleTransition(async () => {
+      if (generation !== this.lifecycleGeneration) return;
+      await this.failClosedUnlocked(message);
+    });
+  }
+
+  private async failClosedUnlocked(message: string): Promise<void> {
     this.lastError = message;
     this.sendPendingProblem(503, "receiver_not_paired", true);
     await this.stopServerOnly();
@@ -761,6 +792,7 @@ export class LiveSecureGateway {
   }
 
   private async stopServerOnly(): Promise<void> {
+    this.lifecycleGeneration += 1;
     const interruptedLiveTransport = this.mode === "live";
     this.bonjour.stop();
     this.clearTimer("pairing");
@@ -863,10 +895,10 @@ export class LiveSecureGateway {
     return value;
   }
 
-  private withPairingTransition<T>(operation: () => Promise<T>): Promise<T> {
-    const prior = this.pairingTransition;
+  private withLifecycleTransition<T>(operation: () => Promise<T>): Promise<T> {
+    const prior = this.lifecycleTransition;
     let release = (): void => {};
-    this.pairingTransition = new Promise<void>((resolve) => {
+    this.lifecycleTransition = new Promise<void>((resolve) => {
       release = resolve;
     });
     return prior.then(operation).finally(release);
