@@ -11,6 +11,7 @@ import {
   request as httpsRequest,
   type RequestOptions
 } from "node:https";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { TLSSocket } from "node:tls";
@@ -78,8 +79,7 @@ describe("LiveSecureGateway", () => {
         port: 0
       }),
       identityStore: new DesktopIdentityStore(path.join(root, "identity"), {
-        secretProtector: new XorProtector(),
-        now: () => now
+        secretProtector: new XorProtector()
       }),
       pairingStore: new PairingStore(path.join(root, "pairing")),
       bonjour: fakeBonjour(),
@@ -223,8 +223,7 @@ describe("LiveSecureGateway", () => {
         port: 0
       }),
       identityStore: new DesktopIdentityStore(path.join(root, "identity"), {
-        secretProtector: new XorProtector(),
-        now: () => now
+        secretProtector: new XorProtector()
       }),
       pairingStore: new PairingStore(path.join(root, "pairing")),
       bonjour: fakeBonjour(),
@@ -390,6 +389,128 @@ describe("LiveSecureGateway", () => {
         retryable: false
       }
     });
+  }, 20_000);
+
+  it("serializes ephemeral pairing starts and stops without an orphan invitation or listener", async () => {
+    await expectConcurrentPairingLifecycle(0, "ephemeral");
+  }, 20_000);
+
+  it("serializes fixed-port pairing starts without the EADDRINUSE state race", async () => {
+    await expectConcurrentPairingLifecycle(await unusedFixedPort(), "fixed");
+  }, 20_000);
+
+  it("ignores a stale listener failure queued behind stop and restart", async () => {
+    const now = new Date();
+    const root = await mkdtemp(path.join(tmpdir(), "world-studio-secure-lifecycle-stale-"));
+    roots.push(root);
+    const gateway = secureGateway({
+      receiver: new LiveSessionReceiver({ root: path.join(root, "live-sessions"), port: 0 }),
+      identityStore: new DesktopIdentityStore(path.join(root, "identity"), {
+        secretProtector: new XorProtector()
+      }),
+      pairingStore: new PairingStore(path.join(root, "pairing")),
+      now
+    });
+    gateways.push(gateway);
+    await gateway.beginPairing(loopbackInterface.id);
+
+    const stop = gateway.stopPairedReceiver();
+    const restart = gateway.beginPairing(loopbackInterface.id);
+    const staleFailure = (
+      gateway as unknown as { failClosed(message: string): Promise<void> }
+    ).failClosed("Expired listener callback.");
+    await Promise.all([stop, restart, staleFailure]);
+
+    const current = await gateway.status();
+    expect(current).toMatchObject({
+      state: "pairing",
+      secureListening: { host: "127.0.0.1", tls: true },
+      pairingInvitationUri: expect.stringMatching(/^capture-splat:\/\/pair\//)
+    });
+    expect(current.error).toBeUndefined();
+    expect((await tlsJsonRequest({
+      port: current.secureListening!.port,
+      path: `${pairingApiRoot}/health`,
+      method: "GET"
+    })).statusCode).toBe(200);
+  }, 20_000);
+
+  it("serializes fixed-port paired start, revoke, and stop transitions", async () => {
+    const now = new Date();
+    const root = await mkdtemp(path.join(tmpdir(), "world-studio-secure-lifecycle-fixed-"));
+    roots.push(root);
+    const fixedPort = await unusedFixedPort();
+    const identityStore = new DesktopIdentityStore(path.join(root, "identity"), {
+      secretProtector: new XorProtector()
+    });
+    const identity = await identityStore.loadOrCreate();
+    const pairingStore = new PairingStore(path.join(root, "pairing"));
+    const device = deviceIdentity();
+    const grantId = `csg_${Buffer.alloc(16, 47).toString("base64url")}`;
+    await registerTestGrant(pairingStore, identity, device, grantId, now);
+    const gateway = secureGateway({
+      receiver: new LiveSessionReceiver({ root: path.join(root, "live-sessions"), port: 0 }),
+      identityStore,
+      pairingStore,
+      now,
+      port: fixedPort
+    });
+    gateways.push(gateway);
+
+    const [started, stopped] = await Promise.all([
+      gateway.startPairedReceiver({
+        interfaceId: loopbackInterface.id,
+        grantId
+      }),
+      gateway.stopPairedReceiver()
+    ]);
+    expect(started).toMatchObject({
+      state: "secure_listening",
+      secureListening: { host: "127.0.0.1", port: fixedPort, tls: true },
+      pairingInvitationUri: null
+    });
+    expect(stopped).toMatchObject({
+      state: "paired",
+      secureListening: null,
+      pairingInvitationUri: null
+    });
+    await expect(tlsJsonRequest({
+      port: fixedPort,
+      path: `${apiRoot}/health`,
+      method: "GET"
+    })).rejects.toThrow();
+
+    await gateway.startPairedReceiver({
+      interfaceId: loopbackInterface.id,
+      grantId
+    });
+    const [revoked, finalStop] = await Promise.all([
+      gateway.revokeGrant(grantId),
+      gateway.stopPairedReceiver()
+    ]);
+    for (const snapshot of [revoked, finalStop, await gateway.status()]) {
+      expect(snapshot).toMatchObject({
+        state: "loopback_only",
+        secureListening: null,
+        pairingInvitationUri: null
+      });
+    }
+    expect(revoked.pairedDevices).toEqual([
+      expect.objectContaining({
+        deviceId: device.deviceId,
+        grantId,
+        revokedAt: now.toISOString()
+      })
+    ]);
+    await expect(tlsJsonRequest({
+      port: fixedPort,
+      path: `${apiRoot}/health`,
+      method: "GET"
+    })).rejects.toThrow();
+    await expect(gateway.startPairedReceiver({
+      interfaceId: loopbackInterface.id,
+      grantId
+    })).rejects.toThrow(/unavailable or revoked/);
   }, 20_000);
 
   it("rejects a durable grant after the desktop identity is reset", async () => {
@@ -1131,6 +1252,7 @@ function secureGateway(input: {
   identityStore: DesktopIdentityStore;
   pairingStore: PairingStore;
   now: Date;
+  port?: number;
 }): LiveSecureGateway {
   return new LiveSecureGateway({
     receiver: input.receiver,
@@ -1141,10 +1263,96 @@ function secureGateway(input: {
     now: () => input.now,
     random: (size) => Buffer.alloc(size, 91),
     desktopName: "World Studio Secure Resume Mac",
-    port: 0,
+    port: input.port ?? 0,
     listenerLeaseMs: 60_000,
     interfacePollMs: 60_000,
     allowLoopbackForTests: true
+  });
+}
+
+async function expectConcurrentPairingLifecycle(
+  port: number,
+  label: "ephemeral" | "fixed"
+): Promise<void> {
+  const now = new Date();
+  const root = await mkdtemp(path.join(tmpdir(), `world-studio-secure-lifecycle-${label}-`));
+  roots.push(root);
+  const gateway = secureGateway({
+    receiver: new LiveSessionReceiver({ root: path.join(root, "live-sessions"), port: 0 }),
+    identityStore: new DesktopIdentityStore(path.join(root, "identity"), {
+      secretProtector: new XorProtector()
+    }),
+    pairingStore: new PairingStore(path.join(root, "pairing")),
+    now,
+    port
+  });
+  gateways.push(gateway);
+
+  const attempts = await Promise.allSettled([
+    gateway.beginPairing(loopbackInterface.id),
+    gateway.beginPairing(loopbackInterface.id)
+  ]);
+  const fulfilled = attempts.filter(
+    (result): result is PromiseFulfilledResult<Awaited<ReturnType<LiveSecureGateway["status"]>>> =>
+      result.status === "fulfilled"
+  );
+  const rejected = attempts.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected"
+  );
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
+  expect(rejected[0]?.reason).toEqual(expect.objectContaining({
+    message: "A paired LAN listener is already active."
+  }));
+  const firstPort = fulfilled[0]!.value.secureListening!.port;
+  expect(fulfilled[0]!.value).toMatchObject({
+    state: "pairing",
+    secureListening: { host: "127.0.0.1", ...(port === 0 ? {} : { port }), tls: true },
+    pairingInvitationUri: expect.stringMatching(/^capture-splat:\/\/pair\//)
+  });
+
+  await gateway.stopPairedReceiver();
+  const [restarted, stopped] = await Promise.all([
+    gateway.beginPairing(loopbackInterface.id),
+    gateway.stopPairedReceiver()
+  ]);
+  const secondPort = restarted.secureListening!.port;
+  expect(stopped).toMatchObject({
+    state: "loopback_only",
+    secureListening: null,
+    pairingInvitationUri: null
+  });
+  expect(await gateway.status()).toMatchObject({
+    state: "loopback_only",
+    secureListening: null,
+    pairingInvitationUri: null
+  });
+  for (const closedPort of new Set([firstPort, secondPort])) {
+    await expect(tlsJsonRequest({
+      port: closedPort,
+      path: `${pairingApiRoot}/health`,
+      method: "GET"
+    })).rejects.toThrow();
+  }
+}
+
+function unusedFixedPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createNetServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Could not reserve a fixed lifecycle-test port."));
+        return;
+      }
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
   });
 }
 
