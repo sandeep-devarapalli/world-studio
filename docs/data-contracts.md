@@ -12,9 +12,18 @@ The preserved source blueprint contains an older single
 session/frame/ACK protocol and remains provenance-only under
 `docs/blueprints/world-compiler-v0.1/source/`.
 
-Proposed contracts cover the canonical World Package, external Isaac jobs, robot/task
-profiles, physical assets, calibration experiments, and calibration reports. Isaac runtime
-versions are capability data, not schema enums.
+Proposed contracts cover the canonical World Package, external simulator jobs,
+robot/task/sensor profiles, physical assets, calibration experiments, Real2Sim Promises,
+eval suites and reports, policy artifacts, promotion decisions, deployments, site
+revisions, change proposals, and field Episodes. Runtime versions are capability data, not
+schema enums.
+
+The
+[R2S2R and Newton adoption note](blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md)
+also identifies future solver-neutral worker capabilities, solver profiles, jobs, ordered
+state/contact/sensor records, and Episode v0.2 proposals. None is an active runtime contract
+until strict schemas, examples, migrations, corruption/path tests, and round-trip fixtures
+land.
 
 ## Capture Splat Live Session
 
@@ -244,3 +253,6 @@ The proposal schemas separate:
 Every physical value requires units, source class, uncertainty or range, provenance,
 simulator/contact-model scope, and approved/prohibited uses. Capture evidence alone cannot
 promote mass, inertia, friction, restitution, stiffness, force, or torque.
+
+Keep `world_studio.physical_asset.v0.1` as the proposal identity. Do not introduce a
+conflicting `world_studio.physics_asset.v0.1`.

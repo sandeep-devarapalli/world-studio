@@ -9,8 +9,8 @@ guessing and does not add a seventh application mode.
 - **Edit:** objectization, visual/metric/collision geometry, priors, parameter review, and
   asset versions.
 - **Sensors:** apparatus, scale, camera, clock, force/torque, and robot calibration.
-- **Simulate:** Rapier or external Isaac experiment replay, sampled parameters, and residual
-  overlays.
+- **Simulate:** current Rapier fixtures, target Newton experiments, external adapter replay,
+  sampled parameters, and residual overlays.
 - **Episode:** immutable real/sim trial groups, holdouts, decisions, and promoted versions.
 
 View and Pilot consume calibrated assets but do not create calibration authority.
@@ -73,6 +73,15 @@ Promotion requires:
 
 The public claim is "physics-calibrated within a validated task envelope." No asset is
 universally physics accurate.
+
+Calibration tiers (`C0-C5`), asset maturity (`A0-A6`), Real2Sim Promise levels (`P0-P8`),
+and world/robot readiness (`R0-R5`) are separate namespaces. Advancement in one does not
+automatically advance another.
+
+Newton becomes the canonical simulator scope only after the
+[migration gates](r2s2r-newton-2026-07-29/NEWTON_MIGRATION_MILESTONES.md) pass. Existing
+Rapier experiments remain historical or parity evidence and cannot silently substitute for
+a declared Newton solver profile.
 
 ## Technical References
 

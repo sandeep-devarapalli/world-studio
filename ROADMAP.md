@@ -9,12 +9,15 @@ outcomes and acceptance gates.
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
 | M1 Authenticated LAN And Progressive World | Paired TLS sender, bounded queues, live RGB-D/mesh proposals, isolated worker lifecycle | partial |
-| M2 Canonical World Package And Editor | Immutable versions, transform graph, content-addressed artifacts, reversible edits | partial/planned |
-| M3 Indoor Navigation Ready - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
-| M4 Physical Asset Calibration Foundation | Objectization, direct measurements, geometry/collision validation, C0-C2 recipes | planned |
-| M5 Isaac/ROS Sensor Alignment - R4 | OpenUSD compiler, remote Isaac worker, ROS 2 and sensor parity | planned |
-| M6 Rigid Interaction And Field Calibration - R5 | Instrumented system identification and held-out real/sim validation | planned |
-| M7 Expanded Embodiments | Indoor/outdoor UAVs, vehicles, articulated manipulation, then deformables | planned |
+| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas | partial/planned |
+| M3 Indoor Navigation And First Deployment Twin - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
+| M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
+| M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal | planned |
+| M6 Newton/Isaac Lab/ROS Sensor Conformance - R4 | OpenUSD compiler, Newton backend parity, robot/sensor/clock conformance | planned |
+| M7 Real2Sim Promise And Rigid Calibration - P5/P6 | Matched open-loop trials and held-out task dynamics that improve over defaults | planned |
+| M8 Predictive Eval Studio - P7 | Variations, failure regions, critical-failure recall, and useful policy ranking | planned |
+| M9 Deployment Operations And Continuous R2S2R - P8 | Site revisions, impact analysis, shadow/canary, rollback, and freshness | planned |
+| M10 Expanded Embodiments And Multiphysics | Indoor/outdoor UAVs, vehicles, articulated manipulation, then deformables and coupled physics | planned |
 
 ## Current Implementation Tracks
 
@@ -45,13 +48,22 @@ outcomes and acceptance gates.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
 
-### Simulation And Calibration
+### Simulation, Calibration And R2S2R
 
-- Rapier remains the local runtime.
+- Rapier remains the active implementation while Newton parity fixtures are built. New
+  product physics work targets the solver-neutral client and Newton worker instead of
+  deepening Rapier-specific coupling.
+- Newton is the only intended long-term product physics backend. It must pass local CPU,
+  remote NVIDIA, collision, Episode, and task-outcome gates before cutover. Rapier is then
+  removed rather than retained as a silent fallback.
 - Physical Asset Calibration spans Edit, Sensors, Simulate, and Episode; it is not a new
   top-level mode.
-- Isaac Sim/Lab and ROS 2 remain external adapters until M5 capability and conformance
-  gates pass.
+- Real2Sim Promise, Physics Asset Factory, Eval Studio, and Deployment Twin are connected
+  programs, not claims that current assets are predictive.
+- Isaac Lab Newton is the first external training/evaluation adapter. Isaac RTX, Isaac
+  Sim, and ROS 2 remain separately capability-tested adapters.
+- Detailed adoption and migration gates live in the
+  [R2S2R and Newton adoption note](docs/blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md).
 
 ### Packaging And Collaboration
 
@@ -68,6 +80,10 @@ The following work cannot be promoted by code or visual inspection alone:
 - sensor-supervision and reconstruction A/B results;
 - SPZ/LoD round-trip orientation and color;
 - physical calibration apparatus and held-out trials;
+- Newton local/remote parity and effective-collider conformance;
+- matched open-loop real/sim observation and outcome residuals;
+- useful policy ranking, failure-region overlap, and false-safe controls;
+- deployment recapture, impact analysis, canary, and rollback evidence;
 - robot, UAV, and vehicle real/sim acceptance;
 - deployment/TestFlight evidence.
 

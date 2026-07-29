@@ -14,14 +14,17 @@ Status values:
 | Loopback World Studio receiver | completed | Explicit loopback listener, durable ledger, ACK/reconciliation, restart/resume, proposal-only Simulate panel, packaged handoff reopen | Device sender remains M1 |
 | Progressive source evidence | partial | Source frames, camera evidence, trajectory, package readers, ARKit mesh and Capture Splat handoff support | Bounded live RGB-D/mesh proposals and worker lifecycle |
 | Gaussian and point inspection | partial | Spark/Three rendering, ordinary/Gaussian PLY distinction, frame cameras, Orbit/Free/Walk inspection, QA sidecars | Larger-asset LoD and renderer conformance |
-| Local simulation substrate | partial | Rapier pilot substrate, bodies, collision debug, deterministic Episodes | Promoted metric collision and route gates |
+| Current simulation substrate | partial | Rapier pilot substrate, bodies, collision debug, deterministic Episodes | Preserve parity fixtures; freeze backend-specific growth |
+| Newton target runtime | planned | Target worker architecture and gated migration sequence | Solver-neutral client, worker supervisor, local/remote parity, cutover, and Rapier removal |
 | Canonical World Package | planned | Existing local package and Episode contracts provide implementation lessons | Immutable world versions, transform graph, artifact registry, migration tests |
 | Reversible editor | partial | Select, crop, transform, delete/undo, optimize, measurements, package publish staging | Versioned edit graph, merge workflow, representation alignment |
 | Indoor navigation readiness R3 | evidence-blocked | Registered mesh and local collision preview gates exist | Physical floor/wall continuity, occupancy/free-space validation, spawn/route evidence |
-| Physical Asset Calibration | planned | C0 capture evidence and local Rapier experiments exist | C1-C2 apparatus, contracts, held-out residuals, task-scoped promotion |
-| Isaac and ROS alignment R4 | planned | Architecture and upstream research only | OpenUSD compiler, remote worker, capability negotiation, ROS 2 conformance |
-| Rigid interaction and field calibration R5 | planned | Episode provenance and replay foundation exist | Instrumented trials, system identification, held-out real/sim validation |
-| Expanded embodiments | planned | Pilot/body abstractions and sensor concepts exist | Readiness profiles for UAVs, vehicles, manipulation, and deformables |
+| Physics Asset Factory A0-A4 | planned | C0 capture evidence and reversible editor lessons exist | Registry, apparatus, collider validation, system identification, and Asset Passports |
+| Newton/Isaac Lab/ROS alignment R4 | planned | Architecture and upstream research only | OpenUSD compiler, Newton worker, capability negotiation, sensor/clock conformance |
+| Real2Sim Promise P5/P6 | planned | Episode provenance and replay foundation exist | Matched open-loop trials, system identification, held-out task validation |
+| Predictive Eval Studio P7 | planned | Deterministic Episodes and task concepts exist | Variations, policy artifacts, failure regions, ranking, and false-safe evidence |
+| Deployment Twin and continuous R2S2R P8 | planned | Capture handoff and versioning direction exist | Site revisions, impact graph, field Episodes, shadow/canary/rollback |
+| Expanded embodiments and multiphysics | planned | Pilot/body abstractions and sensor concepts exist | Readiness profiles for UAVs, vehicles, manipulation, deformables, and coupled solvers |
 
 ## Historical Source Reconciliation
 
@@ -32,3 +35,8 @@ next implementation prompt.
 The source bundle's world and Isaac schemas are useful design inputs but are not active
 contracts. The source validation report proves syntax and fixture matching only; it does
 not prove runtime adoption, simulator compatibility, or physical validity.
+
+The later
+[R2S2R and Newton adoption note](r2s2r-newton-2026-07-29/README.md) supersedes the source
+bundle's permanent-Rapier assumption. Rapier remains the current implementation until the
+documented Newton parity and cutover gates pass.

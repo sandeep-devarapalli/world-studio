@@ -58,7 +58,8 @@ two-cycle iPhone acceptance.
 - Capture Splat remains local-first and authoritative for accepted evidence.
 - Use the active contracts under `/contracts/live-session/v0.1`; never import the archived
   single-schema draft from this blueprint.
-- Preserve World Studio's six modes and Spark + Three.js + Rapier local runtime.
+- Preserve World Studio's six modes and current Spark + Three.js + Rapier behavior while
+  M1 is active. Do not begin the Newton cutover inside a sender or pairing PR.
 - Streamed output remains proposal-only. It is not reconstruction, collision, measurement,
   semantic, navigation, or physics authority.
 - Keep generated captures, models, logs, and worker outputs outside Git.
@@ -75,3 +76,11 @@ two-cycle iPhone acceptance.
 - Browser/Electron UI tests showing proposal labels and no loaded-world replacement.
 - Byte-identical mirrored contracts.
 - A concise migration note and reproducible validation report.
+
+## After M1
+
+The next physics work is the
+[gated Newton migration](r2s2r-newton-2026-07-29/NEWTON_MIGRATION_MILESTONES.md): freeze
+Rapier-specific growth, preserve parity fixtures, introduce a solver-neutral client, add
+the supervised worker, validate local CPU and remote NVIDIA runs, cut over, and remove
+Rapier. Keep that work in separate, reviewable PRs.
