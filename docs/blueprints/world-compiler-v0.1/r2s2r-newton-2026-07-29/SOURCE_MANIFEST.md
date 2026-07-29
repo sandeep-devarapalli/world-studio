@@ -21,7 +21,7 @@ and the publication boundary. Hashes use SHA-256.
 | [`source/CAPTURE_SPLAT_WORLD_STUDIO_R2S2R_OPERATING_SYSTEM.md`](source/CAPTURE_SPLAT_WORLD_STUDIO_R2S2R_OPERATING_SYSTEM.md) | `1bdf3a579fdcebd089638080b27f23dd23a7687088d0168826affb618a5be31c` | Public-safe pasted brief |
 | [`source/NEWTON_TARGET_PHYSICS_BACKEND.md`](source/NEWTON_TARGET_PHYSICS_BACKEND.md) | `763bf57376886f1e954c236a7a418c6b2b503d823326a6060f7c34b0b5458af5` | Public-safe pasted brief |
 | [`source/CHATGPT_RESEARCH_NOTES.md`](source/CHATGPT_RESEARCH_NOTES.md) | `88dde9950bb507d59d00dee4d98d3440eaef36518a965eddfb5cf35b88eb01b9` | Curated, non-verbatim research digest |
-| [`source/CHATGPT_RESEARCH_TRANSCRIPT.md`](source/CHATGPT_RESEARCH_TRANSCRIPT.md) | `24fc162deb4f39bff7c1df6711df65960b900186c1c1fe23fdc1a0e20c695fa7` | Public-safe transcript of all six visible user/final-assistant messages, with public product branding and repository paths normalized |
+| [`source/CHATGPT_RESEARCH_TRANSCRIPT.md`](source/CHATGPT_RESEARCH_TRANSCRIPT.md) | `03abe343e97f0b8d7a87103b549eea1c3450f9ebde18701d46623c8a38ca0944` | Public-safe transcript of all six visible user/final-assistant messages, with public product branding and repository paths normalized |
 
 The hashes above pin this initial publication. A future edit to a source-derived file must
 update this manifest and explain why the provenance copy changed.

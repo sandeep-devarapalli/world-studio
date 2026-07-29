@@ -122,11 +122,11 @@ The existing dual-representation rule remains correct:
     PhysX / Rapier / Isaac
         contacts, dynamics, sensors and robot evaluation
 
-That is consistent with the earlier Capture Splat architecture: TSDF/Poisson or equivalent geometry remains the solid simulation layer, while SPZ/3DGS remains the photorealistic visual layer. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=ce5557db-a937-4cbe-936d-36848e1e5604&conversation_save=1)
+That is consistent with the earlier Capture Splat architecture: TSDF/Poisson or equivalent geometry remains the solid simulation layer, while SPZ/3DGS remains the photorealistic visual layer.
 
-[SPZ visual pipeline integration](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=ce5557db-a937-4cbe-936d-36848e1e5604&conversation_save=1)
+SPZ visual pipeline integration
 
-Spark and Three.js continue to be the unified browser visual scene graph, while Rapier and PhysX provide actual physics. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=570c0ef6-78ba-403d-963b-3672b6123ba5&conversation_save=1)
+Spark and Three.js continue to be the unified browser visual scene graph, while Rapier and PhysX provide actual physics.
 
 Bundle v3 Physics Clarification
 
@@ -672,13 +672,13 @@ That should also be World Studio’s ultimate standard.
 
 # 8. Other existing research remains correctly positioned
 
-NOVA3R should continue to be treated as an amodal geometry prior rather than a direct collider generator. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=7270a03d-f73a-44b7-a0c7-2bb730ed9e98&conversation_save=1)
+NOVA3R should continue to be treated as an amodal geometry prior rather than a direct collider generator.
 
-[Created note and bundle](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=7270a03d-f73a-44b7-a0c7-2bb730ed9e98&conversation_save=1)
+Created note and bundle
 
-MLX-VLM should continue to operate as the semantic grounding, annotation and reconstruction-QA layer rather than replacing depth fusion or collision generation. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a2062ec-2b40-8322-b393-1d26c4da1155?messageId=d07773e1-29eb-484c-b30f-1a08dd64d649&conversation_save=1)
+MLX-VLM should continue to operate as the semantic grounding, annotation and reconstruction-QA layer rather than replacing depth fusion or collision generation.
 
-[Add mlx vlm semantic layer](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a2062ec-2b40-8322-b393-1d26c4da1155?messageId=d07773e1-29eb-484c-b30f-1a08dd64d649&conversation_save=1)
+Add MLX-VLM semantic layer
 
 This produces the complete stack:
 
@@ -911,9 +911,9 @@ World Studio should remain **Gaussian-rendered and multi-representation**, not G
     Rapier / PhysX / Isaac
         dynamics, sensors, contacts and evaluation
 
-This preserves your existing architecture: splats are the visual layer, while validated mesh/SDF geometry remains the physical layer. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=ce5557db-a937-4cbe-936d-36848e1e5604&conversation_save=1)
+This preserves your existing architecture: splats are the visual layer, while validated mesh/SDF geometry remains the physical layer.
 
-[SPZ visual pipeline integration](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=ce5557db-a937-4cbe-936d-36848e1e5604&conversation_save=1)
+SPZ visual pipeline integration
 
 ------------------------------------------------------------------------
 
@@ -1828,11 +1828,11 @@ Newton’s current implementation is a Python runtime built on NVIDIA Warp, with
 
 </div>
 
-This maintains the established project rule: Gaussian splats remain the visual layer, while separately validated mesh, SDF, heightfield, convex or primitive geometry supplies collision. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=ce5557db-a937-4cbe-936d-36848e1e5604&conversation_save=1)
+This maintains the established project rule: Gaussian splats remain the visual layer, while separately validated mesh, SDF, heightfield, convex or primitive geometry supplies collision.
 
-[SPZ visual pipeline integration](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=ce5557db-a937-4cbe-936d-36848e1e5604&conversation_save=1)
+SPZ visual pipeline integration
 
-Spark and Three.js remain the visual composition layer rather than becoming the physics engine. [](https://chatgpt.com/g/g-p-6a15260f84e08191bdb75a1c9105e29f/c/6a202913-87fc-8321-b2d0-57fc37db0955?messageId=570c0ef6-78ba-403d-963b-3672b6123ba5&conversation_save=1)
+Spark and Three.js remain the visual composition layer rather than becoming the physics engine.
 
 Bundle v3 Physics Clarification
 
