@@ -62,6 +62,64 @@ export interface WorldSession {
   agentSpawn?: AgentState;
 }
 
+export type LiveReceiverState =
+  | "stopped"
+  | "listening"
+  | "receiving"
+  | "interrupted"
+  | "resuming"
+  | "finalized";
+
+export interface LiveMissingRange {
+  start: number;
+  end: number;
+}
+
+export interface LiveFrameSummary {
+  sequenceId: number;
+  timestamp: number;
+  clockDomain: string;
+  sourceFrameName: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  cameraToWorld: [
+    number, number, number, number,
+    number, number, number, number,
+    number, number, number, number,
+    number, number, number, number
+  ];
+  coordinateFrame: string;
+  previewAvailable: boolean;
+}
+
+export interface LiveSessionSnapshot {
+  state: LiveReceiverState;
+  listening: { host: string; port: number } | null;
+  sessionId: string | null;
+  sourceManifestId: string | null;
+  expectedCount: number | null;
+  finalSequenceId: number | null;
+  receivedCount: number;
+  contiguousCount: number;
+  pendingCount: number;
+  missingCount: number;
+  nextExpectedSequenceId: number;
+  missingRanges: LiveMissingRange[];
+  frames: LiveFrameSummary[];
+  authority: "proposal_only";
+  updatedAt: string | null;
+  error?: string;
+}
+
+export interface LiveFramePreview {
+  sessionId: string;
+  sequenceId: number;
+  mediaType: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
 export interface CameraState {
   yaw: number;
   pitch: number;

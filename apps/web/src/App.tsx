@@ -23,6 +23,7 @@ import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel
 import { ThreeWorldRenderer } from "@world-studio/renderer";
 import { buildCleanedPointCloudPly, cleanedPointRows } from "./edit-ply-export";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
+import { cacheLivePreview, splitLiveTrajectory } from "./live-session-view";
 import { RapierSimulation, RapierWalkSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
 import {
   classifySimulateDrag,
@@ -66,6 +67,9 @@ import type {
   FrameCamera,
   LocalPackageInsight,
   LocalPackageIssue,
+  LiveFramePreview,
+  LiveFrameSummary,
+  LiveSessionSnapshot,
   LocalWorldPackagePayload,
   EpisodeBundleAsset,
   PhysicsDiagnostics,
@@ -154,6 +158,24 @@ const stripCells: Array<{ mode: FeedMode; label: string }> = [
 ];
 
 const simFeedPose: FeedPose = { x: 1.6, y: 1.35, z: 2.0, heading: -2.2, pitch: -0.23 };
+
+const stoppedLiveSnapshot: LiveSessionSnapshot = {
+  state: "stopped",
+  listening: null,
+  sessionId: null,
+  sourceManifestId: null,
+  expectedCount: null,
+  finalSequenceId: null,
+  receivedCount: 0,
+  contiguousCount: 0,
+  pendingCount: 0,
+  missingCount: 0,
+  nextExpectedSequenceId: 1,
+  missingRanges: [],
+  frames: [],
+  authority: "proposal_only",
+  updatedAt: null
+};
 
 const sensorIcons: Record<SensorRigChannel["kind"], WSIconName> = {
   rgb: "camera",
@@ -549,6 +571,12 @@ export function App() {
   const [tool, setTool] = useState("brush");
   const [worldPoints, setWorldPoints] = useState<PointRecord[]>([]);
   const [captureFrames, setCaptureFrames] = useState<CaptureFrame[]>([]);
+  const [liveSnapshot, setLiveSnapshot] = useState<LiveSessionSnapshot>(stoppedLiveSnapshot);
+  const [selectedLiveSequence, setSelectedLiveSequence] = useState<number | null>(null);
+  const [livePreview, setLivePreview] = useState<LiveFramePreview | null>(null);
+  const [liveReceiverBusy, setLiveReceiverBusy] = useState(false);
+  const [liveReceiverError, setLiveReceiverError] = useState<string | null>(null);
+  const livePreviewCacheRef = useRef(new Map<string, LiveFramePreview>());
   const [sensorCaptures, setSensorCaptures] = useState<SensorCaptureArtifact[]>([]);
   const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
   const [stepCount, setStepCount] = useState(0);
@@ -608,6 +636,8 @@ export function App() {
   );
   const simulateCompareCaptures = captureComparison.length ? captureComparison : captureCompareCandidates;
   const selectedSourceFrame = captureFrames[selectedSourceFrameIndex] ?? captureFrames.find((frame) => frame.previewDataUrl) ?? null;
+  const selectedLiveFrame = liveSnapshot.frames.find((frame) => frame.sequenceId === selectedLiveSequence) ?? null;
+  const liveTrajectorySegments = useMemo(() => splitLiveTrajectory(liveSnapshot.frames), [liveSnapshot.frames]);
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
   const simulateSourceFrame = simulateComparisonCapture ? null : selectedSourceFrame;
   const worldOrientation = useMemo<WorldOrientation | undefined>(
@@ -1091,6 +1121,88 @@ export function App() {
       setLoadError(error instanceof Error ? error.message : "Failed to load local package");
     }
   }, []);
+
+  const acceptLiveSnapshot = useCallback((snapshot: LiveSessionSnapshot) => {
+    setLiveSnapshot(snapshot);
+    setSelectedLiveSequence((current) => {
+      if (current !== null && snapshot.frames.some((frame) => frame.sequenceId === current)) return current;
+      return snapshot.frames[0]?.sequenceId ?? null;
+    });
+  }, []);
+
+  const startLiveReceiver = useCallback(async () => {
+    const start = getDesktopApi()?.startLiveReceiver;
+    if (!start) return;
+    setLiveReceiverBusy(true);
+    setLiveReceiverError(null);
+    try {
+      acceptLiveSnapshot(await start());
+    } catch (error) {
+      setLiveReceiverError(error instanceof Error ? error.message : "Failed to start live receiver");
+    } finally {
+      setLiveReceiverBusy(false);
+    }
+  }, [acceptLiveSnapshot]);
+
+  const stopLiveReceiver = useCallback(async () => {
+    const stop = getDesktopApi()?.stopLiveReceiver;
+    if (!stop) return;
+    setLiveReceiverBusy(true);
+    setLiveReceiverError(null);
+    try {
+      acceptLiveSnapshot(await stop());
+    } catch (error) {
+      setLiveReceiverError(error instanceof Error ? error.message : "Failed to stop live receiver");
+    } finally {
+      setLiveReceiverBusy(false);
+    }
+  }, [acceptLiveSnapshot]);
+
+  useEffect(() => {
+    const desktop = getDesktopApi();
+    let active = true;
+    const onSnapshot = (snapshot: LiveSessionSnapshot) => {
+      if (active) acceptLiveSnapshot(snapshot);
+    };
+    const unsubscribe = desktop?.onLiveSessionUpdate?.(onSnapshot);
+    void desktop?.getLiveSessionStatus?.().then(onSnapshot).catch((error: unknown) => {
+      if (active) setLiveReceiverError(error instanceof Error ? error.message : "Failed to read live receiver status");
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [acceptLiveSnapshot]);
+
+  useEffect(() => {
+    const sessionId = liveSnapshot.sessionId;
+    const sequenceId = selectedLiveFrame?.sequenceId;
+    const readPreview = getDesktopApi()?.getLiveFramePreview;
+    if (!sessionId || sequenceId === undefined || !selectedLiveFrame?.previewAvailable || !readPreview) {
+      setLivePreview(null);
+      return;
+    }
+    const key = `${sessionId}:${sequenceId}`;
+    const cached = livePreviewCacheRef.current.get(key);
+    if (cached) {
+      setLivePreview(cached);
+      return;
+    }
+    let active = true;
+    setLivePreview(null);
+    void readPreview({ sessionId, sequenceId })
+      .then((preview) => {
+        if (!active || !preview) return;
+        cacheLivePreview(livePreviewCacheRef.current, key, preview);
+        setLivePreview(preview);
+      })
+      .catch((error: unknown) => {
+        if (active) setLiveReceiverError(error instanceof Error ? error.message : "Failed to read live frame preview");
+      });
+    return () => {
+      active = false;
+    };
+  }, [liveSnapshot.sessionId, selectedLiveFrame]);
 
   const applyLocalPackage = useCallback((payload: LocalWorldPackagePayload, options?: LoadedWorldOptions) => {
     const evidence = parseCaptureSplatEvidenceMesh(payload);
@@ -2314,6 +2426,8 @@ export function App() {
   const activeMode = modes.find((entry) => entry.id === mode) ?? modes[0];
   const rootClass = `ws-root mode-${mode} ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
   const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
+  const hasLiveReceiverApi = Boolean(getDesktopApi()?.startLiveReceiver && getDesktopApi()?.stopLiveReceiver);
+  const showLiveSession = hasLiveReceiverApi || Boolean(liveSnapshot.sessionId);
   const measureStart = measurePoints[0];
   const measureEnd = measurePoints[1];
   const measureLineStyle =
@@ -2400,8 +2514,14 @@ export function App() {
           <div className="ws-overlay">
             {mode === "simulate" ? (
               <>
-                <div className={`ws-dual-left ${simulateComparisonCapture?.previewDataUrl || simulateSourceFrame?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
-                  {simulateComparisonCapture?.previewDataUrl ? (
+                <div className={`ws-dual-left ${livePreview?.dataUrl || simulateComparisonCapture?.previewDataUrl || simulateSourceFrame?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
+                  {livePreview?.dataUrl && selectedLiveFrame ? (
+                    <img
+                      alt="Selected live source frame evidence"
+                      className="ws-sim-comparison-preview"
+                      src={livePreview.dataUrl}
+                    />
+                  ) : simulateComparisonCapture?.previewDataUrl ? (
                     <img
                       alt="Selected comparison capture evidence"
                       className="ws-sim-comparison-preview"
@@ -2417,9 +2537,11 @@ export function App() {
                     <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
                   )}
                   <div className="ws-view-tag">
-                    <span className="ws-head">{simulateComparisonCapture || simulateSourceFrame ? "Source evidence" : "Sensor feed"}</span>
+                    <span className="ws-head">{selectedLiveFrame ? "Live source evidence" : simulateComparisonCapture || simulateSourceFrame ? "Source evidence" : "Sensor feed"}</span>
                     <WSChip>
-                      {simulateComparisonCapture
+                      {selectedLiveFrame
+                        ? `frame ${selectedLiveFrame.sequenceId}`
+                        : simulateComparisonCapture
                         ? `frame ${simulateComparisonCapture.frame}`
                         : simulateSourceFrame
                           ? simulateSourceFrame.name
@@ -2439,8 +2561,8 @@ export function App() {
                   />
                 ) : null}
                 <div className="ws-view-tag metric">
-                  <span className="ws-head">3DGS visual proxy</span>
-                  <WSChip>{simulateRenderLabel}</WSChip>
+                  <span className="ws-head">{liveSnapshot.sessionId ? (session ? "Loaded world · unchanged" : "No live reconstruction") : "3DGS visual proxy"}</span>
+                  <WSChip>{liveSnapshot.sessionId ? "live proposal kept separate" : simulateRenderLabel}</WSChip>
                 </div>
               </>
             ) : null}
@@ -3214,29 +3336,115 @@ export function App() {
     }
 
     if (mode === "simulate") {
+      if (!showLiveSession) {
+        return (
+          <WSPanel title="Frames" meta={captureFrames.length ? `${captureFrames.length} captured` : "none"} pad={false}>
+            <div className="ws-frame-list">
+              {captureFrames.length ? (
+                captureFrames.slice(0, 7).map((frame, index) => (
+                  <button key={frame.name} className={`ws-frame-row ${index === selectedSourceFrameIndex && !simulateComparisonCapture ? "active" : ""}`.trim()} onClick={() => selectSourceFrame(index)}>
+                    {frame.previewDataUrl ? (
+                      <img alt={`${frame.name} preview`} className="ws-frame-thumb image" src={frame.previewDataUrl} />
+                    ) : (
+                      <span className="ws-frame-thumb" />
+                    )}
+                    <span className="ws-row-name">{frame.name}</span>
+                    <WSChip>ok</WSChip>
+                  </button>
+                ))
+              ) : (
+                <div className="ws-frame-row dim">
+                  <span className="ws-frame-thumb" />
+                  <span className="ws-row-name">no capture frames</span>
+                  <WSChip>none</WSChip>
+                </div>
+              )}
+            </div>
+          </WSPanel>
+        );
+      }
+
       return (
-        <WSPanel title="Frames" meta={captureFrames.length ? `${captureFrames.length} captured` : "none"} pad={false}>
-          <div className="ws-frame-list">
-            {captureFrames.length ? (
-              captureFrames.slice(0, 7).map((frame, index) => (
-                <button key={frame.name} className={`ws-frame-row ${index === selectedSourceFrameIndex && !simulateComparisonCapture ? "active" : ""}`.trim()} onClick={() => selectSourceFrame(index)}>
-                  {frame.previewDataUrl ? (
-                    <img alt={`${frame.name} preview`} className="ws-frame-thumb image" src={frame.previewDataUrl} />
-                  ) : (
-                    <span className="ws-frame-thumb" />
-                  )}
-                  <span className="ws-row-name">{frame.name}</span>
-                  <WSChip>ok</WSChip>
-                </button>
-              ))
-            ) : (
-              <div className="ws-frame-row dim">
-                <span className="ws-frame-thumb" />
-                <span className="ws-row-name">no capture frames in package</span>
+        <div className="ws-row-stack ws-live-stack">
+          <WSPanel
+            title="Live Capture"
+            meta={hasLiveReceiverApi ? liveSnapshot.state : "desktop only"}
+            className="ws-live-session-panel"
+            data-testid="live-session-panel"
+          >
+            <div className="ws-live-state-row">
+              <WSDot pulse={liveSnapshot.state === "receiving" || liveSnapshot.state === "resuming"} />
+              <b data-testid="live-connection-state">{hasLiveReceiverApi ? liveSnapshot.state : "receiver unavailable"}</b>
+              <span>{liveSnapshot.listening ? `${liveSnapshot.listening.host}:${liveSnapshot.listening.port}` : "loopback stopped"}</span>
+            </div>
+            <div className="ws-live-counts" data-testid="live-session-counts">
+              <div><span>received</span><b>{liveSnapshot.receivedCount}</b></div>
+              <div><span>pending</span><b>{liveSnapshot.pendingCount}</b></div>
+              <div><span>expected</span><b>{liveSnapshot.expectedCount ?? liveSnapshot.finalSequenceId ?? "open"}</b></div>
+              <div><span>missing</span><b>{liveSnapshot.missingCount}</b></div>
+            </div>
+            <div className="ws-kv">
+              <span>session</span>
+              <b>{liveSnapshot.sessionId ?? "none"}</b>
+            </div>
+            <div className="ws-kv">
+              <span>next</span>
+              <b>{liveSnapshot.nextExpectedSequenceId}</b>
+            </div>
+            <div className="ws-kv">
+              <span>gaps</span>
+              <b>{formatLiveMissingRanges(liveSnapshot.missingRanges)}</b>
+            </div>
+            <div className="ws-kv ws-live-authority">
+              <span>authority</span>
+              <b>proposal only · never world or collision authority</b>
+            </div>
+            <div className="ws-btn-row">
+              <WSButton accent disabled={!hasLiveReceiverApi || liveReceiverBusy || liveSnapshot.state !== "stopped"} onClick={() => void startLiveReceiver()}>
+                Start Listening
+              </WSButton>
+              <WSButton disabled={!hasLiveReceiverApi || liveReceiverBusy || liveSnapshot.state === "stopped"} onClick={() => void stopLiveReceiver()}>
+                Stop Listening
+              </WSButton>
+            </div>
+            {liveReceiverError || liveSnapshot.error ? <div className="ws-live-error">{liveReceiverError ?? liveSnapshot.error}</div> : null}
+            <div className="ws-live-frame-list" data-testid="live-frame-list">
+              {liveSnapshot.frames.length ? (
+                liveSnapshot.frames.map((frame) => (
+                  <button
+                    className={`ws-live-frame-row ${frame.sequenceId === selectedLiveSequence ? "active" : ""}`.trim()}
+                    key={frame.sequenceId}
+                    onClick={() => setSelectedLiveSequence(frame.sequenceId)}
+                    type="button"
+                  >
+                    <span>{String(frame.sequenceId).padStart(4, "0")}</span>
+                    <b>{frame.sourceFrameName}</b>
+                    <WSChip>{frame.sequenceId < liveSnapshot.nextExpectedSequenceId ? "received" : "pending"}</WSChip>
+                  </button>
+                ))
+              ) : (
+                <div className="ws-live-empty">No live source frames received.</div>
+              )}
+            </div>
+          </WSPanel>
+          {captureFrames.length ? (
+            <WSPanel title="Package Frames" meta={`${captureFrames.length} captured`} pad={false}>
+              <div className="ws-frame-list">
+                {captureFrames.slice(0, 7).map((frame, index) => (
+                  <button key={frame.name} className={`ws-frame-row ${index === selectedSourceFrameIndex && !simulateComparisonCapture ? "active" : ""}`.trim()} onClick={() => selectSourceFrame(index)}>
+                    {frame.previewDataUrl ? (
+                      <img alt={`${frame.name} preview`} className="ws-frame-thumb image" src={frame.previewDataUrl} />
+                    ) : (
+                      <span className="ws-frame-thumb" />
+                    )}
+                    <span className="ws-row-name">{frame.name}</span>
+                    <WSChip>ok</WSChip>
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-        </WSPanel>
+            </WSPanel>
+          ) : null}
+        </div>
       );
     }
 
@@ -3433,27 +3641,48 @@ export function App() {
   function renderRightPanel() {
     if (mode === "simulate") {
       return (
-        <WSPanel
-          title="3DGS Compare"
-          meta={simulateComparisonCapture || simulateSourceFrame ? "visual proxy" : "no episode"}
-          className="ws-sim-comparison-panel"
-          data-testid="simulate-comparison-panel"
-        >
+        <div className="ws-row-stack ws-live-right-stack">
+          {hasLiveReceiverApi || liveSnapshot.sessionId ? (
+            <WSPanel title="Camera Trajectory" meta="top-down X / Z" className="ws-live-trajectory-panel">
+              <LiveTrajectory
+                frames={liveSnapshot.frames}
+                segments={liveTrajectorySegments}
+                selectedSequenceId={selectedLiveSequence}
+              />
+              <div className="ws-kv">
+                <span>frame</span>
+                <b>{selectedLiveFrame ? `${selectedLiveFrame.coordinateFrame} · ${selectedLiveFrame.sourceWidth}×${selectedLiveFrame.sourceHeight}` : "no pose received"}</b>
+              </div>
+              <div className="ws-live-coordinate-note">Capture coordinates are shown separately and are never overlaid on the loaded world.</div>
+            </WSPanel>
+          ) : null}
+          <WSPanel
+            title="3DGS Compare"
+            meta={selectedLiveFrame ? "live source only" : simulateComparisonCapture || simulateSourceFrame ? "visual proxy" : "no episode"}
+            className="ws-sim-comparison-panel"
+            data-testid="simulate-comparison-panel"
+          >
           <div className="ws-kv">
             <span>left</span>
-            <b>{simulateComparisonCapture ? "source/render evidence" : simulateSourceFrame ? "source evidence" : "synthetic sensor feed"}</b>
+            <b>{selectedLiveFrame ? "live source frame" : simulateComparisonCapture ? "source/render evidence" : simulateSourceFrame ? "source evidence" : "synthetic sensor feed"}</b>
           </div>
           <div className="ws-kv">
             <span>right</span>
-            <b>{session ? `${renderMode} · ${assetSummary?.gaussianKind ?? "world asset"}` : "3DGS package not loaded"}</b>
+            <b>
+              {session
+                ? `${renderMode} · ${assetSummary?.gaussianKind ?? "world asset"}${selectedLiveFrame ? " · unchanged" : ""}`
+                : selectedLiveFrame
+                  ? "no reconstruction loaded"
+                  : "3DGS package not loaded"}
+            </b>
           </div>
           <div className="ws-kv">
             <span>authority</span>
-            <b>{episodeProvenance?.authorityStatus ?? "visual proxy · not collision authority"}</b>
+            <b>{selectedLiveFrame ? "proposal only · not world or collision authority" : episodeProvenance?.authorityStatus ?? "visual proxy · not collision authority"}</b>
           </div>
           <div className="ws-kv">
             <span>decision</span>
-            <b>{simulateComparisonCapture?.rendererStatus ?? episodeProvenance?.rendererStatus ?? captureSplatQualityLabel(session?.provenance.captureSplatQuality)}</b>
+            <b>{selectedLiveFrame ? "source evidence received · no live 3DGS reconstruction" : simulateComparisonCapture?.rendererStatus ?? episodeProvenance?.rendererStatus ?? captureSplatQualityLabel(session?.provenance.captureSplatQuality)}</b>
           </div>
           {simulateComparisonCapture ? (
             <>
@@ -3486,7 +3715,8 @@ export function App() {
               ))}
             </div>
           ) : null}
-        </WSPanel>
+          </WSPanel>
+        </div>
       );
     }
 
@@ -5297,6 +5527,63 @@ function compactPath(value: string): string {
 
 function getDesktopApi() {
   return window.worldStudioDesktop;
+}
+
+function formatLiveMissingRanges(ranges: LiveSessionSnapshot["missingRanges"]): string {
+  if (!ranges.length) return "none";
+  const shown = ranges.slice(0, 4).map((range) => range.start === range.end ? String(range.start) : `${range.start}–${range.end}`);
+  return ranges.length > shown.length ? `${shown.join(", ")} +${ranges.length - shown.length}` : shown.join(", ");
+}
+
+function LiveTrajectory({
+  frames,
+  segments,
+  selectedSequenceId
+}: {
+  frames: LiveFrameSummary[];
+  segments: ReturnType<typeof splitLiveTrajectory>;
+  selectedSequenceId: number | null;
+}) {
+  const points = segments.flat();
+  if (!points.length) return <div className="ws-live-trajectory-empty">Waiting for camera poses.</div>;
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minZ = Math.min(...points.map((point) => point.z));
+  const maxZ = Math.max(...points.map((point) => point.z));
+  const rangeX = Math.max(maxX - minX, 0.01);
+  const rangeZ = Math.max(maxZ - minZ, 0.01);
+  const mapX = (x: number) => 12 + ((x - minX) / rangeX) * 236;
+  const mapZ = (z: number) => 116 - ((z - minZ) / rangeZ) * 100;
+  const selected = points.find((point) => point.sequenceId === selectedSequenceId);
+
+  return (
+    <div className="ws-live-trajectory" data-testid="live-camera-trajectory">
+      <svg aria-label="Gap-aware top-down live camera trajectory" role="img" viewBox="0 0 260 132">
+        <path className="ws-live-axis" d="M12 116H252M12 116V8" />
+        {segments.map((segment) => segment.length > 1 ? (
+          <polyline
+            className="ws-live-path"
+            data-testid="live-trajectory-segment"
+            key={segment[0]?.sequenceId}
+            points={segment.map((point) => `${mapX(point.x)},${mapZ(point.z)}`).join(" ")}
+          />
+        ) : segment[0] ? (
+          <circle
+            className="ws-live-path-point"
+            cx={mapX(segment[0].x)}
+            cy={mapZ(segment[0].z)}
+            data-testid="live-trajectory-segment"
+            key={segment[0].sequenceId}
+            r="2.5"
+          />
+        ) : null)}
+        {selected ? <circle className="ws-live-selected-point" cx={mapX(selected.x)} cy={mapZ(selected.z)} r="4" /> : null}
+        <text x="238" y="129">+X</text>
+        <text x="2" y="12">+Z</text>
+      </svg>
+      <span>{segments.length} segment{segments.length === 1 ? "" : "s"} · {frames.length} poses</span>
+    </div>
+  );
 }
 
 function PackageIssues({ issues }: { issues: LocalPackageIssue[] }) {

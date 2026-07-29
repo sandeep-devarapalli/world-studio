@@ -1,5 +1,38 @@
 # Data Contracts
 
+## Capture Splat Live Session
+
+World Studio mirrors the Capture Splat-owned schemas and fixtures byte-for-byte:
+
+```text
+capture_splat.live_session.v0.1
+capture_splat.live_frame.v0.1
+capture_splat.live_ack.v0.1
+```
+
+The schemas are closed with `additionalProperties: false`. They require finite numeric
+values, one-based frame sequence IDs, lowercase `sha256:<64 hex>` digests, POSIX-relative
+paths, explicit coordinate-system metadata, and `proposal_only` authority.
+
+Session metadata binds a source `capture.json` identity to optional expected frame count,
+units, handedness, +Y up, -Z camera-forward, row-major `camera_to_world`, and the clock
+and coordinate domains used by frames. Each frame declares source-image dimensions and
+checksum, independently dimensioned pinhole intrinsics, a 4×4 pose, tracking/quality
+evidence, and optional depth, confidence, and typed person/valid/object mask references.
+Calibration dimensions remain distinct from RGB dimensions; display-camera scaling is a
+World Studio presentation step and never rewrites source calibration.
+
+The loopback HTTP protocol provides health, idempotent session creation, strict frame
+metadata and raw-asset uploads, durable status/resume, and fail-closed finalization.
+Acknowledgements are emitted only after declared sizes and SHA-256 hashes pass. Identical
+retries are duplicates; a sequence reused with different metadata or bytes is a conflict.
+Valid out-of-order frames are durable immediately, but contiguous progress and trajectory
+segments stop at gaps. Finalization rehashes every asset and requires every sequence
+through the declared final sequence before atomically sealing the session.
+
+Live source frames, poses, and quality fields are proposal evidence. They are not
+reconstruction, collision, semantic, measurement, navigation, or safety authority.
+
 ## Render Modes
 
 ```ts

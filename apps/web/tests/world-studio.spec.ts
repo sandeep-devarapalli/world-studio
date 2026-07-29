@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { LiveSessionSnapshot, LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
@@ -820,6 +820,95 @@ test("loads loft_04 and switches all six modes", async ({ page }) => {
 
   await expect(page.locator("[data-testid='world-canvas']")).toBeVisible();
   expect(consoleDiagnostics).toEqual([]);
+});
+
+test("shows an explicit proposal-only live session without replacing the loaded world", async ({ page }) => {
+  const stopped: LiveSessionSnapshot = {
+    state: "stopped",
+    listening: null,
+    sessionId: null,
+    sourceManifestId: null,
+    expectedCount: null,
+    finalSequenceId: null,
+    receivedCount: 0,
+    contiguousCount: 0,
+    pendingCount: 0,
+    missingCount: 0,
+    nextExpectedSequenceId: 1,
+    missingRanges: [],
+    frames: [],
+    authority: "proposal_only",
+    updatedAt: null
+  };
+  const receiving: LiveSessionSnapshot = {
+    ...stopped,
+    state: "receiving",
+    listening: { host: "127.0.0.1", port: 43127 },
+    sessionId: "live-ui-test",
+    sourceManifestId: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    expectedCount: 4,
+    receivedCount: 3,
+    contiguousCount: 2,
+    pendingCount: 1,
+    missingCount: 1,
+    nextExpectedSequenceId: 3,
+    missingRanges: [{ start: 3, end: 3 }],
+    updatedAt: "2026-07-26T12:00:00.000Z",
+    frames: [
+      { sequenceId: 1, timestamp: 0, clockDomain: "arkit_session", sourceFrameName: "frame_000001.jpg", sourceWidth: 1920, sourceHeight: 1440, cameraToWorld: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], coordinateFrame: "arkit_world", previewAvailable: true },
+      { sequenceId: 2, timestamp: 0.1, clockDomain: "arkit_session", sourceFrameName: "frame_000002.jpg", sourceWidth: 1920, sourceHeight: 1440, cameraToWorld: [1, 0, 0, 0.1, 0, 1, 0, 0, 0, 0, 1, 0.2, 0, 0, 0, 1], coordinateFrame: "arkit_world", previewAvailable: true },
+      { sequenceId: 4, timestamp: 0.3, clockDomain: "arkit_session", sourceFrameName: "frame_000004.jpg", sourceWidth: 1920, sourceHeight: 1440, cameraToWorld: [1, 0, 0, 0.4, 0, 1, 0, 0, 0, 0, 1, 0.6, 0, 0, 0, 1], coordinateFrame: "arkit_world", previewAvailable: true }
+    ]
+  };
+
+  await page.addInitScript(({ stoppedSnapshot, receivingSnapshot, previewDataUrl, worldPayload }) => {
+    let listener: ((snapshot: LiveSessionSnapshot) => void) | null = null;
+    window.worldStudioDesktop = {
+      openLocalPackage: async () => worldPayload,
+      startLiveReceiver: async () => {
+        listener?.(receivingSnapshot);
+        return receivingSnapshot;
+      },
+      stopLiveReceiver: async () => {
+        listener?.(stoppedSnapshot);
+        return stoppedSnapshot;
+      },
+      getLiveSessionStatus: async () => stoppedSnapshot,
+      onLiveSessionUpdate: (nextListener) => {
+        listener = nextListener;
+        return () => {
+          listener = null;
+        };
+      },
+      getLiveFramePreview: async ({ sessionId, sequenceId }) => ({
+        sessionId,
+        sequenceId,
+        mediaType: "image/png",
+        dataUrl: previewDataUrl,
+        width: 1920,
+        height: 1440
+      })
+    };
+  }, { stoppedSnapshot: stopped, receivingSnapshot: receiving, previewDataUrl: onePixelDataUrl, worldPayload: genericManifestPayload });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+  const panel = page.getByTestId("live-session-panel");
+  await expect(panel).toContainText("proposal only · never world or collision authority");
+  await expect(panel.getByRole("button", { name: "Stop Listening" })).toBeDisabled();
+  await panel.getByRole("button", { name: "Start Listening" }).click();
+  await expect(page.getByTestId("live-connection-state")).toHaveText("receiving");
+  await expect(page.getByTestId("live-session-counts")).toContainText("3");
+  await expect(panel.locator(".ws-kv", { hasText: "gaps" })).toContainText("3");
+  await expect(page.getByTestId("live-camera-trajectory").getByTestId("live-trajectory-segment")).toHaveCount(2);
+  await page.getByRole("button", { name: /0004.*frame_000004/ }).click();
+  await expect(page.getByAltText("Selected live source frame evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("Loaded world · unchanged");
+  await expect(page.getByTestId("simulate-comparison-panel")).toContainText("no live 3DGS reconstruction");
+  await panel.getByRole("button", { name: "Stop Listening" }).click();
+  await expect(page.getByTestId("live-connection-state")).toHaveText("stopped");
+  await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
 });
 
 test("exercises edit delete undo and pilot keys", async ({ page }) => {

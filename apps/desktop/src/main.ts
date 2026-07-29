@@ -1,12 +1,21 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import type { EpisodeBundleAsset, LocalWorldPackagePayload, SaveEpisodeBundleInput } from "@world-studio/world-core";
+import type {
+  EpisodeBundleAsset,
+  LiveFramePreview,
+  LiveSessionSnapshot,
+  LocalWorldPackagePayload,
+  SaveEpisodeBundleInput
+} from "@world-studio/world-core";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { LiveSessionReceiver } from "./live-session-receiver.js";
 import { createOpenLocalPackageDialogOptions } from "./open-local-dialog-options.js";
 import { readLocalPackage } from "./package-reader.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+let liveReceiver: LiveSessionReceiver | null = null;
+let liveReceiverStoppedForQuit = false;
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -99,15 +108,92 @@ ipcMain.handle("world-studio:open-episode-manifest", async (): Promise<{ path: s
   return { path: filePath, text: await resolveEpisodeBundleAssets(filePath, await readFile(filePath, "utf8")) };
 });
 
+ipcMain.handle("world-studio:start-live-receiver", async (): Promise<LiveSessionSnapshot> => {
+  return getLiveReceiver().start();
+});
+
+ipcMain.handle("world-studio:stop-live-receiver", async (): Promise<LiveSessionSnapshot> => {
+  return liveReceiver ? liveReceiver.stop() : stoppedLiveSnapshot();
+});
+
+ipcMain.handle("world-studio:get-live-session-status", async (): Promise<LiveSessionSnapshot> => {
+  return liveReceiver ? liveReceiver.status() : stoppedLiveSnapshot();
+});
+
+ipcMain.handle(
+  "world-studio:get-live-frame-preview",
+  async (_event, input: { sessionId?: string; sequenceId?: number }): Promise<LiveFramePreview | null> => {
+    if (
+      !input
+      || typeof input.sessionId !== "string"
+      || !Number.isSafeInteger(input.sequenceId)
+      || Number(input.sequenceId) < 1
+    ) {
+      throw new Error("Live frame preview requires a session ID and positive sequence ID.");
+    }
+    const preview = await getLiveReceiver().readFramePreview(input.sessionId, Number(input.sequenceId));
+    if (!preview) return null;
+    return {
+      sessionId: preview.sessionId,
+      sequenceId: preview.sequenceId,
+      mediaType: preview.mediaType,
+      dataUrl: `data:${preview.mediaType};base64,${preview.bytes.toString("base64")}`,
+      width: preview.width,
+      height: preview.height
+    };
+  }
+);
+
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+app.on("before-quit", (event) => {
+  if (!liveReceiver || liveReceiverStoppedForQuit) return;
+  event.preventDefault();
+  liveReceiverStoppedForQuit = true;
+  void liveReceiver.stop().finally(() => app.quit());
+});
+
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) void createWindow();
 });
+
+function getLiveReceiver(): LiveSessionReceiver {
+  if (liveReceiver) return liveReceiver;
+  const receiver = new LiveSessionReceiver({
+    root: path.join(app.getPath("userData"), "live-sessions")
+  });
+  receiver.subscribe((snapshot) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send("world-studio:live-session-update", snapshot);
+    }
+  });
+  liveReceiver = receiver;
+  return receiver;
+}
+
+function stoppedLiveSnapshot(): LiveSessionSnapshot {
+  return {
+    state: "stopped",
+    listening: null,
+    sessionId: null,
+    sourceManifestId: null,
+    expectedCount: null,
+    finalSequenceId: null,
+    receivedCount: 0,
+    contiguousCount: 0,
+    pendingCount: 0,
+    missingCount: 0,
+    nextExpectedSequenceId: 1,
+    missingRanges: [],
+    frames: [],
+    authority: "proposal_only",
+    updatedAt: null
+  };
+}
 
 function safeFileName(value: string): string {
   const sanitized = value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
