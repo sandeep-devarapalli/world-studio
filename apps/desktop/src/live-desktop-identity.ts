@@ -209,6 +209,7 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
     if (!desktopIdPattern.test(request.desktopId)) {
       return Promise.reject(new DesktopIdentityError("Certificate desktop ID is invalid."));
     }
+    const privateKeyInput = process.platform === "linux" ? "file:/dev/stdin" : "/dev/stdin";
     return new Promise((resolve, reject) => {
       const child = spawn(
         this.executable,
@@ -217,7 +218,7 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
           "-new",
           "-x509",
           "-key",
-          "/dev/stdin",
+          privateKeyInput,
           "-sha256",
           "-days",
           String(this.validityDays),
@@ -230,9 +231,7 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
           "-addext",
           "extendedKeyUsage=serverAuth",
           "-addext",
-          "subjectAltName=DNS:world-studio.local",
-          "-out",
-          "/dev/stdout"
+          "subjectAltName=DNS:world-studio.local"
         ],
         {
           shell: false,
