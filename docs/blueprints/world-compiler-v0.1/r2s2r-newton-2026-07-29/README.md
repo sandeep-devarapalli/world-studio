@@ -62,10 +62,12 @@ migration gates.
 - the two files extracted from `dirac-real2sim-r2s2r-roadmap-codex-bundle.zip`;
 - the R2S2R operating-system brief;
 - the Newton target-backend brief;
+- a public-safe transcript of all six visible user and final-assistant messages from the
+  supplied saved research conversation;
 - curated notes from the supplied saved research conversation.
 
-The private saved web page and its browser support files are not published. Their
-checksums and transformation boundary are recorded in
+The private saved web page, hidden analysis/tool traces, browser telemetry, and browser
+support files are not published. Their checksums and transformation boundary are recorded in
 [`SOURCE_MANIFEST.md`](SOURCE_MANIFEST.md) and
 [`HTML_AUXILIARY_MANIFEST.md`](HTML_AUXILIARY_MANIFEST.md).
 

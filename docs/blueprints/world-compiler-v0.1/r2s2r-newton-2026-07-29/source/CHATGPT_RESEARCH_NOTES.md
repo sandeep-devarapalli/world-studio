@@ -1,11 +1,15 @@
 # Saved Research Conversation Notes
 
 These notes distill the product and technical decisions relevant to Capture Splat and
-World Studio from the supplied saved research conversation.
+World Studio from the supplied saved research conversation. The corresponding
+message-level preservation copy is
+[`CHATGPT_RESEARCH_TRANSCRIPT.md`](CHATGPT_RESEARCH_TRANSCRIPT.md).
 
-The raw saved page is not published. It contains private conversation links, local
-filesystem paths, repeated generated text, and application telemetry. Its SHA-256 and the
-support-directory file manifest are recorded in
+The raw saved page is not published. It contains private conversation links, a local
+filesystem path, hidden tool traces, repeated generated text, and application telemetry.
+The public transcript keeps all six visible user/final-assistant messages while excluding
+those non-conversation elements. The raw page SHA-256 and support-directory file manifest
+are recorded in
 [`../SOURCE_MANIFEST.md`](../SOURCE_MANIFEST.md) and
 [`../HTML_AUXILIARY_MANIFEST.md`](../HTML_AUXILIARY_MANIFEST.md).
 
