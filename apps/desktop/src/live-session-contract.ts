@@ -140,13 +140,19 @@ export interface DeclaredLiveAsset {
 }
 
 export class LiveContractError extends Error {
-  readonly code: "bad_request" | "conflict" | "not_found" | "sealed" | "corrupt";
+  readonly code: "bad_request" | "conflict" | "not_found" | "sealed" | "corrupt" | "auth_body";
   readonly statusCode: number;
 
   constructor(
     message: string,
     code: LiveContractError["code"] = "bad_request",
-    statusCode = code === "not_found" ? 404 : code === "bad_request" ? 400 : 409
+    statusCode = code === "not_found"
+      ? 404
+      : code === "bad_request"
+        ? 400
+        : code === "auth_body"
+          ? 401
+          : 409
   ) {
     super(message);
     this.name = "LiveContractError";

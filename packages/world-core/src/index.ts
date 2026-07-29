@@ -111,6 +111,59 @@ export interface LiveSessionSnapshot {
   error?: string;
 }
 
+export type LiveSecurityState =
+  | "unavailable"
+  | "loopback_only"
+  | "pairing"
+  | "pairing_pending"
+  | "paired"
+  | "secure_listening"
+  | "error";
+
+export interface LiveNetworkInterface {
+  id: string;
+  name: string;
+  address: string;
+  family: "IPv4" | "IPv6";
+}
+
+export interface LivePairedDevice {
+  deviceId: string;
+  displayName: string;
+  pairingEpoch: number;
+  grantId: string;
+  scopes: string[];
+  pairedAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastAuthenticatedAt: string | null;
+}
+
+export interface LivePendingPairingDevice {
+  deviceId: string;
+  displayName: string;
+  pairingEpoch: number;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+export interface LiveSecuritySnapshot {
+  state: LiveSecurityState;
+  desktopId: string | null;
+  desktopName: string;
+  interfaces: LiveNetworkInterface[];
+  selectedInterfaceId: string | null;
+  secureListening: { host: string; port: number; tls: true } | null;
+  pairingInvitationUri: string | null;
+  pairingVerificationCode: string | null;
+  tlsCertificateSha256: string | null;
+  pairingExpiresAt: string | null;
+  pendingDevice: LivePendingPairingDevice | null;
+  pairedDevices: LivePairedDevice[];
+  updatedAt: string | null;
+  error?: string;
+}
+
 export interface LiveFramePreview {
   sessionId: string;
   sequenceId: number;
