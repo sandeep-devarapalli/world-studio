@@ -19,7 +19,7 @@
     "three": "0.185.1"
   },
   "devDependencies": {
-    "@types/three": "0.185.0",
-    "typescript": "6.0.3"
+    "@types/three": "0.185.1",
+    "typescript": "7.0.2"
   }
 }

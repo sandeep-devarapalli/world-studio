@@ -11,23 +11,23 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
-    "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@fontsource/source-serif-4": "^5.2.9",
-    "@fontsource/spline-sans": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/source-serif-4": "^5.3.0",
+    "@fontsource/spline-sans": "^5.3.0",
     "@sparkjsdev/spark": "2.1.0",
     "@world-studio/artifacts": "workspace:*",
     "@world-studio/design-system": "workspace:*",
     "@world-studio/renderer": "workspace:*",
     "@world-studio/world-core": "workspace:*",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "three": "0.185.1"
   },
   "devDependencies": {
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.3",
-    "typescript": "6.0.3",
-    "vite": "8.1.3"
+    "@vitejs/plugin-react": "6.0.4",
+    "typescript": "7.0.2",
+    "vite": "8.1.5"
   }
 }
