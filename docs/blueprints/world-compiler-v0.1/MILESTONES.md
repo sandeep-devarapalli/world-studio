@@ -40,9 +40,9 @@ last acceptance items. Packaged macOS local-network permission/firewall behavior
 Bonjour discovery, real QR pairing, receiver restart, Wi-Fi interruption, and two complete
 iPhone cycles must still be recorded.
 
-## M2 Canonical World Package And Editor
+## M2 Canonical World, Asset And Delta Graph
 
-Outcome: immutable backend-neutral worlds with reversible editing.
+Outcome: immutable backend-neutral worlds and assets with reversible edits and site deltas.
 
 Acceptance:
 
@@ -50,63 +50,128 @@ Acceptance:
   versions are explicit.
 - Crop, transform, filter, merge, hide, replace, objectize, and annotate operations are
   reversible and auditable.
-- Appearance, metric, collision, navigation, semantic, and physics layers stay aligned but
-  retain separate authority.
+- Appearance, metric, collision, navigation, semantic, articulation, and physics layers
+  stay aligned but retain separate authority.
+- Site revisions and asset revisions form immutable deltas rather than mutating prior
+  evidence.
 - Package migration and round-trip tests reproduce referenced bytes.
 
-## M3 Indoor Navigation Ready - R3
+## M3 Indoor Navigation And First Deployment Twin - R3
 
-Outcome: one validated indoor mobile robot or vacuum world.
+Outcome: one validated indoor mobile robot or vacuum world tied to a physical site revision.
 
 Acceptance:
 
 - Metric floor, walls, openings, occupancy, free space, spawn, and route gates pass.
 - Collision is derived from validated metric geometry, not Gaussian appearance.
-- Local Rapier and external robot-facing runs use the same explicit frame and units.
-- A vacuum demonstration completes zones, avoids a no-go area, and returns to dock with
-  reproducible route evidence.
+- The same frame, units, robot, sensor, route, and task definitions drive local and
+  robot-facing runs.
+- A vacuum demonstration completes zones, avoids a no-go area, returns to dock, and records
+  reproducible real/sim route evidence.
+- The Deployment Twin binds the exact World, site revision, robot, task, evidence, and
+  freshness status.
 
-## M4 Physical Asset Calibration Foundation
+## M4 Physics Asset Factory - A0-A4
 
-Outcome: objectized assets and C0-C2 calibration recipes.
-
-Acceptance:
-
-- Visual, metric, collision, and semantic geometry are separate and registered.
-- Direct dimensions and mass measurements record units, apparatus, uncertainty, and source.
-- Ramp, slide, drop, or compression trials produce experiment-conditioned contact
-  estimates with feasibility checks.
-- Reports compare against simulator defaults and declare approved and prohibited tasks.
-
-## M5 Isaac/ROS Sensor Alignment - R4
-
-Outcome: compile a promoted world into a remote Isaac/ROS environment.
+Outcome: reusable objectized assets with registered visual, metric, collision, semantic,
+articulation, and task-scoped physical layers.
 
 Acceptance:
 
-- Layered OpenUSD compiler preserves frame, units, visual/collision separation, and
+- Asset Passports preserve source hashes, units, frames, uncertainty, lineage, approved
+  uses, and prohibited uses.
+- Direct dimensions and mass measurements record apparatus, calibration, uncertainty, and
+  source class.
+- Effective colliders are compared with metric evidence and task-relevant openings and
+  contact surfaces.
+- Ramp, slide, drop, compression, wheel, brake, or articulation trials produce
+  experiment-conditioned estimates with feasibility checks.
+- Reports compare against simulator defaults without claiming universal physical accuracy.
+
+## M5 Newton Runtime And OpenUSD Foundation
+
+Outcome: Newton becomes the sole product physics backend after gated parity and Rapier
+removal.
+
+Acceptance:
+
+- React and product UI use a solver-neutral `SimulationClient`.
+- Electron supervises an isolated Python worker with safe job roots, capabilities, bounded
+  logs, timeout, cancellation, restart, and fail-closed unavailable state.
+- Local macOS CPU and remote Linux/NVIDIA jobs bind exact Newton, Warp, MuJoCo, solver,
+  contact, device, timestep, seed, and source-version evidence.
+- Layered OpenUSD compilation preserves frames, units, visual/collision separation, and
   provenance.
-- Isaac worker reports runtime capabilities instead of relying on schema-pinned versions.
-- ROS 2 clock, TF, odometry, controls, cameras, depth, LiDAR, and IMU pass conformance.
-- A scripted route produces sensor and pose residual reports across local, Isaac, and real
-  runs.
+- Spawn, movement, contacts, props, sensors, reset, and deterministic Episode fixtures pass
+  the declared parity thresholds.
+- Simulate, Pilot, and Episode cut over to Newton, then Rapier code and dependencies are
+  removed with no silent fallback.
 
-## M6 Rigid Interaction And Field Calibration - R5
+## M6 Newton/Isaac Lab/ROS Sensor Conformance - R4
 
-Outcome: task-scoped rigid-body dynamics validated on held-out real trials.
+Outcome: one promoted World/Asset/Robot/Task set behaves consistently across standalone
+Newton and external robot-learning adapters.
 
 Acceptance:
 
-- Instrumented C3-C4 experiments estimate identifiable mass, center of mass, inertia, and
-  contact parameters.
-- Train and held-out trials are immutable and separated.
-- Real/sim residuals improve over simulator defaults without unacceptable regression.
-- Asset and World v2 retain ancestry, solver, simulator, contact-model, and episode
-  provenance.
+- Isaac Lab Newton reports capabilities and consumes the same immutable versions.
+- Isaac RTX and Isaac Sim remain separate rendering/sensor adapters rather than hidden
+  physics authorities.
+- ROS 2 clock, TF, odometry, controls, cameras, depth, LiDAR, and IMU pass frame, timing,
+  noise, and route conformance.
+- CPU/CUDA and standalone/adapter residual reports include unsupported features and
+  prohibited uses.
+- A scripted route produces comparable state, contact, sensor, and pose evidence.
 
-## M7 Expanded Embodiments
+## M7 Real2Sim Promise And Rigid Calibration - P5/P6
 
-Outcome: readiness gates expand by embodiment, not by reusing one generic score.
+Outcome: task-scoped rigid or articulated dynamics are validated on matched and held-out
+physical trials.
+
+Acceptance:
+
+- A versioned Real2Sim Promise binds exact World, Asset, Robot, Sensor, Task, solver
+  profile, collision representation, and evidence.
+- Instrumented C3-C4 experiments estimate identifiable mass, center of mass, inertia,
+  contact, wheel, or joint parameters with uncertainty.
+- Fitting and held-out trials are immutable and separated.
+- Matched open-loop observations, states, contacts, and outcomes are compared.
+- Held-out task residuals improve over simulator defaults without unacceptable safety or
+  behavior regression.
+
+## M8 Predictive Eval Studio - P7
+
+Outcome: simulated evaluation supports useful policy and engineering decisions.
+
+Acceptance:
+
+- Eval suites bind immutable variations, policies, worlds, assets, robots, sensors, tasks,
+  solver profiles, and seeds.
+- Reports measure policy rank correlation, improvement-direction agreement, failure-region
+  overlap, critical-failure recall, false-safe rate, and task outcomes.
+- Regressions and known unknowns are visible by variation and operating envelope.
+- Promotion decisions are explicit `reject|shadow|canary|promote|rollback` records.
+
+## M9 Deployment Operations And Continuous R2S2R - P8
+
+Outcome: field evidence continuously updates a versioned Deployment Twin without
+overwriting history.
+
+Acceptance:
+
+- Targeted Capture Splat recaptures produce site revisions and
+  changed/unchanged/unknown proposals.
+- Impact analysis marks affected assets, routes, tasks, Promises, eval suites, and
+  deployments stale.
+- Shadow replay, bounded canary, promotion, and rollback use immutable evidence and
+  declared criteria.
+- Zone-level freshness and field Episodes are monitored.
+- A full capture, compile, evaluate, deploy, recapture, revise, and revalidate loop passes.
+
+## M10 Expanded Embodiments And Multiphysics
+
+Outcome: readiness expands by embodiment and physics domain, not by reusing one generic
+score.
 
 Order:
 
@@ -114,7 +179,7 @@ Order:
 2. Outdoor UAV.
 3. Vehicles and autonomous driving.
 4. Rigid and articulated manipulation.
-5. Deformable and contact-rich tasks.
+5. Deformable, contact-rich, and coupled multiphysics tasks.
 
-Each embodiment requires its own sensors, collision model, task profile, safety envelope,
-physical evidence, and real/sim validation.
+Each embodiment requires its own sensors, collision/contact model, task profile, safety
+envelope, physical evidence, solver capability report, and real/sim validation.

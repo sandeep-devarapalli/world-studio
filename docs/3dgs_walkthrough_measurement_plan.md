@@ -414,7 +414,9 @@ checksum-bound candidate report. Metric measurement remains blocked.
 ## Reference Boundaries
 
 - Spark remains World Studio's Gaussian renderer.
-- Rapier remains the browser physics engine.
+- Rapier remains the current browser physics implementation for this plan checkpoint. The
+  public roadmap targets a supervised Newton worker and removes Rapier only after parity
+  and cutover gates pass.
 - Potree is an evaluation reference for ordinary large point clouds.
 - AHOLO patterns inform navigation and LoD UX but are not a runtime dependency.
 - Source frames remain visual evidence.

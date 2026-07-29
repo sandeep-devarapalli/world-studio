@@ -37,16 +37,21 @@ Preserve World Studio's six modes:
 
 Do not introduce a seventh mode for a subsystem that belongs inside these workflows.
 
-Preserve the current local runtime boundaries:
+Preserve the current and target runtime boundaries:
 
 - **Spark** renders Gaussian splat proposals.
 - **Three.js** provides scene, camera, and editor composition.
-- **Rapier** provides local rigid-body and collision simulation.
+- **Rapier** currently provides local rigid-body and collision simulation. It is the
+  feature-frozen parity baseline for the approved migration.
+- **Newton** is the target physics runtime through a supervised worker. It is not yet an
+  implemented product dependency.
 - External workers such as reconstruction or simulator services remain explicit, optional
   processes with versioned inputs and outputs.
 
-A proposal to replace or blur one of these boundaries needs a roadmap issue, migration plan,
-compatibility tests, and a rollback path.
+A change to these boundaries must follow the
+[Newton migration gates](docs/blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/NEWTON_MIGRATION_MILESTONES.md),
+with compatibility tests and a rollback path. Do not add a silent Rapier fallback after
+Newton cutover.
 
 ## Authority Language
 
@@ -112,7 +117,8 @@ Before proposing an external dependency, model, dataset, or code reference, reco
 - intended use: research reference, optional tool, external worker, build dependency, runtime
   dependency, model, or dataset;
 - transitive license, platform, security, maintenance, and distribution implications;
-- compatibility with the six modes and Spark/Three.js/Rapier boundaries;
+- compatibility with the six modes, Spark/Three.js visual boundary, and solver-neutral
+  Newton target architecture;
 - adoption, defer, research-only, or reject decision with acceptance gates.
 
 Do not copy GPL, proprietary, or license-unclear code into the Apache-2.0 runtime. Research

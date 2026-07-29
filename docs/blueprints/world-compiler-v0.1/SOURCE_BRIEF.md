@@ -6,6 +6,9 @@
 > Current adoption status, active contract paths, and runtime capability decisions are
 > authoritative in this folder's `README.md` and `ADOPTION_STATUS.md`; version pins and
 > implementation claims below remain source-brief planning context.
+> The permanent Rapier assumption below is superseded by the
+> [R2S2R and Newton adoption note](r2s2r-newton-2026-07-29/README.md). Rapier remains the
+> migration baseline until the documented Newton parity and cutover gates pass.
 
 I prepared a Codex-ready implementation bundle containing the product strategy, system architecture, NVIDIA Isaac integration design, R2S2R validation framework, implementation roadmap, JSON Schemas, examples, and a direct Codex prompt:
 

@@ -76,12 +76,17 @@ ownership model:
 - Capture Splat owns immutable source evidence and capture decisions.
 - World Studio owns world versions, coordinate frames, units, provenance, uncertainty,
   edits, readiness, robot/task profiles, adapters, and Episodes.
-- Spark + Three.js + Rapier provides local visual composition and preview execution.
-- Isaac, ROS 2, reconstruction, and future simulator backends run through external,
-  capability-reporting workers.
+- Spark + Three.js provides visual composition and Gaussian rendering.
+- Rapier is the active, feature-frozen migration baseline for local preview execution.
+- Newton is the target physics runtime through a supervised Python worker.
+- Isaac Lab Newton, Isaac RTX, Isaac Sim, ROS 2, reconstruction, and other adapters run
+  through external, capability-reporting workers.
 
 The canonical World Package is still a proposal. Existing local package and Episode
 contracts remain active until a runtime migration and round-trip path is implemented.
+
+The target R2S2R and runtime boundaries are documented in the
+[R2S2R and Newton adoption note](blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md).
 
 ## Physical Asset Calibration Boundary
 
@@ -93,6 +98,31 @@ promotion.
 
 Visual, metric, collision, semantic, and physics representations may share transforms, but
 one role never gains another role's authority automatically.
+
+## Physics Runtime Migration Boundary
+
+Newton is not imported into the React bundle. Electron supervises an isolated Python worker
+and exposes a solver-neutral `SimulationClient` to the renderer.
+
+The worker owns physics state, contacts, joints, physics sensors, stepping, and failure
+evidence. Every session binds exact World, Asset, Robot, Sensor, Task, solver profile,
+Newton, Warp, MuJoCo, contact-pipeline, platform, device, timestep, substep, seed, and
+capability data. Spark and Three.js display interpolated state but never become the
+authoritative physics clock.
+
+Migration is gated:
+
+1. preserve current Rapier behavior as fixtures;
+2. move UI code behind the solver-neutral client;
+3. add worker lifecycle, corruption, traversal, timeout, restart, and unavailable-state
+   tests;
+4. reproduce accepted fixtures on local Newton CPU and remote Newton CUDA;
+5. validate effective colliders and task outcomes;
+6. switch Simulate, Pilot, and Episode to Newton;
+7. remove Rapier dependencies and runtime paths.
+
+Browser-only builds report `worker unavailable` after cutover. They do not silently select
+a JavaScript physics backend.
 
 ## Renderer Boundary
 
@@ -107,8 +137,9 @@ making it typed:
 - screen-space radius picking
 - screenshot capture
 
-Spark + Three.js should replace the canvas fallback behind this boundary. Rapier should
-enter through a simulation service, not by coupling physics directly to React components.
+Spark + Three.js should replace the canvas fallback behind this boundary. Physics should
+enter only through the solver-neutral simulation service, not by coupling a backend
+directly to React components.
 
 ## Loading Boundary
 

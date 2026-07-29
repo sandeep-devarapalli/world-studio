@@ -6,21 +6,23 @@ is relevant and whether it can be used as a dependency in an Apache 2.0 project.
 | Repo | License | World Studio Role | Apache Repo Status |
 |---|---:|---|---|
 | `sparkjsdev/spark` | MIT | Primary Three.js Gaussian splat renderer candidate. | Safe dependency after API review. |
-| `dimforge/rapier` | Apache-2.0 | Primary browser/Electron physics engine. | Safe dependency. |
+| `dimforge/rapier` | Apache-2.0 | Current browser/Electron physics implementation and migration parity baseline. | Active but removal-bound after Newton cutover; freeze new backend-specific product work. |
+| `newton-physics/newton` | Apache-2.0 | Target physics runtime through a supervised Python worker. | Planned runtime dependency after pinned local/remote parity, collision, and Episode gates. |
+| `NVIDIA/warp` | Apache-2.0 | Newton compute/runtime foundation and device capability boundary. | Transitive target dependency; pin and report exact version/device capabilities. |
 | `playcanvas/splat-transform` | MIT | Splat conversion, filtering, LoD, voxel/collision preprocessing reference/tool. | Safe dependency after CLI/runtime review. |
 | `playcanvas/supersplat` | MIT | Browser 3DGS editor UX reference. | Reference or dependency after review. |
 | `playcanvas/supersplat-viewer` | MIT | Viewer, LoD, URL parameter, collision asset reference. | Reference or dependency after review. |
 | `playcanvas/engine` | MIT | WebGL/WebGPU engine and ammo.js integration reference. | Reference; not default runtime. |
 | `playcanvas/pcui` | MIT | Web tool UI patterns; design system remains custom. | Reference; optional dependency. |
 | `manycoretech/aholo-viewer` | MIT | Chunked LoD and high-scale 3DGS streaming reference. | Reference or optional dependency after review. |
-| `bulletphysics/bullet3` | zlib core; extras require audit | Physics/collision reference and possible native backend reference. | Compatible if core-only; Rapier is default. |
-| `google-deepmind/mujoco` | Apache-2.0 | Articulated robotics physics reference. | Reference; native runtime is not default. |
+| `bulletphysics/bullet3` | zlib core; extras require audit | Physics/collision reference and possible native backend reference. | Compatible if core-only; not the target product backend. |
+| `google-deepmind/mujoco` | Apache-2.0 | Newton `SolverMuJoCo` CPU and model semantics reference. | Target solver dependency through Newton; effective mesh collision requires explicit validation. |
 | `Genesis-Embodied-AI/genesis-world` | Apache-2.0 | Embodied simulation architecture reference. | Reference; Python/runtime-heavy. |
 | `allenai/ai2thor` | Apache-2.0 | Embodied AI mode/dataset/sensor inspiration. | Reference only; Unity-bound. |
 | `microsoft/AirSim` | MIT | Drone/car API and sensor inspiration. | Reference only; Unreal/Unity-bound. |
 | `iamaisim/ProjectAirSim` | MIT | Modern AirSim-style simulation architecture reference. | Reference only; Unreal-bound. |
 | `carla-simulator/carla` | MIT code, CC-BY assets, Unreal dependencies | Autonomous driving simulator reference. | Compatible for client/API study; keep simulator runtime external. |
-| `isaac-sim/IsaacLab` | BSD-3/Apache-2.0 mix, Isaac Sim dependency | Robot learning/sensor sim reference. | Compatible source reference; runtime depends on Isaac Sim. |
+| `isaac-sim/IsaacLab` | BSD-3/Apache-2.0 mix, backend-dependent runtime terms | First external Newton training/evaluation and conformance adapter. | External adapter; Newton backend is beta and requires capability-specific acceptance. |
 | `isaac-sim/IsaacSim` | Apache-2.0 source plus NVIDIA component terms | High-fidelity robotics simulation reference. | Reference/external unless NVIDIA runtime terms are accepted. |
 | `graphdeco-inria/i3dgs` | Inria research/evaluation license | Immediate unordered 3DGS and global consistency research worker. | Isolated research only; not production-selectable or vendored. |
 | `Robbyant/lingbot-map` | Apache-2.0 code; model/data terms require review | Streaming feed-forward reconstruction and progressive world proposal reference. | Optional isolated worker after pinned reproduction and model-term audit. |

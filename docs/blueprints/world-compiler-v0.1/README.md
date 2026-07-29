@@ -27,6 +27,8 @@ It is not a claim that every proposed subsystem exists.
   tiers and promotion rules.
 - [`NEXT_IMPLEMENTATION_PROMPT.md`](NEXT_IMPLEMENTATION_PROMPT.md) is the current actionable
   handoff.
+- [`r2s2r-newton-2026-07-29/`](r2s2r-newton-2026-07-29/) reconciles the supplied R2S2R
+  research and defines the gated Newton target architecture.
 - [`SOURCE_BRIEF.md`](SOURCE_BRIEF.md) is the repository-linked version of the supplied
   proposal.
 - [`source/`](source/) preserves every extracted source file unchanged.
@@ -52,6 +54,12 @@ data, not schema enums.
 
 ## Runtime Boundary
 
-Spark + Three.js + Rapier remains the local browser/Electron runtime. Isaac Sim/Lab remains
-an external worker and adapter. This blueprint preserves the six World Studio modes: View,
-Edit, Simulate, Pilot, Sensors, and Episode.
+Spark + Three.js remains the visual browser/Electron runtime. Rapier remains the active
+simulation implementation only while solver-neutral and Newton parity gates are built.
+Newton is the target physics runtime through a supervised Python worker; it is not yet an
+implemented dependency. Isaac Lab Newton, Isaac RTX, Isaac Sim, and ROS 2 remain external,
+capability-tested adapters.
+
+The migration ends by removing Rapier after parity and cutover. It does not retain a silent
+fallback or two competing physics authorities. This blueprint preserves the six World
+Studio modes: View, Edit, Simulate, Pilot, Sensors, and Episode.

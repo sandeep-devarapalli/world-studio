@@ -8,7 +8,10 @@ Its long-term product role is an evidence-backed world compiler between Capture 
 task-scoped simulation. The public
 [World Compiler Blueprint](docs/blueprints/world-compiler-v0.1/README.md) reconciles that
 direction with the implementation already on `main`, including milestone gates and the
-Physical Asset Calibration subsystem.
+Physical Asset Calibration subsystem. The
+[R2S2R and Newton adoption note](docs/blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md)
+defines Newton as the target physics runtime and preserves Rapier as the current,
+removal-bound migration baseline until parity gates pass.
 
 This repository is the Apache 2.0 implementation of the World Studio product described
 in `docs/source-materials/World studio development.docx` and designed in
@@ -26,6 +29,9 @@ verified exports, or local desktop files.
   breadcrumbs, and screenshot smoke coverage.
 - Rapier-backed simulation substrate for deterministic Pilot movement, spawn placement,
   prop spawning, collision/debug overlays, selected-prop inspection, and Episode recording.
+- A documented Newton migration boundary. Newton is not implemented yet; the target is an
+  Electron-supervised Python worker with explicit solver profiles, capability reports, and
+  local CPU or remote NVIDIA execution.
 - Browser and Electron package loading for World Studio packages, generic JSON packages,
   Budo-compatible manifests, article figure views, and verified export folders.
 - An explicit loopback-only Capture Splat live-session receiver for replaying source-frame
@@ -172,7 +178,7 @@ adapters layered on top.
 
 ## Roadmap
 
-See `ROADMAP.md` for the public M0-M7 sequence. Detailed outcomes, dependencies, and
+See `ROADMAP.md` for the public M0-M10 sequence. Detailed outcomes, dependencies, and
 acceptance gates live in
 `docs/blueprints/world-compiler-v0.1/MILESTONES.md`.
 
