@@ -18,6 +18,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Checkout Capture Splat replay dependency
+        uses: actions/checkout@v7
+        with:
+          repository: sandeep-devarapalli/capture-splat
+          ref: afda43a4513948d7381cd35cb74d225e4807d481
+          path: .ci/capture-splat
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -29,14 +36,30 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install Capture Splat replay dependency
+        run: python -m pip install --disable-pip-version-check -e .ci/capture-splat
 
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Unit tests
         run: pnpm test
+
+      - name: Live session end-to-end
+        env:
+          CAPTURE_SPLAT_REPO: ${{ github.workspace }}/.ci/capture-splat
+        run: pnpm test:live-e2e
+
+      - name: World compiler blueprint validation
+        run: pnpm validate:blueprint
 
       - name: Build
         run: pnpm build

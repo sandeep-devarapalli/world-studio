@@ -1,0 +1,734 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:proposal:world_studio.calibration_experiment.v0.1",
+  "title": "World Studio Calibration Experiment v0.1",
+  "description": "Design proposal only. Records an instrumented calibration protocol and immutable evidence. An experiment record is not itself physics authority and does not promote inferred parameters.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "experiment_id",
+    "asset",
+    "calibration_tier",
+    "experiment_type",
+    "created_at",
+    "lifecycle_status",
+    "clock_domains",
+    "apparatus",
+    "sensors",
+    "robot_profile",
+    "protocol",
+    "environment",
+    "trials",
+    "raw_streams",
+    "exclusions",
+    "safety_limits",
+    "authority",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "world_studio.calibration_experiment.v0.1"
+    },
+    "experiment_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "version",
+        "profile"
+      ],
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "profile": {
+          "$ref": "#/$defs/artifactReference"
+        }
+      }
+    },
+    "calibration_tier": {
+      "enum": [
+        "C0",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5"
+      ]
+    },
+    "experiment_type": {
+      "enum": [
+        "capture_only",
+        "dimension",
+        "mass",
+        "inclined_plane",
+        "slide",
+        "drop",
+        "compression",
+        "robot_force_torque",
+        "heldout_real_sim",
+        "closed_loop_field"
+      ]
+    },
+    "created_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "lifecycle_status": {
+      "enum": [
+        "draft",
+        "armed",
+        "recording",
+        "complete",
+        "held",
+        "rejected"
+      ]
+    },
+    "clock_domains": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "clock_id",
+          "kind",
+          "synchronization_status",
+          "offset_s",
+          "uncertainty_s"
+        ],
+        "properties": {
+          "clock_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "kind": {
+            "enum": [
+              "monotonic",
+              "media",
+              "arkit_session",
+              "robot",
+              "sensor_hardware",
+              "simulator"
+            ]
+          },
+          "synchronization_status": {
+            "enum": [
+              "unsynchronized",
+              "estimated",
+              "validated",
+              "held"
+            ]
+          },
+          "offset_s": {
+            "$ref": "#/$defs/finiteNumber"
+          },
+          "uncertainty_s": {
+            "$ref": "#/$defs/nonNegativeFinite"
+          }
+        }
+      }
+    },
+    "apparatus": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "apparatus_id",
+          "kind",
+          "calibration_status",
+          "calibration",
+          "frame_id"
+        ],
+        "properties": {
+          "apparatus_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "kind": {
+            "enum": [
+              "scale",
+              "caliper",
+              "inclined_plane",
+              "drop_rig",
+              "compression_rig",
+              "robot",
+              "force_torque_sensor",
+              "camera",
+              "fiducial"
+            ]
+          },
+          "calibration_status": {
+            "enum": [
+              "unverified",
+              "current",
+              "expired",
+              "held"
+            ]
+          },
+          "calibration": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/artifactReference"
+              }
+            ]
+          },
+          "frame_id": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "sensors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sensor_id",
+          "kind",
+          "frame_id",
+          "clock_id",
+          "sample_rate_hz",
+          "calibration_status",
+          "calibration"
+        ],
+        "properties": {
+          "sensor_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "kind": {
+            "enum": [
+              "rgb",
+              "depth",
+              "imu",
+              "force",
+              "torque",
+              "force_torque",
+              "position",
+              "velocity",
+              "angle",
+              "temperature"
+            ]
+          },
+          "frame_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "clock_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "sample_rate_hz": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000
+          },
+          "calibration_status": {
+            "enum": [
+              "unverified",
+              "current",
+              "expired",
+              "held"
+            ]
+          },
+          "calibration": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/artifactReference"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "robot_profile": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/artifactReference"
+        }
+      ]
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_id",
+        "revision",
+        "instructions",
+        "initial_conditions",
+        "controlled_variables",
+        "measured_outputs"
+      ],
+      "properties": {
+        "protocol_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "instructions": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "initial_conditions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/namedMeasurement"
+          }
+        },
+        "controlled_variables": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "measured_outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gravity_m_s2",
+        "temperature_k",
+        "relative_humidity",
+        "surface_material_ids",
+        "notes"
+      ],
+      "properties": {
+        "gravity_m_s2": {
+          "$ref": "#/$defs/vector3"
+        },
+        "temperature_k": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "relative_humidity": {
+          "$ref": "#/$defs/fraction"
+        },
+        "surface_material_ids": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "trials": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trial_id",
+          "repeat_index",
+          "include_in_fit",
+          "outcome",
+          "measurements",
+          "data"
+        ],
+        "properties": {
+          "trial_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "repeat_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999
+          },
+          "include_in_fit": {
+            "type": "boolean"
+          },
+          "outcome": {
+            "enum": [
+              "complete",
+              "aborted",
+              "excluded",
+              "sensor_fault",
+              "safety_stop"
+            ]
+          },
+          "measurements": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "$ref": "#/$defs/namedMeasurement"
+            }
+          },
+          "data": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4096,
+            "items": {
+              "$ref": "#/$defs/artifactReference"
+            }
+          }
+        }
+      }
+    },
+    "raw_streams": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stream_id",
+          "sensor_id",
+          "clock_id",
+          "artifact"
+        ],
+        "properties": {
+          "stream_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "sensor_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "clock_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "artifact": {
+            "$ref": "#/$defs/artifactReference"
+          }
+        }
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "trial_id",
+          "reason",
+          "decision_by"
+        ],
+        "properties": {
+          "trial_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "decision_by": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "safety_limits": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "limit_id",
+          "quantity",
+          "comparison",
+          "threshold",
+          "response"
+        ],
+        "properties": {
+          "limit_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "quantity": {
+            "$ref": "#/$defs/identifier"
+          },
+          "comparison": {
+            "enum": [
+              "less_than",
+              "less_than_or_equal",
+              "greater_than",
+              "greater_than_or_equal"
+            ]
+          },
+          "threshold": {
+            "$ref": "#/$defs/measurement"
+          },
+          "response": {
+            "enum": [
+              "warn",
+              "pause",
+              "abort",
+              "emergency_stop"
+            ]
+          }
+        }
+      }
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+    },
+    "finiteNumber": {
+      "type": "number",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000
+    },
+    "nonNegativeFinite": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    "fraction": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/finiteNumber"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000]+$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "//|/$"
+          },
+          {
+            "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
+          },
+          {
+            "pattern": "(^|/)\\.\\.?(/|$)"
+          }
+        ]
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "media_type"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
+        }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "unit",
+        "uncertainty"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/finiteNumber"
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "s",
+            "rad",
+            "kg",
+            "N",
+            "N*m",
+            "m/s",
+            "m/s^2",
+            "rad/s",
+            "K",
+            "dimensionless"
+          ]
+        },
+        "uncertainty": {
+          "$ref": "#/$defs/nonNegativeFinite"
+        }
+      }
+    },
+    "namedMeasurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "measurement"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "measurement": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "approved_for",
+        "not_approved_for",
+        "limitations"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "experimental_evidence_only",
+            "task_scoped_validation_input",
+            "external_validation_required"
+          ]
+        },
+        "approved_for": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recorder",
+        "recorder_version",
+        "configuration_sha256",
+        "operator",
+        "started_at",
+        "completed_at"
+      ],
+      "properties": {
+        "recorder": {
+          "$ref": "#/$defs/identifier"
+        },
+        "recorder_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "configuration_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "operator": {
+          "$ref": "#/$defs/identifier"
+        },
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    }
+  }
+}

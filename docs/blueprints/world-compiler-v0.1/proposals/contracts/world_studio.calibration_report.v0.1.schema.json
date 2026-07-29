@@ -1,0 +1,931 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:proposal:world_studio.calibration_report.v0.1",
+  "title": "World Studio Calibration Report v0.1",
+  "description": "Design proposal only. Reports task-scoped parameter estimation and held-out real/sim evidence. A finite solve or lower training residual does not establish universal physics accuracy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "report_id",
+    "asset",
+    "calibration_tier",
+    "created_at",
+    "lifecycle_status",
+    "experiments",
+    "solver",
+    "data_split",
+    "estimates",
+    "residuals",
+    "baseline_comparison",
+    "feasibility",
+    "identifiability",
+    "promotion",
+    "authority",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "world_studio.calibration_report.v0.1"
+    },
+    "report_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "asset_id",
+        "input_version",
+        "proposed_version",
+        "profile"
+      ],
+      "properties": {
+        "asset_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "input_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "proposed_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "profile": {
+          "$ref": "#/$defs/artifactReference"
+        }
+      }
+    },
+    "calibration_tier": {
+      "enum": [
+        "C0",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5"
+      ]
+    },
+    "created_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "lifecycle_status": {
+      "enum": [
+        "draft",
+        "complete",
+        "held",
+        "rejected",
+        "superseded"
+      ]
+    },
+    "experiments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/artifactReference"
+      }
+    },
+    "solver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "backend",
+        "configuration_sha256",
+        "converged",
+        "finite_result"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "backend": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "configuration_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "finite_result": {
+          "type": "boolean"
+        }
+      }
+    },
+    "data_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "training_trial_ids",
+        "heldout_trial_ids",
+        "split_method",
+        "split_seed"
+      ],
+      "properties": {
+        "training_trial_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "heldout_trial_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "split_method": {
+          "enum": [
+            "predeclared",
+            "grouped_random",
+            "temporal_holdout",
+            "environment_holdout",
+            "task_holdout"
+          ]
+        },
+        "split_seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "estimates": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/$defs/parameterEstimate"
+      }
+    },
+    "residuals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "training",
+        "heldout"
+      ],
+      "properties": {
+        "training": {
+          "$ref": "#/$defs/metricArray"
+        },
+        "heldout": {
+          "$ref": "#/$defs/metricArray"
+        }
+      }
+    },
+    "baseline_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_source",
+        "metrics",
+        "baseline_improved"
+      ],
+      "properties": {
+        "baseline_source": {
+          "enum": [
+            "simulator_default",
+            "catalog",
+            "previous_asset_version"
+          ]
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "metric_id",
+              "unit",
+              "direction",
+              "baseline_value",
+              "calibrated_value",
+              "required_improvement_fraction",
+              "observed_improvement_fraction",
+              "passed"
+            ],
+            "properties": {
+              "metric_id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "unit": {
+                "$ref": "#/$defs/unit"
+              },
+              "direction": {
+                "enum": [
+                  "lower_is_better",
+                  "higher_is_better"
+                ]
+              },
+              "baseline_value": {
+                "$ref": "#/$defs/finiteNumber"
+              },
+              "calibrated_value": {
+                "$ref": "#/$defs/finiteNumber"
+              },
+              "required_improvement_fraction": {
+                "$ref": "#/$defs/fraction"
+              },
+              "observed_improvement_fraction": {
+                "$ref": "#/$defs/finiteNumber"
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "baseline_improved": {
+          "type": "boolean"
+        }
+      }
+    },
+    "feasibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all_checks_passed",
+        "checks"
+      ],
+      "properties": {
+        "all_checks_passed": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        }
+      }
+    },
+    "identifiability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uncertainty_bounded",
+        "checks"
+      ],
+      "properties": {
+        "uncertainty_bounded": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "public_claim",
+        "task_envelope",
+        "approved_for",
+        "not_approved_for",
+        "rationale",
+        "reviewer"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "promote",
+            "hold",
+            "reject"
+          ]
+        },
+        "public_claim": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "physics-calibrated within a validated task envelope"
+            }
+          ]
+        },
+        "task_envelope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "approved_for": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "reviewer": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": true,
+          "report_id": true,
+          "asset": true,
+          "calibration_tier": true,
+          "created_at": true,
+          "lifecycle_status": true,
+          "experiments": true,
+          "solver": true,
+          "data_split": true,
+          "estimates": true,
+          "residuals": true,
+          "baseline_comparison": true,
+          "feasibility": true,
+          "identifiability": true,
+          "promotion": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "decision": {
+                "const": "promote"
+              },
+              "public_claim": true,
+              "task_envelope": true,
+              "approved_for": true,
+              "not_approved_for": true,
+              "rationale": true,
+              "reviewer": true
+            },
+            "required": [
+              "decision"
+            ]
+          },
+          "authority": true,
+          "provenance": true
+        },
+        "required": [
+          "promotion"
+        ]
+      },
+      "then": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": true,
+          "report_id": true,
+          "asset": true,
+          "calibration_tier": {
+            "enum": [
+              "C4",
+              "C5"
+            ]
+          },
+          "created_at": true,
+          "lifecycle_status": true,
+          "experiments": true,
+          "solver": true,
+          "data_split": true,
+          "estimates": true,
+          "residuals": true,
+          "baseline_comparison": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "baseline_source": true,
+              "metrics": true,
+              "baseline_improved": {
+                "const": true
+              }
+            }
+          },
+          "feasibility": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "all_checks_passed": {
+                "const": true
+              },
+              "checks": true
+            }
+          },
+          "identifiability": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "uncertainty_bounded": {
+                "const": true
+              },
+              "checks": true
+            }
+          },
+          "promotion": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "decision": true,
+              "public_claim": {
+                "const": "physics-calibrated within a validated task envelope"
+              },
+              "task_envelope": true,
+              "approved_for": true,
+              "not_approved_for": true,
+              "rationale": true,
+              "reviewer": true
+            }
+          },
+          "authority": true,
+          "provenance": true
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+    },
+    "finiteNumber": {
+      "type": "number",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000
+    },
+    "nonNegativeFinite": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    "fraction": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "unit": {
+      "enum": [
+        "m",
+        "s",
+        "rad",
+        "kg",
+        "kg*m^2",
+        "N",
+        "N*m",
+        "m/s",
+        "m/s^2",
+        "rad/s",
+        "N/m",
+        "N*s/m",
+        "dimensionless"
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000]+$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "//|/$"
+          },
+          {
+            "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
+          },
+          {
+            "pattern": "(^|/)\\.\\.?(/|$)"
+          }
+        ]
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "media_type"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
+        }
+      }
+    },
+    "parameterEstimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parameter_id",
+        "kind",
+        "component_names",
+        "value",
+        "unit",
+        "valid_range",
+        "uncertainty",
+        "source_class",
+        "experiment_ids",
+        "solver_provenance",
+        "simulator_scope",
+        "contact_model_scope",
+        "approved_for",
+        "not_approved_for"
+      ],
+      "properties": {
+        "parameter_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": [
+            "dimensions",
+            "mass",
+            "center_of_mass",
+            "inertia_tensor",
+            "static_friction",
+            "dynamic_friction",
+            "restitution",
+            "stiffness",
+            "damping",
+            "rolling_resistance",
+            "articulation"
+          ]
+        },
+        "component_names": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "value": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/finiteNumber"
+          }
+        },
+        "unit": {
+          "$ref": "#/$defs/unit"
+        },
+        "valid_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minimum",
+            "maximum"
+          ],
+          "properties": {
+            "minimum": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/finiteNumber"
+              }
+            },
+            "maximum": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/finiteNumber"
+              }
+            }
+          }
+        },
+        "uncertainty": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "model",
+            "absolute",
+            "confidence_level"
+          ],
+          "properties": {
+            "model": {
+              "enum": [
+                "bounded",
+                "standard_deviation",
+                "confidence_interval"
+              ]
+            },
+            "absolute": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/nonNegativeFinite"
+              }
+            },
+            "confidence_level": {
+              "$ref": "#/$defs/fraction"
+            }
+          }
+        },
+        "source_class": {
+          "enum": [
+            "measured_direct",
+            "measured_indirect",
+            "catalog",
+            "estimated",
+            "simulator_default"
+          ]
+        },
+        "experiment_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "solver_provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "version",
+            "configuration_sha256"
+          ],
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/identifier"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "configuration_sha256": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        "simulator_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "simulator",
+            "version"
+          ],
+          "properties": {
+            "simulator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        },
+        "contact_model_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "model",
+            "material_pair",
+            "task_envelope"
+          ],
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "material_pair": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "task_envelope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        },
+        "approved_for": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "metricArray": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "metric_id",
+          "value",
+          "unit"
+        ],
+        "properties": {
+          "metric_id": {
+            "$ref": "#/$defs/identifier"
+          },
+          "value": {
+            "$ref": "#/$defs/finiteNumber"
+          },
+          "unit": {
+            "$ref": "#/$defs/unit"
+          }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_id",
+        "passed",
+        "details"
+      ],
+      "properties": {
+        "check_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "approved_for",
+        "not_approved_for",
+        "limitations"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "calibration_evidence_only",
+            "task_scoped_validated_physics",
+            "external_validation_required"
+          ]
+        },
+        "approved_for": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer",
+        "producer_version",
+        "run_id",
+        "created_at",
+        "input_sha256"
+      ],
+      "properties": {
+        "producer": {
+          "$ref": "#/$defs/identifier"
+        },
+        "producer_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "run_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "input_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

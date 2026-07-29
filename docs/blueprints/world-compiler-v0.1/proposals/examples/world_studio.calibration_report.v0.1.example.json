@@ -1,0 +1,188 @@
+{
+  "schema": "world_studio.calibration_report.v0.1",
+  "report_id": "desk_friction_report_001",
+  "asset": {
+    "asset_id": "desk_asset_001",
+    "input_version": 1,
+    "proposed_version": 2,
+    "profile": {
+      "path": "assets/desk_001/physical_asset.json",
+      "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "size_bytes": 18340,
+      "media_type": "application/json"
+    }
+  },
+  "calibration_tier": "C2",
+  "created_at": "2026-07-29T10:00:00Z",
+  "lifecycle_status": "held",
+  "experiments": [
+    {
+      "path": "experiments/inclined_plane_001/experiment.json",
+      "sha256": "sha256:1717171717171717171717171717171717171717171717171717171717171717",
+      "size_bytes": 22480,
+      "media_type": "application/json"
+    }
+  ],
+  "solver": {
+    "name": "bounded_least_squares",
+    "version": "1.0",
+    "backend": "cpu",
+    "configuration_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "converged": true,
+    "finite_result": true
+  },
+  "data_split": {
+    "training_trial_ids": [
+      "inclined_plane_001_trial_01"
+    ],
+    "heldout_trial_ids": [
+      "inclined_plane_001_trial_02"
+    ],
+    "split_method": "predeclared",
+    "split_seed": 7
+  },
+  "estimates": [
+    {
+      "parameter_id": "desk_floor_static_friction",
+      "kind": "static_friction",
+      "component_names": [
+        "coefficient"
+      ],
+      "value": [
+        0.42
+      ],
+      "unit": "dimensionless",
+      "valid_range": {
+        "minimum": [
+          0.35
+        ],
+        "maximum": [
+          0.49
+        ]
+      },
+      "uncertainty": {
+        "model": "confidence_interval",
+        "absolute": [
+          0.07
+        ],
+        "confidence_level": 0.95
+      },
+      "source_class": "measured_indirect",
+      "experiment_ids": [
+        "inclined_plane_001"
+      ],
+      "solver_provenance": {
+        "name": "bounded_least_squares",
+        "version": "1.0",
+        "configuration_sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "simulator_scope": {
+        "simulator": "rapier",
+        "version": "runtime-reported"
+      },
+      "contact_model_scope": {
+        "model": "coulomb_rigid_contact",
+        "material_pair": "desk_laminate__test_floor_tile",
+        "task_envelope": "Low-speed sliding on the recorded dry ceramic test surface."
+      },
+      "approved_for": [
+        "c2_friction_experiment_review"
+      ],
+      "not_approved_for": [
+        "other_material_pairs",
+        "wet_surfaces",
+        "robot_safety",
+        "deployment"
+      ]
+    }
+  ],
+  "residuals": {
+    "training": [
+      {
+        "metric_id": "slip_angle_error",
+        "value": 0.011,
+        "unit": "rad"
+      }
+    ],
+    "heldout": [
+      {
+        "metric_id": "slip_angle_error",
+        "value": 0.019,
+        "unit": "rad"
+      }
+    ]
+  },
+  "baseline_comparison": {
+    "baseline_source": "simulator_default",
+    "metrics": [
+      {
+        "metric_id": "heldout_slip_angle_error",
+        "unit": "rad",
+        "direction": "lower_is_better",
+        "baseline_value": 0.023,
+        "calibrated_value": 0.019,
+        "required_improvement_fraction": 0.2,
+        "observed_improvement_fraction": 0.174,
+        "passed": false
+      }
+    ],
+    "baseline_improved": false
+  },
+  "feasibility": {
+    "all_checks_passed": true,
+    "checks": [
+      {
+        "check_id": "friction_nonnegative",
+        "passed": true,
+        "details": "The estimated coefficient and its valid range are nonnegative."
+      }
+    ]
+  },
+  "identifiability": {
+    "uncertainty_bounded": true,
+    "checks": [
+      {
+        "check_id": "single_material_pair_only",
+        "passed": false,
+        "details": "The estimate is identifiable only for one dry material pair and requires more held-out trials."
+      }
+    ]
+  },
+  "promotion": {
+    "decision": "hold",
+    "public_claim": null,
+    "task_envelope": "Low-speed sliding on the recorded dry ceramic test surface.",
+    "approved_for": [
+      "calibration_review"
+    ],
+    "not_approved_for": [
+      "physics_calibrated_claim",
+      "general_contact",
+      "robot_safety",
+      "deployment"
+    ],
+    "rationale": "The finite estimate did not exceed the predeclared held-out improvement threshold.",
+    "reviewer": "validation_pipeline"
+  },
+  "authority": {
+    "classification": "calibration_evidence_only",
+    "approved_for": [
+      "c2_report_review"
+    ],
+    "not_approved_for": [
+      "general_physics",
+      "robot_safety",
+      "deployment"
+    ],
+    "limitations": [
+      "The report is held and does not support a physics-calibrated claim."
+    ]
+  },
+  "provenance": {
+    "producer": "world-studio-calibration",
+    "producer_version": "0.1.0",
+    "run_id": "friction_fit_001",
+    "created_at": "2026-07-29T10:00:00Z",
+    "input_sha256": "sha256:1818181818181818181818181818181818181818181818181818181818181818"
+  }
+}

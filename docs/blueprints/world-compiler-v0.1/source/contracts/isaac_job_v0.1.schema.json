@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capturesplat.dev/schemas/isaac_job.v0.1.schema.json",
+  "title": "World Studio Isaac Job v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "job_id",
+    "action",
+    "created_at",
+    "world",
+    "target",
+    "execution",
+    "outputs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "isaac_job.v0.1"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{3,128}$"
+    },
+    "action": {
+      "enum": [
+        "compile",
+        "validate",
+        "render_reference_views",
+        "run_episode",
+        "run_batch",
+        "evaluate_policy",
+        "export_synthetic_dataset"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_uri",
+        "manifest_sha256",
+        "world_id",
+        "version"
+      ],
+      "properties": {
+        "manifest_uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "world_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "isaac_sim_version",
+        "ros2_distro"
+      ],
+      "properties": {
+        "isaac_sim_version": {
+          "const": "6.0.1"
+        },
+        "isaac_lab_version": {
+          "enum": [
+            "none",
+            "3.0.0-beta2"
+          ]
+        },
+        "ros2_distro": {
+          "enum": [
+            "Jazzy",
+            "Humble",
+            "none"
+          ]
+        },
+        "nurec": {
+          "enum": [
+            "disabled",
+            "preferred_with_fallback",
+            "required"
+          ]
+        }
+      }
+    },
+    "robot_profile_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task_profile_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headless",
+        "webrtc",
+        "seed",
+        "render_mode"
+      ],
+      "properties": {
+        "headless": {
+          "type": "boolean"
+        },
+        "webrtc": {
+          "type": "boolean"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "render_mode": {
+          "enum": [
+            "minimal",
+            "rtx_realtime",
+            "path_tracing"
+          ]
+        },
+        "num_envs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seeds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "mode": {
+          "enum": [
+            "none",
+            "measured",
+            "calibrated",
+            "stress",
+            "mixed"
+          ]
+        }
+      }
+    },
+    "policy": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "policy_id": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "runtime": {
+          "type": "string"
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_root_uri",
+        "record_episode",
+        "record_sensors"
+      ],
+      "properties": {
+        "artifact_root_uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "record_episode": {
+          "type": "boolean"
+        },
+        "record_sensors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "synthetic_annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

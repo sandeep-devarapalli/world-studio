@@ -1,0 +1,129 @@
+name: Implementation
+description: Propose a bounded code or documentation change with explicit acceptance gates.
+title: "[Implementation] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe one reviewable outcome. Reconstructed assets and inferred properties remain proposals until their declared validation gates pass.
+
+  - type: input
+    id: outcome
+    attributes:
+      label: Intended outcome
+      description: State the user-visible or system outcome in one sentence.
+      placeholder: World Studio can...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Target milestone
+      description: Choose the public roadmap milestone this advances.
+      options:
+        - M0 Live Evidence Foundation
+        - M1 Authenticated LAN And Progressive World
+        - M2 Canonical World Package And Editor
+        - M3 Indoor Navigation Ready - R3
+        - M4 Physical Asset Calibration Foundation
+        - M5 Isaac/ROS Sensor Alignment - R4
+        - M6 Rigid Interaction And Field Calibration - R5
+        - M7 Expanded Embodiments
+        - Maintenance / not milestone-bound
+    validations:
+      required: true
+
+  - type: dropdown
+    id: modes
+    attributes:
+      label: Affected modes
+      description: Select every affected World Studio mode.
+      multiple: true
+      options:
+        - View
+        - Edit
+        - Simulate
+        - Pilot
+        - Sensors
+        - Episode
+        - None
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and approach
+      description: Describe the smallest useful implementation and its explicit non-goals.
+      placeholder: |
+        In scope:
+        - ...
+
+        Non-goals:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link prerequisite issues, contracts, upstreams, or physical evidence. Write None when independent.
+      placeholder: None
+    validations:
+      required: true
+
+  - type: textarea
+    id: runtime
+    attributes:
+      label: Runtime and contract boundaries
+      description: Explain impacts on Spark, Three.js, Rapier, external workers, schemas, migrations, or compatibility.
+      placeholder: No runtime-boundary change, or describe the proposed boundary and migration.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance gates
+      description: List objective, testable conditions that must pass before this issue can close.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation artifacts
+      description: Name commands, fixtures, environments, reports, screenshots, checksums, and external evidence needed for reproduction.
+      placeholder: |
+        Commands:
+        Fixtures:
+        External artifacts and checksums:
+        Expected decision:
+    validations:
+      required: true
+
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority boundary
+      description: State exactly what this work may establish and what remains proposal-only or evidence-blocked.
+      placeholder: This can establish... It does not establish...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Contributor confirmations
+      options:
+        - label: I will preserve the six World Studio modes and the Spark/Three.js/Rapier runtime boundaries, or open a separate approved migration proposal.
+          required: true
+        - label: I will keep generated captures, models, splats, renders, and simulator outputs out of Git.
+          required: true
+        - label: I will report failed or missing evidence as hold/reject rather than making a stronger claim.
+          required: true

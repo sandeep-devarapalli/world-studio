@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:live-e2e": "pnpm --filter @world-studio/desktop build && node scripts/validate-live-session-e2e.mjs",
     "test:ui": "playwright test",
+    "validate:blueprint": "node scripts/validate-world-compiler-blueprint.mjs",
     "clone:upstreams": "node scripts/clone-upstreams.mjs",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm typecheck"
@@ -24,6 +25,8 @@
     "@playwright/test": "1.61.1",
     "@types/node": "26.1.0",
     "@vitejs/plugin-react": "6.0.3",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
     "concurrently": "10.0.3",
     "typescript": "6.0.3",
     "vite": "8.1.3",

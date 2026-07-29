@@ -1,0 +1,460 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://capturesplat.dev/schemas/world_studio.world.v0.1.schema.json",
+  "title": "World Studio World Manifest v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "world_id",
+    "version",
+    "created_at",
+    "units",
+    "coordinate_system",
+    "capture_sessions",
+    "transforms",
+    "artifacts",
+    "authorities",
+    "validation"
+  ],
+  "properties": {
+    "schema": {
+      "const": "world_studio.world.v0.1"
+    },
+    "world_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "parent_version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "length",
+        "mass",
+        "time",
+        "angle"
+      ],
+      "properties": {
+        "length": {
+          "const": "meter"
+        },
+        "mass": {
+          "const": "kilogram"
+        },
+        "time": {
+          "const": "second"
+        },
+        "angle": {
+          "const": "radian"
+        }
+      }
+    },
+    "coordinate_system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_id",
+        "handedness",
+        "up_axis",
+        "forward_axis"
+      ],
+      "properties": {
+        "frame_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handedness": {
+          "enum": [
+            "right",
+            "left"
+          ]
+        },
+        "up_axis": {
+          "enum": [
+            "+X",
+            "-X",
+            "+Y",
+            "-Y",
+            "+Z",
+            "-Z"
+          ]
+        },
+        "forward_axis": {
+          "enum": [
+            "+X",
+            "-X",
+            "+Y",
+            "-Y",
+            "+Z",
+            "-Z"
+          ]
+        },
+        "gravity_m_s2": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "capture_sessions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "session_id",
+          "manifest_uri",
+          "manifest_sha256",
+          "reconciled"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "manifest_uri": {
+            "$ref": "#/$defs/safeRelativePath"
+          },
+          "manifest_sha256": {
+            "$ref": "#/$defs/sha256"
+          },
+          "reconciled": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "transforms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transform"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "authorities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/authority"
+      }
+    },
+    "robots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/safeRelativePath"
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/safeRelativePath"
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readiness_level",
+        "status",
+        "report_uri"
+      ],
+      "properties": {
+        "readiness_level": {
+          "enum": [
+            "R0",
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6",
+            "R7",
+            "R8"
+          ]
+        },
+        "status": {
+          "enum": [
+            "not_run",
+            "running",
+            "passed",
+            "passed_with_limits",
+            "failed"
+          ]
+        },
+        "report_uri": {
+          "$ref": "#/$defs/safeRelativePath"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)(?!.*\\x00)[A-Za-z0-9._@+ -]+(?:/[A-Za-z0-9._@+ -]+)*$"
+    },
+    "matrix4": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {
+        "type": "number"
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transform_id",
+        "parent_frame",
+        "child_frame",
+        "matrix_row_major",
+        "source",
+        "status"
+      ],
+      "properties": {
+        "transform_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_frame": {
+          "type": "string",
+          "minLength": 1
+        },
+        "child_frame": {
+          "type": "string",
+          "minLength": 1
+        },
+        "matrix_row_major": {
+          "$ref": "#/$defs/matrix4"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "proposal",
+            "validated",
+            "promoted"
+          ]
+        },
+        "residual": {
+          "type": "object"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "role",
+        "uri",
+        "sha256",
+        "byte_length",
+        "frame_id",
+        "status",
+        "provenance"
+      ],
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "evidence_rgb",
+            "evidence_depth",
+            "evidence_confidence",
+            "evidence_mask",
+            "camera_poses",
+            "visual_splat",
+            "visual_mesh",
+            "metric_mesh",
+            "collision_mesh",
+            "navigation",
+            "semantics",
+            "physics",
+            "robot_profile",
+            "task_profile",
+            "adapter_output",
+            "validation_report",
+            "episode"
+          ]
+        },
+        "uri": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "frame_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transform_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "evidence",
+            "proposal",
+            "validated",
+            "promoted",
+            "deprecated",
+            "failed"
+          ]
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "producer",
+            "producer_version",
+            "input_artifact_ids"
+          ],
+          "properties": {
+            "producer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "producer_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_artifact_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "job_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "seed": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "artifact_id",
+        "status",
+        "approved_for",
+        "not_approved_for"
+      ],
+      "properties": {
+        "domain": {
+          "enum": [
+            "capture",
+            "calibration",
+            "metric_scale",
+            "visual",
+            "geometry",
+            "collision",
+            "navigation",
+            "semantics",
+            "affordance",
+            "physics",
+            "dynamics",
+            "task"
+          ]
+        },
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "proposal",
+            "validated",
+            "promoted"
+          ]
+        },
+        "approved_for": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reviewer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

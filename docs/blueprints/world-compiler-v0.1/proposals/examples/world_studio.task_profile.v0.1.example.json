@@ -1,0 +1,215 @@
+{
+  "schema": "world_studio.task_profile.v0.1",
+  "task_id": "clean_desk_room",
+  "version": 1,
+  "created_at": "2026-07-29T10:30:00Z",
+  "lifecycle_status": "proposal",
+  "domain": "indoor_cleaning",
+  "units": {
+    "length": "m",
+    "time": "s",
+    "angle": "rad",
+    "mass": "kg",
+    "force": "N",
+    "torque": "N*m"
+  },
+  "world": {
+    "world_id": "desk_room_demo",
+    "minimum_version": 1,
+    "manifest": {
+      "path": "worlds/desk_room_demo/v1/world.json",
+      "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "size_bytes": 21470,
+      "media_type": "application/json"
+    }
+  },
+  "robot_profile": {
+    "path": "profiles/robots/vacuum_v1.json",
+    "sha256": "sha256:2525252525252525252525252525252525252525252525252525252525252525",
+    "size_bytes": 10921,
+    "media_type": "application/json"
+  },
+  "world_frame": "world_metric",
+  "objective": "Cover the declared cleanable floor region, avoid prohibited regions, and return to the start pose.",
+  "start_state": {
+    "pose": {
+      "frame_id": "world_metric",
+      "position_m": [
+        0.5,
+        0.5,
+        0.06
+      ],
+      "rotation_xyzw": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    "state_artifact": null
+  },
+  "goals": [
+    {
+      "goal_id": "cover_zone_a",
+      "type": "coverage_region",
+      "region_id": "cleanable_zone_a",
+      "target_pose": null,
+      "target_fraction": 0.95,
+      "tolerance_m": null,
+      "required": true
+    },
+    {
+      "goal_id": "return_home",
+      "type": "return_to_pose",
+      "region_id": null,
+      "target_pose": {
+        "frame_id": "world_metric",
+        "position_m": [
+          0.5,
+          0.5,
+          0.06
+        ],
+        "rotation_xyzw": [
+          0,
+          0,
+          0,
+          1
+        ]
+      },
+      "target_fraction": null,
+      "tolerance_m": 0.12,
+      "required": true
+    }
+  ],
+  "constraints": [
+    {
+      "constraint_id": "avoid_fragile_floor",
+      "type": "no_entry",
+      "region_id": "fragile_floor",
+      "threshold": null,
+      "severity": "hard"
+    },
+    {
+      "constraint_id": "room_speed_limit",
+      "type": "speed_limit",
+      "region_id": null,
+      "threshold": {
+        "value": 0.35,
+        "unit": "m/s",
+        "uncertainty": 0
+      },
+      "severity": "hard"
+    }
+  ],
+  "failure_criteria": [
+    {
+      "criterion_id": "any_collision",
+      "type": "collision",
+      "threshold": {
+        "value": 0,
+        "unit": "count",
+        "uncertainty": 0
+      },
+      "severity": "hard"
+    },
+    {
+      "criterion_id": "episode_timeout",
+      "type": "timeout",
+      "threshold": {
+        "value": 900,
+        "unit": "s",
+        "uncertainty": 0
+      },
+      "severity": "hard"
+    }
+  ],
+  "metrics": [
+    {
+      "metric_id": "coverage_fraction",
+      "unit": "dimensionless",
+      "direction": "higher_is_better",
+      "aggregation": "final",
+      "success_threshold": {
+        "value": 0.95,
+        "unit": "dimensionless",
+        "uncertainty": 0
+      },
+      "required": true
+    },
+    {
+      "metric_id": "collision_count",
+      "unit": "count",
+      "direction": "lower_is_better",
+      "aggregation": "sum",
+      "success_threshold": {
+        "value": 0,
+        "unit": "count",
+        "uncertainty": 0
+      },
+      "required": true
+    },
+    {
+      "metric_id": "return_position_error",
+      "unit": "m",
+      "direction": "lower_is_better",
+      "aggregation": "final",
+      "success_threshold": {
+        "value": 0.12,
+        "unit": "m",
+        "uncertainty": 0.01
+      },
+      "required": true
+    }
+  ],
+  "task_envelope": {
+    "maximum_duration_s": 900,
+    "maximum_linear_speed_m_s": 0.35,
+    "maximum_angular_speed_rad_s": 1,
+    "minimum_clearance_m": 0.04,
+    "environment_conditions": [
+      "Indoor dry floor.",
+      "No people or moving obstacles in the test region.",
+      "Validated floor and collision assets must match the physical room version."
+    ]
+  },
+  "requirements": {
+    "world_readiness": [
+      "metric",
+      "collision",
+      "navigation"
+    ],
+    "world_authorities": [
+      "metric_floor",
+      "collision_free_space",
+      "spawn_route"
+    ],
+    "robot_profile_status": "validated",
+    "physical_asset_tier": null,
+    "runtime_capabilities": [
+      "rigid_body_collision",
+      "differential_drive",
+      "contact_reporting"
+    ]
+  },
+  "authority": {
+    "classification": "task_proposal",
+    "approved_for": [
+      "simulation_validation"
+    ],
+    "not_approved_for": [
+      "physical_robot_control",
+      "unattended_operation",
+      "deployment"
+    ],
+    "limitations": [
+      "The task may run only after its world and robot requirements are independently validated."
+    ]
+  },
+  "provenance": {
+    "producer": "world-studio",
+    "producer_version": "0.1.0",
+    "created_at": "2026-07-29T10:30:00Z",
+    "source_sha256": "sha256:2626262626262626262626262626262626262626262626262626262626262626",
+    "reviewer": "task_profile_review"
+  }
+}

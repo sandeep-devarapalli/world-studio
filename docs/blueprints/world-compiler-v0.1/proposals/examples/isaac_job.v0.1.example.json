@@ -1,0 +1,134 @@
+{
+  "schema": "isaac_job.v0.1",
+  "job_id": "isaac_room_validation_001",
+  "action": "run_episode",
+  "created_at": "2026-07-29T08:15:00Z",
+  "lifecycle_status": "draft",
+  "world": {
+    "world_id": "desk_room_demo",
+    "version": 1,
+    "manifest": {
+      "path": "worlds/desk_room_demo/v1/world.json",
+      "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "size_bytes": 21470,
+      "media_type": "application/json"
+    },
+    "required_readiness": [
+      "metric",
+      "collision",
+      "navigation"
+    ]
+  },
+  "robot_profile": {
+    "path": "profiles/robots/vacuum_v1.json",
+    "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "size_bytes": 6281,
+    "media_type": "application/json"
+  },
+  "task_profile": {
+    "path": "profiles/tasks/clean_desk_room.json",
+    "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "size_bytes": 4158,
+    "media_type": "application/json"
+  },
+  "runtime": {
+    "worker_id": "isaac_worker_a100_01",
+    "provider": "nvidia_isaac_sim",
+    "components": [
+      {
+        "name": "isaac_sim",
+        "required": true,
+        "requested_version": null,
+        "detected_version": "runtime-reported",
+        "capabilities": [
+          {
+            "name": "openusd_import",
+            "required": true,
+            "available": true,
+            "reported_version": "worker-reported",
+            "evidence": {
+              "path": "jobs/isaac_room_validation_001/capabilities/openusd_import.json",
+              "sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "size_bytes": 1048,
+              "media_type": "application/json"
+            }
+          },
+          {
+            "name": "contact_reporting",
+            "required": true,
+            "available": true,
+            "reported_version": null,
+            "evidence": null
+          }
+        ]
+      },
+      {
+        "name": "ros2_bridge",
+        "required": false,
+        "requested_version": null,
+        "detected_version": null,
+        "capabilities": [
+          {
+            "name": "twist_command",
+            "required": false,
+            "available": false,
+            "reported_version": null,
+            "evidence": null
+          }
+        ]
+      }
+    ],
+    "capability_requirements": [
+      "openusd_import",
+      "contact_reporting"
+    ],
+    "compatibility_status": "unverified",
+    "compatibility_report": null
+  },
+  "execution": {
+    "headless": true,
+    "interactive_stream": "disabled",
+    "seed": 7,
+    "render_mode": "realtime",
+    "num_environments": 1,
+    "max_steps": 30000,
+    "timeout_s": 3600,
+    "variants": []
+  },
+  "outputs": {
+    "artifact_root": "jobs/isaac_room_validation_001/outputs",
+    "record_episode": true,
+    "record_sensors": [
+      "rgb",
+      "depth",
+      "imu",
+      "odometry",
+      "contacts"
+    ],
+    "expected_reports": [
+      "jobs/isaac_room_validation_001/outputs/capability_report.json",
+      "jobs/isaac_room_validation_001/outputs/episode_report.json"
+    ]
+  },
+  "authority": {
+    "classification": "external_worker_proposal",
+    "approved_for": [
+      "runtime_capability_probe"
+    ],
+    "not_approved_for": [
+      "deployment",
+      "universal_physics_claim",
+      "safety_certification"
+    ],
+    "limitations": [
+      "Detected component versions and capabilities must be checked by the worker at execution time.",
+      "Simulation results require task-scoped real-world validation."
+    ]
+  },
+  "provenance": {
+    "submitted_by": "world-studio",
+    "submitted_at": "2026-07-29T08:15:00Z",
+    "client_version": "0.1.0",
+    "request_sha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+  }
+}

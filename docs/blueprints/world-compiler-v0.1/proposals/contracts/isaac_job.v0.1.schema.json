@@ -1,0 +1,509 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:proposal:isaac_job.v0.1",
+  "title": "World Studio Isaac Job v0.1",
+  "description": "Design proposal only. Describes an external Isaac worker request and its reported capabilities; it does not certify runtime compatibility, simulation fidelity, or deployment safety.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "job_id",
+    "action",
+    "created_at",
+    "lifecycle_status",
+    "world",
+    "robot_profile",
+    "task_profile",
+    "runtime",
+    "execution",
+    "outputs",
+    "authority",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "isaac_job.v0.1"
+    },
+    "job_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "action": {
+      "enum": [
+        "compile_world",
+        "validate_world",
+        "render_reference_views",
+        "run_episode",
+        "run_batch",
+        "evaluate_policy",
+        "export_synthetic_dataset"
+      ]
+    },
+    "created_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "lifecycle_status": {
+      "enum": [
+        "draft",
+        "queued",
+        "running",
+        "completed",
+        "held",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "world_id",
+        "version",
+        "manifest",
+        "required_readiness"
+      ],
+      "properties": {
+        "world_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "manifest": {
+          "$ref": "#/$defs/artifactReference"
+        },
+        "required_readiness": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "visual",
+              "metric",
+              "collision",
+              "semantic",
+              "navigation",
+              "physics"
+            ]
+          }
+        }
+      }
+    },
+    "robot_profile": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/artifactReference"
+        }
+      ]
+    },
+    "task_profile": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/artifactReference"
+        }
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worker_id",
+        "provider",
+        "components",
+        "capability_requirements",
+        "compatibility_status",
+        "compatibility_report"
+      ],
+      "properties": {
+        "worker_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "provider": {
+          "enum": [
+            "nvidia_isaac_sim",
+            "nvidia_isaac_lab",
+            "custom_isaac_worker"
+          ]
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/runtimeComponent"
+          }
+        },
+        "capability_requirements": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "compatibility_status": {
+          "enum": [
+            "unverified",
+            "compatible",
+            "compatible_with_limits",
+            "incompatible"
+          ]
+        },
+        "compatibility_report": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/artifactReference"
+            }
+          ]
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "headless",
+        "interactive_stream",
+        "seed",
+        "render_mode",
+        "num_environments",
+        "max_steps",
+        "timeout_s"
+      ],
+      "properties": {
+        "headless": {
+          "type": "boolean"
+        },
+        "interactive_stream": {
+          "enum": [
+            "disabled",
+            "webrtc",
+            "native"
+          ]
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "render_mode": {
+          "enum": [
+            "minimal",
+            "realtime",
+            "path_tracing"
+          ]
+        },
+        "num_environments": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000000
+        },
+        "timeout_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 31536000
+        },
+        "variants": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "variant_id",
+              "seed",
+              "parameter_set"
+            ],
+            "properties": {
+              "variant_id": {
+                "$ref": "#/$defs/identifier"
+              },
+              "seed": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              "parameter_set": {
+                "$ref": "#/$defs/artifactReference"
+              }
+            }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_root",
+        "record_episode",
+        "record_sensors",
+        "expected_reports"
+      ],
+      "properties": {
+        "artifact_root": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "record_episode": {
+          "type": "boolean"
+        },
+        "record_sensors": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "expected_reports": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/safeRelativePath"
+          }
+        }
+      }
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000]+$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "//|/$"
+          },
+          {
+            "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
+          },
+          {
+            "pattern": "(^|/)\\.\\.?(/|$)"
+          }
+        ]
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "media_type"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
+        }
+      }
+    },
+    "runtimeComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "required",
+        "requested_version",
+        "detected_version",
+        "capabilities"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "requested_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "detected_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "required",
+              "available",
+              "reported_version",
+              "evidence"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/identifier"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "reported_version": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "evidence": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/artifactReference"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "approved_for",
+        "not_approved_for",
+        "limitations"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "external_worker_proposal",
+            "task_scoped_validation",
+            "external_validation_required"
+          ]
+        },
+        "approved_for": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submitted_by",
+        "submitted_at",
+        "client_version",
+        "request_sha256"
+      ],
+      "properties": {
+        "submitted_by": {
+          "$ref": "#/$defs/identifier"
+        },
+        "submitted_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "client_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "request_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

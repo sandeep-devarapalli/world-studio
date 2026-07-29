@@ -1,0 +1,57 @@
+{
+  "schema": "world_studio.robot_profile.v0.1",
+  "robot_id": "vacuum_v1",
+  "embodiment": "differential_drive_mobile_base",
+  "base_frame": "base_link",
+  "footprint_m": [
+    [
+      0.18,
+      0.16
+    ],
+    [
+      0.18,
+      -0.16
+    ],
+    [
+      -0.18,
+      -0.16
+    ],
+    [
+      -0.18,
+      0.16
+    ]
+  ],
+  "height_m": 0.105,
+  "safety_margin_m": 0.04,
+  "robot_asset": {
+    "format": "urdf",
+    "uri": "robots/assets/vacuum_v1.urdf"
+  },
+  "ros2": {
+    "cmd_topic": "/cmd_vel",
+    "odom_topic": "/odom",
+    "tf": true
+  },
+  "sensors": [
+    {
+      "sensor_id": "front_depth",
+      "type": "depth_camera",
+      "frame": "front_depth_optical",
+      "rate_hz": 30
+    },
+    {
+      "sensor_id": "imu",
+      "type": "imu",
+      "frame": "imu_link",
+      "rate_hz": 100
+    }
+  ],
+  "requirements": {
+    "minimum_readiness": "R4",
+    "required_authorities": [
+      "collision",
+      "navigation",
+      "calibration"
+    ]
+  }
+}

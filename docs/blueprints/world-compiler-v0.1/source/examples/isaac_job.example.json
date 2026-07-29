@@ -1,0 +1,54 @@
+{
+  "schema": "isaac_job.v0.1",
+  "job_id": "isaac_demo_001",
+  "action": "run_batch",
+  "created_at": "2026-07-29T06:45:00Z",
+  "world": {
+    "manifest_uri": "world_manifest.example.json",
+    "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "world_id": "demo_room_001",
+    "version": 1
+  },
+  "target": {
+    "isaac_sim_version": "6.0.1",
+    "isaac_lab_version": "3.0.0-beta2",
+    "ros2_distro": "Jazzy",
+    "nurec": "preferred_with_fallback"
+  },
+  "robot_profile_uri": "robot_profile.mobile_base.example.json",
+  "task_profile_uri": "task.indoor_navigation.example.json",
+  "execution": {
+    "headless": true,
+    "webrtc": true,
+    "seed": 7,
+    "render_mode": "rtx_realtime",
+    "num_envs": 16,
+    "max_steps": 30000,
+    "timeout_seconds": 3600
+  },
+  "variants": {
+    "profile_uri": "variants/indoor_mobile_v1.json",
+    "seeds": [
+      7,
+      11,
+      19
+    ],
+    "mode": "mixed"
+  },
+  "policy": null,
+  "outputs": {
+    "artifact_root_uri": "outputs/isaac_demo_001",
+    "record_episode": true,
+    "record_sensors": [
+      "rgb",
+      "depth",
+      "imu",
+      "odometry",
+      "contacts"
+    ],
+    "synthetic_annotations": [
+      "semantic_segmentation",
+      "depth"
+    ]
+  }
+}

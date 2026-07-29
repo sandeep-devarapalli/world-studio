@@ -1,82 +1,69 @@
 # Roadmap
 
-## Completed Foundation
+The canonical public plan is the
+[World Compiler Blueprint v0.1](docs/blueprints/world-compiler-v0.1/README.md). Its
+[milestone specification](docs/blueprints/world-compiler-v0.1/MILESTONES.md) defines
+outcomes and acceptance gates.
 
-- Published Apache 2.0 repo with `pnpm` workspace, React/Vite browser app, Electron shell,
-  package structure, source-material archive, and upstream reference policy.
-- Preserved the six-mode World Studio shape: View, Edit, Simulate, Pilot, Sensors, Episode.
-- Preserved explicit dataset/package loading, provenance labels, and ordinary PLY versus
-  Gaussian PLY routing.
-- Loaded `loft_04` as the smoke fixture across renderer, package, simulation, and UI tests.
-- Added compatibility readers for Budo media manifests, article figure sidecars, verified
-  export manifests, generic JSON packages, and World Studio package manifests.
-- Added desktop local package loading, package validation diagnostics, compatibility fixtures,
-  and inspector drilldowns.
+| Milestone | Outcome | Status |
+|---|---|---|
+| M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
+| M1 Authenticated LAN And Progressive World | Paired TLS sender, bounded queues, live RGB-D/mesh proposals, isolated worker lifecycle | next |
+| M2 Canonical World Package And Editor | Immutable versions, transform graph, content-addressed artifacts, reversible edits | partial/planned |
+| M3 Indoor Navigation Ready - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
+| M4 Physical Asset Calibration Foundation | Objectization, direct measurements, geometry/collision validation, C0-C2 recipes | planned |
+| M5 Isaac/ROS Sensor Alignment - R4 | OpenUSD compiler, remote Isaac worker, ROS 2 and sensor parity | planned |
+| M6 Rigid Interaction And Field Calibration - R5 | Instrumented system identification and held-out real/sim validation | planned |
+| M7 Expanded Embodiments | Indoor/outdoor UAVs, vehicles, articulated manipulation, then deformables | planned |
 
-## P0: Capture Splat Live Session Phase 1
+## Current Implementation Tracks
 
-Progress and acceptance evidence lives in `docs/live_session_phase1.md`.
+### Live Evidence
 
-- Replay source-frame, pose, calibration, and quality evidence over an explicit
-  loopback-only receiver.
-- Persist recoverable sessions outside Git with strict checksums, duplicate handling,
-  out-of-order buffering, resume, and fail-closed finalization.
-- Keep the live source-frame and camera-trajectory surface proposal-only and separate from
-  the loaded `WorldSession`.
-- Reopen a finalized handoff only through the existing explicit package workflow.
-- Defer the authenticated LAN sender and any live reconstruction/training pipeline to a
-  later phase.
+- M0 evidence is recorded in `docs/live_session_phase1.md`.
+- M1 starts with authenticated local-network pairing and a bounded iPhone sender.
+- Live reconstruction workers remain isolated proposals and cannot mutate Capture Splat
+  evidence or a loaded World.
 
-## P0: UI Quality And Design Fidelity
+### World And Editor
 
-- Rework the visible app against the archived World Studio design source of truth:
-  `docs/source-materials/World Studio.zip`, `docs/extracted-prototype/design.md`, and
-  `docs/extracted-prototype/reference/`.
-- Keep the original prototype grammar: warm charcoal, floating HUD panels, dense mono data
-  labels, mode switcher, controls bar, status bar, docked variants, and 1920x1080 scaling.
-- Improve visual hierarchy, spacing, typography, and responsive behavior without weakening
-  the existing renderer/package/Episode contracts.
-- Keep View/Edit/Simulate/Pilot/Sensors/Episode as production surfaces, not a marketing page.
+- Keep View, Edit, Simulate, Pilot, Sensors, and Episode as the six product modes.
+- Evolve current packages, reversible tools, and Episodes into the M2 immutable World
+  Package and edit graph.
+- Preserve ordinary PLY, Gaussian PLY, mesh, collision, navigation, semantic, and physics
+  roles separately.
 
-## P1: Renderer And Editing Depth
+### Rendering And Large Assets
 
-Detailed execution and progress tracking for first-person 3DGS navigation,
-metric geometry, measurements, and large-asset LoD lives in
-`docs/3dgs_walkthrough_measurement_plan.md`.
+- Continue `docs/3dgs_walkthrough_measurement_plan.md`.
+- Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
+- Keep Gaussian appearance out of measurement and collision authority.
 
-- Harden the Spark + Three.js Gaussian path for larger real-world Gaussian PLYs.
-- Keep the canvas fallback for tests and degraded browser paths.
-- Add worker-backed PLY/OBJ parsing for larger files.
-- Expand renderer screenshots and Playwright canvas smoke checks.
-- Add first-class renderer selection, deletion masks, restore history, SH-degree controls,
-  exposure/brightness controls, outlier filtering, and exportable operation logs.
-- Integrate `splat-transform` workflows for export, LoD, and collision sidecars after license
-  and runtime review.
+### Simulation And Calibration
 
-## P2: Simulation, Sensors, And Episodes
+- Rapier remains the local runtime.
+- Physical Asset Calibration spans Edit, Sensors, Simulate, and Episode; it is not a new
+  top-level mode.
+- Isaac Sim/Lab and ROS 2 remain external adapters until M5 capability and conformance
+  gates pass.
 
-- Expand Rapier simulation beyond the current deterministic agent/prop substrate.
-- Add drone, car, indoor robot, and custom embodiment profiles with calibrated units.
-- Add richer RGB/depth/segmentation/lidar/IMU sensor rig previews and recorded outputs.
-- Extend Episode bundles with richer replay validation, metrics, screenshots, and renderer
-  state capture.
-- Keep Episode artifacts truthful: source relink, companion asset validation, embedded
-  asset manifests, and per-asset integrity details remain required checks.
+### Packaging And Collaboration
 
-## P3: Package And Compatibility Coverage
+- Keep browser tests and macOS packaged smoke green.
+- Progress toward signed/notarized macOS, then Windows/Linux packaging.
+- Use milestone issues, reproducible evidence, and explicit upstream/license decisions.
 
-- Add more representative sample worlds and package fixtures.
-- Support larger local packages with streaming or chunked loading where needed.
-- Expand Budo-compatible readers while keeping new World Studio contracts generic first.
-- Add importer/exporter validation for package round trips and browser versus Electron parity.
-- Maintain clear proposal, verified, and external-validation status boundaries.
+## Evidence-Dependent Work
 
-## P4: Packaging, Release, And Integrations
+The following work cannot be promoted by code or visual inspection alone:
 
-- Keep macOS Electron packaging green and move from local ad-hoc smoke builds toward signed
-  and notarized releases.
-- Add Windows/Linux packaging after the renderer and app shell stabilize.
-- Add web deployment, release artifacts, contributor docs, and release automation.
-- Keep CARLA, Isaac Sim/Lab, AirSim, Project AirSim, MuJoCo, Bullet, Genesis World, AI2-THOR,
-  VkSplat, LichtFeld Studio, and related systems as documented references unless a specific
-  integration passes license, runtime, and maintenance review.
+- physical floor/wall and collision continuity;
+- point-to-point measurement promotion;
+- sensor-supervision and reconstruction A/B results;
+- SPZ/LoD round-trip orientation and color;
+- physical calibration apparatus and held-out trials;
+- robot, UAV, and vehicle real/sim acceptance;
+- deployment/TestFlight evidence.
+
+Status details live in
+`docs/blueprints/world-compiler-v0.1/ADOPTION_STATUS.md`.

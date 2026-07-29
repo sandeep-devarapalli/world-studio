@@ -1,0 +1,157 @@
+name: Roadmap proposal
+description: Propose a milestone outcome or cross-cutting World Studio workstream.
+title: "[Roadmap] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Roadmap proposals should define an outcome and evidence gates, not a list of technologies. Preserve the six-mode product model and explicit authority boundaries.
+
+  - type: input
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: State the capability or user outcome in one sentence.
+      placeholder: A contributor can...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Target milestone
+      options:
+        - M0 Live Evidence Foundation
+        - M1 Authenticated LAN And Progressive World
+        - M2 Canonical World Package And Editor
+        - M3 Indoor Navigation Ready - R3
+        - M4 Physical Asset Calibration Foundation
+        - M5 Isaac/ROS Sensor Alignment - R4
+        - M6 Rigid Interaction And Field Calibration - R5
+        - M7 Expanded Embodiments
+        - New milestone proposal
+    validations:
+      required: true
+
+  - type: dropdown
+    id: modes
+    attributes:
+      label: Affected modes
+      multiple: true
+      options:
+        - View
+        - Edit
+        - Simulate
+        - Pilot
+        - Sensors
+        - Episode
+        - None
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and evidence
+      description: Explain the current limitation and link source evidence, user observations, or prior validation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope and non-goals
+      placeholder: |
+        In scope:
+        - ...
+
+        Non-goals:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link prerequisite milestones, contracts, upstream evaluations, physical evidence, or other issues. Write None when independent.
+      placeholder: None
+    validations:
+      required: true
+
+  - type: textarea
+    id: phases
+    attributes:
+      label: Delivery slices
+      description: Break the outcome into independently reviewable implementation and validation slices.
+      placeholder: |
+        1. Contract/fixture...
+        2. Bounded implementation...
+        3. Evidence gate...
+    validations:
+      required: true
+
+  - type: textarea
+    id: runtime
+    attributes:
+      label: Runtime, data, and migration impact
+      description: Cover Spark, Three.js, Rapier, external workers, schemas, immutable versions, compatibility, and rollback.
+      placeholder: No boundary change, or describe the proposed migration and rollback.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Milestone acceptance gates
+      description: Define objective gates, including physical or external evidence when required.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Reproducible validation artifacts
+      description: Name commands, fixtures, hardware, reports, comparisons, checksums, and external storage needed to close the proposal.
+    validations:
+      required: true
+
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority and readiness boundary
+      description: State what may be promoted and what stays visual, proposal-only, or evidence-blocked.
+      placeholder: |
+        Permitted claim:
+        Claims not permitted:
+        Required readiness level:
+    validations:
+      required: true
+
+  - type: textarea
+    id: collaboration
+    attributes:
+      label: Collaboration slices
+      description: Identify small contributor tasks, documentation work, fixtures, or good-first-issue candidates.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Proposal confirmations
+      options:
+        - label: This proposal preserves the six World Studio modes or includes an explicit, separately reviewed product migration.
+          required: true
+        - label: This proposal preserves Spark/Three.js/Rapier boundaries or includes compatibility tests and a rollback path.
+          required: true
+        - label: Generated captures, models, splats, and simulator outputs will remain outside Git.
+          required: true
+        - label: Acceptance gates distinguish visual plausibility from metric, collision, semantic, navigation, and physics authority.
+          required: true

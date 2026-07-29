@@ -1,0 +1,8 @@
+JSON OK: contracts/capture_splat_live_session_v0.1.schema.json
+JSON OK: contracts/isaac_job_v0.1.schema.json
+JSON OK: contracts/world_studio_world_v0.1.schema.json
+JSON OK: examples/isaac_job.example.json
+JSON OK: examples/robot_profile.mobile_base.example.json
+JSON OK: examples/task.indoor_navigation.example.json
+JSON OK: examples/world_manifest.example.json
+JSON Schema validation OK for all three schemas and applicable examples.
