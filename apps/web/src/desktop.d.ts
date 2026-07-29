@@ -1,5 +1,6 @@
 import type {
   LiveFramePreview,
+  LiveSecuritySnapshot,
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
   SaveEpisodeBundleInput
@@ -21,6 +22,15 @@ declare global {
       getLiveSessionStatus?: () => Promise<LiveSessionSnapshot>;
       onLiveSessionUpdate?: (listener: (snapshot: LiveSessionSnapshot) => void) => () => void;
       getLiveFramePreview?: (input: { sessionId: string; sequenceId: number }) => Promise<LiveFramePreview | null>;
+      getLiveSecurityStatus?: () => Promise<LiveSecuritySnapshot>;
+      beginLivePairing?: (input: { interfaceId: string }) => Promise<LiveSecuritySnapshot>;
+      cancelLivePairing?: () => Promise<LiveSecuritySnapshot>;
+      approveLivePairing?: () => Promise<LiveSecuritySnapshot>;
+      rejectLivePairing?: () => Promise<LiveSecuritySnapshot>;
+      startPairedLiveReceiver?: (input: { interfaceId: string; grantId: string }) => Promise<LiveSecuritySnapshot>;
+      stopPairedLiveReceiver?: () => Promise<LiveSecuritySnapshot>;
+      revokeLiveDevice?: (input: { grantId: string }) => Promise<LiveSecuritySnapshot>;
+      onLiveSecurityUpdate?: (listener: (snapshot: LiveSecuritySnapshot) => void) => () => void;
     };
   }
 }

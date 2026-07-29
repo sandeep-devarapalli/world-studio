@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LiveSessionSnapshot, LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
@@ -53,6 +53,30 @@ end_header
 
 const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
 const onePixelDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==";
+const livePairingInvitationFixture = JSON.parse(
+  readFileSync(
+    new URL("../../../contracts/live-auth/v0.1/fixtures/valid_pairing_invitation.json", import.meta.url),
+    "utf8"
+  )
+) as Record<string, unknown>;
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(source).sort().map((key) => [key, canonicalJson(source[key])]));
+  }
+  return value;
+}
+
+function pairingInvitationUri(now: number): string {
+  const invitation = {
+    ...livePairingInvitationFixture,
+    issued_at: new Date(now).toISOString(),
+    expires_at: new Date(now + 120_000).toISOString()
+  };
+  return `capture-splat://pair/${Buffer.from(JSON.stringify(canonicalJson(invitation)), "utf8").toString("base64url")}`;
+}
 const evidenceMeshPly = `ply
 format ascii 1.0
 element vertex 4
@@ -811,6 +835,7 @@ test("loads loft_04 and switches all six modes", async ({ page }) => {
     if (mode === "Simulate") {
       await expect(page.locator(".ws-view-tag", { hasText: "Sensor feed" })).toBeVisible();
       await expect(page.locator(".ws-bottom-tray")).toContainText("Physics");
+      await expect(page.getByRole("button", { name: "Pair iPhone" })).toHaveCount(0);
     }
     if (mode === "Sensors") {
       await expect(page.locator(".ws-sensor-list")).toContainText("Rig — rig_a");
@@ -909,6 +934,244 @@ test("shows an explicit proposal-only live session without replacing the loaded 
   await panel.getByRole("button", { name: "Stop Listening" }).click();
   await expect(page.getByTestId("live-connection-state")).toHaveText("stopped");
   await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
+});
+
+test("pairs an iPhone through the security bridge without mutating the loaded world", async ({ page }) => {
+  const now = Date.now();
+  const base: LiveSecuritySnapshot = {
+    state: "loopback_only",
+    desktopId: `wsd_${"a".repeat(42)}g`,
+    desktopName: "World Studio Test Mac",
+    interfaces: [{
+      id: "en0|IPv4|192.168.1.20",
+      name: "en0",
+      address: "192.168.1.20",
+      family: "IPv4"
+    }],
+    selectedInterfaceId: null,
+    secureListening: null,
+    pairingInvitationUri: null,
+    pairingVerificationCode: null,
+    tlsCertificateSha256: `sha256:${"b".repeat(64)}`,
+    pairingExpiresAt: null,
+    pendingDevice: null,
+    pairedDevices: [],
+    updatedAt: new Date(now).toISOString()
+  };
+  const pairing: LiveSecuritySnapshot = {
+    ...base,
+    state: "pairing",
+    selectedInterfaceId: base.interfaces[0]!.id,
+    secureListening: { host: "192.168.1.20", port: 43128, tls: true },
+    pairingInvitationUri: pairingInvitationUri(now),
+    pairingVerificationCode: "4821 0907",
+    pairingExpiresAt: new Date(now + 120_000).toISOString()
+  };
+  const pending: LiveSecuritySnapshot = {
+    ...pairing,
+    state: "pairing_pending",
+    pairingInvitationUri: null,
+    pendingDevice: {
+      deviceId: `csd_${"c".repeat(43)}`,
+      displayName: "Capture Splat iPhone",
+      pairingEpoch: 1,
+      requestedAt: new Date(now + 15_000).toISOString(),
+      expiresAt: new Date(now + 135_000).toISOString()
+    }
+  };
+  const paired: LiveSecuritySnapshot = {
+    ...base,
+    state: "secure_listening",
+    selectedInterfaceId: base.interfaces[0]!.id,
+    secureListening: { host: "192.168.1.20", port: 43128, tls: true },
+    pairedDevices: [{
+      deviceId: pending.pendingDevice!.deviceId,
+      displayName: pending.pendingDevice!.displayName,
+      pairingEpoch: 1,
+      grantId: `csg_${"d".repeat(21)}w`,
+      scopes: ["receiver:status", "session:create", "session:resume", "frame:put", "asset:put", "session:finalize"],
+      pairedAt: new Date(now + 20_000).toISOString(),
+      expiresAt: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      revokedAt: null,
+      lastAuthenticatedAt: null
+    }]
+  };
+
+  await page.addInitScript(({ worldPayload, baseSnapshot, pairingSnapshot, pendingSnapshot, pairedSnapshot }) => {
+    let listener: ((snapshot: LiveSecuritySnapshot) => void) | null = null;
+    window.worldStudioDesktop = {
+      openLocalPackage: async () => worldPayload,
+      getLiveSecurityStatus: async () => baseSnapshot,
+      onLiveSecurityUpdate: (nextListener) => {
+        listener = nextListener;
+        return () => {
+          listener = null;
+        };
+      },
+      beginLivePairing: async () => {
+        return pairingSnapshot;
+      },
+      cancelLivePairing: async () => baseSnapshot,
+      approveLivePairing: async () => {
+        listener?.(pairedSnapshot);
+        return pairedSnapshot;
+      },
+      rejectLivePairing: async () => baseSnapshot,
+      startPairedLiveReceiver: async () => pairedSnapshot,
+      stopPairedLiveReceiver: async () => baseSnapshot,
+      revokeLiveDevice: async () => {
+        const revoked = {
+          ...baseSnapshot,
+          pairedDevices: pairedSnapshot.pairedDevices.map((device) => ({
+            ...device,
+            revokedAt: "2026-07-29T12:01:00.000Z"
+          }))
+        };
+        listener?.(revoked);
+        return revoked;
+      }
+    };
+    window.addEventListener("world-studio-test:pairing-request", () => listener?.(pendingSnapshot));
+  }, {
+    worldPayload: genericManifestPayload,
+    baseSnapshot: base,
+    pairingSnapshot: pairing,
+    pendingSnapshot: pending,
+    pairedSnapshot: paired
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+  const security = page.getByTestId("live-security-panel");
+  await expect(security.getByLabel("Mac network interface")).toHaveValue("en0|IPv4|192.168.1.20");
+  await security.getByRole("button", { name: "Pair iPhone" }).click();
+  await expect(page.getByTestId("live-pairing-qr")).toContainText("4821 0907");
+  const encodedInvitation = pairing.pairingInvitationUri!.slice("capture-splat://pair/".length);
+  const decodedInvitation = JSON.parse(Buffer.from(encodedInvitation, "base64url").toString("utf8"));
+  expect(`capture-splat://pair/${Buffer.from(JSON.stringify(canonicalJson(decodedInvitation)), "utf8").toString("base64url")}`)
+    .toBe(pairing.pairingInvitationUri);
+  const pairingQr = page.getByAltText("Capture Splat pairing QR code");
+  await expect(pairingQr).toHaveAttribute("src", /^data:image\/png;base64,/);
+  const firstQrDataUrl = await pairingQr.getAttribute("src");
+  await security.getByRole("button", { name: "Cancel Pairing" }).click();
+  await expect(pairingQr).toHaveCount(0);
+  await security.getByRole("button", { name: "Pair iPhone" }).click();
+  await expect(pairingQr).toHaveAttribute("src", firstQrDataUrl!);
+  await expect.poll(async () => pairingQr.evaluate((image: HTMLImageElement) => ({
+    width: image.naturalWidth,
+    height: image.naturalHeight
+  }))).toEqual({ width: 960, height: 960 });
+  await security.getByRole("button", { name: "Open Full-Size QR" }).click();
+  const pairingDialog = page.getByRole("dialog", { name: "Large Capture Splat pairing QR code" });
+  await expect(pairingDialog).toBeVisible();
+  const largeQr = page.getByAltText("Large Capture Splat pairing QR code");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect.poll(async () => (await largeQr.boundingBox())?.width).toBe(720);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(async () => (await largeQr.boundingBox())?.width).toBe(270);
+  await pairingDialog.getByRole("button", { name: "Close QR" }).click();
+  await expect(pairingDialog).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate(() => window.dispatchEvent(new Event("world-studio-test:pairing-request")));
+  await expect(page.getByTestId("live-pairing-pending")).toContainText("Capture Splat iPhone");
+  await page.getByRole("button", { name: "Approve Device" }).click();
+  await expect(page.getByTestId("live-paired-device")).toContainText("Capture Splat iPhone");
+  await expect(security).toContainText("secure listening");
+  await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
+  await expect(page.locator(".ws-bottom-tray")).toContainText("generic_package");
+  await expect(page.getByTestId("live-session-panel")).toContainText("proposal only · never world or collision authority");
+  await page.getByRole("button", { name: "Revoke Capture Splat iPhone" }).click();
+  const revokedDevice = page.getByTestId("live-paired-device");
+  await expect(revokedDevice).toHaveCount(1);
+  await expect(revokedDevice).toHaveAttribute("data-device-state", "revoked");
+  await expect(revokedDevice.getByRole("button", { name: "Revoke Capture Splat iPhone" })).toHaveCount(0);
+  await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
+});
+
+test("keeps valid paired devices actionable when an earlier device grant is expired", async ({ page }) => {
+  const now = Date.now();
+  const interfaceId = "en0|IPv4|192.168.1.20";
+  const expiredGrantId = `csg_${"a".repeat(21)}A`;
+  const availableGrantId = `csg_${"z".repeat(21)}A`;
+  const base: LiveSecuritySnapshot = {
+    state: "paired",
+    desktopId: `wsd_${"a".repeat(42)}g`,
+    desktopName: "World Studio Test Mac",
+    interfaces: [{ id: interfaceId, name: "en0", address: "192.168.1.20", family: "IPv4" }],
+    selectedInterfaceId: interfaceId,
+    secureListening: null,
+    pairingInvitationUri: null,
+    pairingVerificationCode: null,
+    tlsCertificateSha256: `sha256:${"b".repeat(64)}`,
+    pairingExpiresAt: null,
+    pendingDevice: null,
+    pairedDevices: [
+      {
+        deviceId: `csd_${"a".repeat(42)}g`,
+        displayName: "Expired iPhone",
+        pairingEpoch: 1,
+        grantId: expiredGrantId,
+        scopes: ["receiver:status"],
+        pairedAt: new Date(now - 120_000).toISOString(),
+        expiresAt: new Date(now - 60_000).toISOString(),
+        revokedAt: null,
+        lastAuthenticatedAt: null
+      },
+      {
+        deviceId: `csd_${"z".repeat(42)}g`,
+        displayName: "Available iPhone",
+        pairingEpoch: 1,
+        grantId: availableGrantId,
+        scopes: ["receiver:status"],
+        pairedAt: new Date(now - 60_000).toISOString(),
+        expiresAt: new Date(now + 60_000).toISOString(),
+        revokedAt: null,
+        lastAuthenticatedAt: null
+      }
+    ],
+    updatedAt: new Date(now).toISOString()
+  };
+  const listening: LiveSecuritySnapshot = {
+    ...base,
+    state: "secure_listening",
+    secureListening: { host: "192.168.1.20", port: 43128, tls: true }
+  };
+
+  await page.addInitScript(({ worldPayload, baseSnapshot, listeningSnapshot }) => {
+    const bridgeWindow = window as Window & { __startedLiveGrantId?: string };
+    bridgeWindow.worldStudioDesktop = {
+      openLocalPackage: async () => worldPayload,
+      getLiveSecurityStatus: async () => baseSnapshot,
+      beginLivePairing: async () => baseSnapshot,
+      startPairedLiveReceiver: async ({ grantId }) => {
+        bridgeWindow.__startedLiveGrantId = grantId;
+        return listeningSnapshot;
+      },
+      revokeLiveDevice: async () => baseSnapshot
+    };
+  }, {
+    worldPayload: genericManifestPayload,
+    baseSnapshot: base,
+    listeningSnapshot: listening
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+  const pairedDevices = page.getByTestId("live-paired-device");
+  await expect(pairedDevices).toHaveCount(2);
+  const available = page.locator(`[data-grant-id="${availableGrantId}"]`);
+  const expired = page.locator(`[data-grant-id="${expiredGrantId}"]`);
+  await expect(available).toHaveAttribute("data-device-state", "available");
+  await expect(expired).toHaveAttribute("data-device-state", "expired");
+  await expect(expired.getByRole("button", { name: "Grant expired for Expired iPhone" })).toBeDisabled();
+  await available.getByRole("button", { name: "Start Secure LAN for Available iPhone" }).click();
+  expect(await page.evaluate(() => (
+    window as Window & { __startedLiveGrantId?: string }
+  ).__startedLiveGrantId)).toBe(availableGrantId);
+  await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
+  await expect(page.locator(".ws-bottom-tray")).toContainText("generic_package");
 });
 
 test("exercises edit delete undo and pilot keys", async ({ page }) => {
