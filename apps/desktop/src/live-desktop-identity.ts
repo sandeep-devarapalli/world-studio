@@ -10,12 +10,14 @@ import { constants } from "node:fs";
 import {
   chmod,
   lstat,
+  mkdtemp,
   mkdir,
   open,
   readFile,
   rename,
   rm
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
@@ -205,11 +207,37 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
     }
   }
 
-  issueSelfSignedCertificate(request: CertificateIssueRequest): Promise<string> {
+  async issueSelfSignedCertificate(request: CertificateIssueRequest): Promise<string> {
     if (!desktopIdPattern.test(request.desktopId)) {
-      return Promise.reject(new DesktopIdentityError("Certificate desktop ID is invalid."));
+      throw new DesktopIdentityError("Certificate desktop ID is invalid.");
     }
-    const privateKeyInput = process.platform === "linux" ? "file:/dev/stdin" : "/dev/stdin";
+    const temporaryRoot = await mkdtemp(path.join(tmpdir(), "world-studio-cert-"));
+    await chmod(temporaryRoot, 0o700);
+    const privateKeyPath = path.join(temporaryRoot, "private-key.pem");
+    let privateKeyHandle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      const writer = await open(
+        privateKeyPath,
+        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+        0o600
+      );
+      try {
+        await writer.writeFile(request.privateKeyPem, "utf8");
+        await writer.sync();
+      } finally {
+        await writer.close();
+      }
+      privateKeyHandle = await open(privateKeyPath, constants.O_RDONLY);
+      await rm(privateKeyPath);
+      return await this.issueFromFileDescriptor(request.desktopId, privateKeyHandle.fd);
+    } finally {
+      await privateKeyHandle?.close().catch(() => undefined);
+      await rm(temporaryRoot, { recursive: true, force: true });
+    }
+  }
+
+  private issueFromFileDescriptor(desktopId: string, privateKeyFd: number): Promise<string> {
+    const privateKeyInput = process.platform === "linux" ? "/proc/self/fd/3" : "/dev/fd/3";
     return new Promise((resolve, reject) => {
       const child = spawn(
         this.executable,
@@ -223,7 +251,7 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
           "-days",
           String(this.validityDays),
           "-subj",
-          `/CN=World Studio ${request.desktopId}`,
+          `/CN=World Studio ${desktopId}`,
           "-addext",
           "basicConstraints=critical,CA:FALSE",
           "-addext",
@@ -235,10 +263,22 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
         ],
         {
           shell: false,
-          stdio: ["pipe", "pipe", "pipe"],
+          stdio: ["ignore", "pipe", "pipe", privateKeyFd] as [
+            "ignore",
+            "pipe",
+            "pipe",
+            number
+          ],
           env: { PATH: "/usr/bin:/bin", LANG: "C" }
         }
       );
+      const childStdout = child.stdout;
+      const childStderr = child.stderr;
+      if (!childStdout || !childStderr) {
+        child.kill("SIGKILL");
+        reject(new DesktopIdentityError("Certificate issuer streams are unavailable.", "certificate_error"));
+        return;
+      }
       const stdout: Buffer[] = [];
       const stderr: Buffer[] = [];
       let outputBytes = 0;
@@ -254,7 +294,7 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
         child.kill("SIGKILL");
         finish(new DesktopIdentityError("Certificate issuer timed out.", "certificate_error"));
       }, this.timeoutMs);
-      child.stdout.on("data", (chunk: Buffer) => {
+      childStdout.on("data", (chunk: Buffer) => {
         outputBytes += chunk.byteLength;
         if (outputBytes > maxIdentityBytes) {
           child.kill("SIGKILL");
@@ -263,7 +303,7 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
         }
         stdout.push(Buffer.from(chunk));
       });
-      child.stderr.on("data", (chunk: Buffer) => {
+      childStderr.on("data", (chunk: Buffer) => {
         if (stderr.reduce((total, value) => total + value.byteLength, 0) < 16 * 1024) {
           stderr.push(Buffer.from(chunk));
         }
@@ -287,10 +327,6 @@ export class OpenSslSelfSignedCertificateIssuer implements SelfSignedCertificate
         }
         finish(undefined, certificate);
       });
-      child.stdin.once("error", () => {
-        finish(new DesktopIdentityError("Certificate issuer rejected its private-key input.", "certificate_error"));
-      });
-      child.stdin.end(request.privateKeyPem);
     });
   }
 }
