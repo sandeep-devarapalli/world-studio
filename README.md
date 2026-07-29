@@ -30,6 +30,9 @@ verified exports, or local desktop files.
   Budo-compatible manifests, article figure views, and verified export folders.
 - An explicit loopback-only Capture Splat live-session receiver for replaying source-frame
   and camera evidence into Simulate without replacing the loaded world.
+- An M1 desktop security boundary for explicit selected-interface pairing, pinned TLS,
+  P-256 device identity, signed requests, credential expiry/revocation, and durable replay
+  defense. It does not yet include the iPhone sender or physical-device acceptance.
 - Episode recording, playback, export, browser import, Electron import, package bundle export,
   source relink, companion asset validation, embedded asset manifests, and per-asset integrity
   drilldowns.
@@ -84,6 +87,17 @@ the Electron bridge. `WORLD_STUDIO_LIVE_PORT` changes the port;
 `WORLD_STUDIO_LIVE_HOST` is accepted only as `127.0.0.1` or `::1`, so environment
 configuration cannot widen the Phase 1 listener beyond loopback.
 
+M1 does not widen that M0 listener. Its separate secure path begins only after an explicit
+pairing action and an exact local-network interface selection. The QR offer pins the Mac's
+TLS identity; paired devices authenticate requests with a P-256 identity and signed request
+metadata. Expired or revoked grants fail closed, and durable request counters reject replay
+after restart. Bonjour advertises only the allowlisted `_capturesplat._tcp` service metadata
+and never an invitation secret. See [Live Security M1](docs/live_security_m1.md).
+
+This checkpoint does not modify Capture Splat's iPhone capture loop, implement its bounded
+sender, or start reconstruction workers. Local-network permission, firewall, Bonjour, and
+two-cycle iPhone evidence remain physical acceptance gates.
+
 ## Package Desktop App
 
 On macOS:
@@ -96,7 +110,10 @@ open "release/mac-$(uname -m)/World Studio.app"
 This creates an ad-hoc signed local smoke bundle from Electron's native app shell plus the
 built `apps/web/dist` and `apps/desktop/dist` outputs. It is for local validation, not
 notarized distribution. The current macOS smoke build is expected at
-`release/mac-arm64/World Studio.app` on Apple Silicon.
+`release/mac-arm64/World Studio.app` on Apple Silicon. The bundle declares its local-network
+purpose and only the `_capturesplat._tcp` Bonjour service used by explicit pairing. The
+packaged smoke extracts the final `Info.plist` and fails unless both declarations match
+exactly.
 
 ## Test
 
@@ -115,6 +132,9 @@ byte-identical mirrors and verifies their fingerprints.
 `test:live-e2e` builds the pure desktop receiver, creates a temporary two-frame
 capture, runs the sibling Capture Splat replay CLI through duplicate/disconnect/resume
 simulation, finalizes it, and reopens the emitted handoff through the package reader.
+M1 security tests exercise the desktop identity, pairing/authentication boundary, expiry,
+revocation, signed-body binding, and replay rejection without claiming physical iPhone or
+Bonjour acceptance.
 
 ## Data Formats
 

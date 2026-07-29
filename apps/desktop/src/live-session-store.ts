@@ -16,6 +16,10 @@ import {
 import path from "node:path";
 import type { LiveFrameSummary } from "@world-studio/world-core";
 import {
+  validateLiveAuthReceipt,
+  type LiveAuthReceipt
+} from "./live-auth-contract.js";
+import {
   LIVE_ACK_SCHEMA,
   LIVE_FINALIZE_SCHEMA,
   LiveContractError,
@@ -39,6 +43,7 @@ import {
 
 const frameDirectoryPattern = /^[0-9]{8}$/;
 const frameMetadataFile = "metadata.json";
+const authReceiptFile = "auth-receipt.json";
 const handoffFile = "capture-splat.world-studio.json";
 const finalizedFile = "finalized.json";
 const stateFile = "state.json";
@@ -73,6 +78,8 @@ export interface LiveFramePreviewBytes {
 
 interface StoredSession {
   session: LiveSession;
+  authReceipt: LiveAuthReceipt | null;
+  authReceiptSha256: string | null;
   frames: Map<number, LiveFrame>;
   finalSequenceId: number | null;
   updatedAt: string;
@@ -127,13 +134,20 @@ export class LiveSessionStore {
     this.initialized = true;
   }
 
-  async putSession(input: unknown): Promise<LiveAck> {
+  async putSession(input: unknown, authReceiptValue?: unknown): Promise<LiveAck> {
     const session = validateLiveSession(input);
+    const authReceipt = authReceiptValue === undefined
+      ? null
+      : validateLiveAuthReceipt(authReceiptValue);
+    if (authReceipt && authReceipt.session_id !== session.session_id) {
+      throw new LiveContractError("Authentication receipt and session IDs differ.", "conflict");
+    }
     assertSessionStoreBounds(session);
     return this.withLock(session.session_id, async () => {
       await this.ensureInitialized();
       const existing = this.sessions.get(session.session_id);
       if (existing) {
+        assertTransportOwnership(existing, authReceipt);
         if (stableLiveJson(existing.session) !== stableLiveJson(session)) {
           throw new LiveContractError("Session ID already exists with different metadata.", "conflict");
         }
@@ -150,6 +164,9 @@ export class LiveSessionStore {
         await mkdir(path.join(publicationRoot, ".incoming"), { mode: 0o700 });
         await mkdir(path.join(publicationRoot, "frames"), { mode: 0o700 });
         await atomicWriteJson(path.join(publicationRoot, "session.json"), session);
+        if (authReceipt) {
+          await atomicWriteJson(path.join(publicationRoot, authReceiptFile), authReceipt);
+        }
         await syncDirectory(path.join(publicationRoot, ".incoming"));
         await syncDirectory(path.join(publicationRoot, "frames"));
         await syncDirectory(publicationRoot);
@@ -158,8 +175,13 @@ export class LiveSessionStore {
       } finally {
         await rm(publicationRoot, { recursive: true, force: true });
       }
+      const authReceiptSha256 = authReceipt
+        ? await hashFile(path.join(sessionRoot, authReceiptFile))
+        : null;
       const stored: StoredSession = {
         session,
+        authReceipt,
+        authReceiptSha256,
         frames: new Map(),
         finalSequenceId: null,
         updatedAt: new Date().toISOString()
@@ -170,13 +192,15 @@ export class LiveSessionStore {
     });
   }
 
-  async putFrame(input: unknown): Promise<LiveAck> {
+  async putFrame(input: unknown, authReceiptValue?: unknown): Promise<LiveAck> {
     const frame = validateLiveFrame(input);
+    const authReceipt = optionalAuthReceipt(authReceiptValue, frame.session_id);
     if (frame.sequence_id > maxStoredSequenceId) {
       throw new LiveContractError(`sequence_id must not exceed ${maxStoredSequenceId}.`);
     }
     return this.withLock(frame.session_id, async () => {
       const stored = await this.requireSession(frame.session_id);
+      assertTransportOwnership(stored, authReceipt);
       this.assertWritable(stored);
       this.assertFrameMatchesSession(stored.session, frame);
       const committed = stored.frames.get(frame.sequence_id);
@@ -206,7 +230,9 @@ export class LiveSessionStore {
     sessionIdValue: string,
     sequenceId: number,
     roleValue: string,
-    body: AsyncIterable<Uint8Array>
+    body: AsyncIterable<Uint8Array>,
+    authenticatedSha256?: string,
+    authReceiptValue?: unknown
   ): Promise<LiveAck> {
     const sessionId = validSessionId(sessionIdValue);
     const role = assertLiveAssetRole(roleValue);
@@ -215,15 +241,20 @@ export class LiveSessionStore {
     }
     return this.withLock(sessionId, async () => {
       const stored = await this.requireSession(sessionId);
+      assertTransportOwnership(stored, optionalAuthReceipt(authReceiptValue, sessionId));
       this.assertWritable(stored);
       const committed = stored.frames.get(sequenceId);
       if (committed) {
         const declared = requireDeclaredAsset(committed, role);
+        assertAuthenticatedAssetSha256(declared.reference.sha256, authenticatedSha256);
         try {
           await this.consumeAndValidateDuplicate(stored, declared, body);
         } catch (error) {
           if (error instanceof LiveContractError && error.code === "bad_request") {
-            throw new LiveContractError(error.message, "conflict");
+            throw new LiveContractError(
+              error.message,
+              authenticatedSha256 ? "auth_body" : "conflict"
+            );
           }
           throw error;
         }
@@ -252,6 +283,7 @@ export class LiveSessionStore {
         throw error;
       }
       const declared = requireDeclaredAsset(metadata, role);
+      assertAuthenticatedAssetSha256(declared.reference.sha256, authenticatedSha256);
       const targetName = assetFileName(role, declared.reference.media_type);
       const targetPath = path.join(incomingRoot, targetName);
       const tempPath = path.join(incomingRoot, `.upload-${randomUUID()}.tmp`);
@@ -259,8 +291,11 @@ export class LiveSessionStore {
       try {
         await writeValidatedAsset(tempPath, body, declared.reference, this.maxAssetBytes);
       } catch (error) {
-        if (duplicatePendingAsset && error instanceof LiveContractError) {
-          throw new LiveContractError(error.message, "conflict");
+        if (error instanceof LiveContractError && error.code === "bad_request") {
+          throw new LiveContractError(
+            error.message,
+            authenticatedSha256 ? "auth_body" : duplicatePendingAsset ? "conflict" : "bad_request"
+          );
         }
         throw error;
       }
@@ -304,18 +339,31 @@ export class LiveSessionStore {
     });
   }
 
-  async resume(sessionIdValue: string): Promise<LiveAck> {
-    const stored = await this.requireSession(validSessionId(sessionIdValue));
+  async resume(sessionIdValue: string, authReceiptValue?: unknown): Promise<LiveAck> {
+    const sessionId = validSessionId(sessionIdValue);
+    const stored = await this.requireSession(sessionId);
+    assertTransportOwnership(stored, optionalAuthReceipt(authReceiptValue, sessionId));
     return this.ack(stored, "resume", stored.finalSequenceId === null ? "accepted" : "finalized");
   }
 
-  async finalize(input: unknown): Promise<LiveAck> {
+  async assertRecoverableSessionOwner(
+    sessionIdValue: string,
+    authReceiptValue: unknown
+  ): Promise<void> {
+    const sessionId = validSessionId(sessionIdValue);
+    const stored = await this.requireSession(sessionId);
+    assertTransportOwnership(stored, optionalAuthReceipt(authReceiptValue, sessionId));
+  }
+
+  async finalize(input: unknown, authReceiptValue?: unknown): Promise<LiveAck> {
     const request = validateLiveFinalize(input);
+    const authReceipt = optionalAuthReceipt(authReceiptValue, request.session_id);
     if (request.final_sequence_id > maxStoredSequenceId) {
       throw new LiveContractError(`final_sequence_id must not exceed ${maxStoredSequenceId}.`);
     }
     return this.withLock(request.session_id, async () => {
       const stored = await this.requireSession(request.session_id);
+      assertTransportOwnership(stored, authReceipt);
       if (stored.finalSequenceId !== null) {
         if (stored.finalSequenceId !== request.final_sequence_id) {
           throw new LiveContractError("Session was already finalized with a different final sequence.", "conflict");
@@ -402,6 +450,16 @@ export class LiveSessionStore {
     const sessionRoot = this.sessionRoot(sessionId);
     await assertDirectory(sessionRoot, "session directory");
     const session = validateLiveSession(await readRequiredJson(path.join(sessionRoot, "session.json"), "Session metadata is missing."));
+    const authReceiptValue = await readOptionalJson(path.join(sessionRoot, authReceiptFile));
+    const authReceipt = authReceiptValue === undefined
+      ? null
+      : validateLiveAuthReceipt(authReceiptValue);
+    const authReceiptSha256 = authReceipt
+      ? await hashFile(path.join(sessionRoot, authReceiptFile))
+      : null;
+    if (authReceipt && authReceipt.session_id !== sessionId) {
+      throw new LiveContractError("Stored authentication receipt and session IDs differ.", "corrupt");
+    }
     try {
       assertSessionStoreBounds(session);
     } catch (error) {
@@ -469,6 +527,8 @@ export class LiveSessionStore {
       : marker?.finalized_at ?? session.created_at;
     const stored = {
       session,
+      authReceipt,
+      authReceiptSha256,
       frames,
       finalSequenceId: marker?.final_sequence_id ?? null,
       updatedAt
@@ -485,6 +545,7 @@ export class LiveSessionStore {
   }
 
   private async verifyFinalSequence(stored: StoredSession, request: LiveFinalizeRequest): Promise<void> {
+    await this.verifyStoredAuthReceipt(stored);
     const expected = stored.session.expected_frame_count;
     if (expected !== undefined && request.final_sequence_id !== expected) {
       throw new LiveContractError(
@@ -512,6 +573,7 @@ export class LiveSessionStore {
 
   private async verifyFinalizedPublication(stored: StoredSession, request: LiveFinalizeRequest): Promise<void> {
     const sessionRoot = this.sessionRoot(stored.session.session_id);
+    await this.verifyStoredAuthReceipt(stored);
     const session = validateLiveSession(
       await readRequiredJson(path.join(sessionRoot, "session.json"), "Session metadata is missing.")
     );
@@ -532,6 +594,28 @@ export class LiveSessionStore {
     const handoff = await readRequiredJson(handoffPath, "Finalized handoff is missing.");
     if (stableLiveJson(handoff) !== stableLiveJson(buildHandoff(stored, request))) {
       throw new LiveContractError("Finalized handoff differs from committed session evidence.", "corrupt");
+    }
+  }
+
+  private async verifyStoredAuthReceipt(stored: StoredSession): Promise<void> {
+    const receiptPath = path.join(this.sessionRoot(stored.session.session_id), authReceiptFile);
+    if (!stored.authReceipt) {
+      if (await pathExists(receiptPath)) {
+        throw new LiveContractError("Authentication receipt appeared after session creation.", "corrupt");
+      }
+      return;
+    }
+    if (!stored.authReceiptSha256) {
+      throw new LiveContractError("Authentication receipt checksum is missing.", "corrupt");
+    }
+    const receipt = validateLiveAuthReceipt(
+      await readRequiredJson(receiptPath, "Authentication receipt is missing.")
+    );
+    if (stableLiveJson(receipt) !== stableLiveJson(stored.authReceipt)) {
+      throw new LiveContractError("Authentication receipt changed.", "corrupt");
+    }
+    if (await hashFile(receiptPath) !== stored.authReceiptSha256) {
+      throw new LiveContractError("Authentication receipt checksum differs.", "corrupt");
     }
   }
 
@@ -664,6 +748,43 @@ export class LiveSessionStore {
       release();
       if (this.locks.get(sessionId) === queued) this.locks.delete(sessionId);
     }
+  }
+}
+
+function assertAuthenticatedAssetSha256(declaredSha256: string, authenticatedSha256?: string): void {
+  if (authenticatedSha256 === undefined) return;
+  if (!/^sha256:[0-9a-f]{64}$/.test(authenticatedSha256) || authenticatedSha256 !== declaredSha256) {
+    throw new LiveContractError(
+      "Authenticated asset SHA-256 differs from frame metadata.",
+      "auth_body"
+    );
+  }
+}
+
+function optionalAuthReceipt(value: unknown, sessionId: string): LiveAuthReceipt | null {
+  if (value === undefined) return null;
+  const receipt = validateLiveAuthReceipt(value);
+  if (receipt.session_id !== sessionId) {
+    throw new LiveContractError("Authentication receipt and live route IDs differ.", "conflict");
+  }
+  return receipt;
+}
+
+function assertTransportOwnership(stored: StoredSession, receipt: LiveAuthReceipt | null): void {
+  if (!stored.authReceipt && !receipt) return;
+  if (!stored.authReceipt || !receipt) {
+    throw new LiveContractError(
+      stored.authReceipt
+        ? "Authenticated live session rejects unauthenticated transport."
+        : "Loopback live session cannot be claimed by paired LAN transport.",
+      "conflict"
+    );
+  }
+  if (
+    stored.authReceipt.desktop_id !== receipt.desktop_id
+    || stored.authReceipt.device_id !== receipt.device_id
+  ) {
+    throw new LiveContractError("Authenticated live session belongs to a different paired device.", "conflict");
   }
 }
 
@@ -927,6 +1048,9 @@ function validateFinalizedMarker(value: unknown, sessionId: string): FinalizedMa
 }
 
 function buildHandoff(stored: StoredSession, request: LiveFinalizeRequest): Record<string, unknown> {
+  if (stored.authReceipt && !stored.authReceiptSha256) {
+    throw new LiveContractError("Authentication receipt checksum is missing.", "corrupt");
+  }
   const sourceFrames = [...stored.frames.values()]
     .sort((left, right) => left.sequence_id - right.sequence_id)
     .map((frame) => {
@@ -987,6 +1111,10 @@ function buildHandoff(stored: StoredSession, request: LiveFinalizeRequest): Reco
     session_id: stored.session.session_id,
     live_session_schema: stored.session.schema,
     live_session: "session.json",
+    ...(stored.authReceipt ? {
+      live_auth_receipt: authReceiptFile,
+      live_auth_receipt_sha256: stored.authReceiptSha256
+    } : {}),
     source_manifest: stored.session.source_manifest,
     coordinate_system: stored.session.coordinate_system,
     final_sequence_id: request.final_sequence_id,

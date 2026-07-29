@@ -30,3 +30,17 @@ is relevant and whether it can be used as a dependency in an Apache 2.0 project.
 | `dimforge/salva` | Apache-2.0 | Fluid simulation future reference. | Optional future dependency. |
 | `harry7557558/vksplat` | Apache-2.0 | Vulkan 3DGS training reference. | Optional future reference/dependency after build review. |
 | `MrNeRF/LichtFeld-Studio` | GPL-3.0 | Native 3DGS studio UX reference. | Reference-only unless relicensing is intended. |
+
+## M1 Local Security Utilities
+
+These are narrow host/tool boundaries, not reconstruction or simulation dependencies:
+
+| Component | License/source | World Studio role | Status |
+|---|---|---|---|
+| macOS `/usr/bin/openssl` | Apple-provided system LibreSSL tool | Issues the local self-signed certificate for the protected P-256 desktop identity. Invoked by absolute path without a shell. | Active macOS system boundary; no source or binary vendored. |
+| macOS `/usr/bin/dns-sd` | Apple-provided Bonjour system tool | Publishes `_capturesplat._tcp` only after explicit interface selection and pairing/secure-listen action. It does not browse for or trust hosts. | Active macOS system boundary; no source or binary vendored. |
+| `soldair/node-qrcode` (`qrcode` 1.5.4; `@types/qrcode` 1.5.6) | MIT | Browser-bundled QR image generation for the short-lived pairing invitation. | Adopted in the web package; Vite bundles it, so it is not a desktop runtime dependency. |
+
+The Bonjour TXT allowlist contains public protocol mode, desktop identity, TLS fingerprint,
+transport, and authentication-algorithm metadata only. Pairing secrets, verification codes,
+device grants, private keys, and request counters must never be advertised.

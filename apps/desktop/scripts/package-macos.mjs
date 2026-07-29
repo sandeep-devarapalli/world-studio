@@ -56,6 +56,12 @@ try {
   setPlistValue(infoPlist, "CFBundleShortVersionString", rootPackageJson.version);
   setPlistValue(infoPlist, "CFBundleVersion", rootPackageJson.version);
   setPlistValue(infoPlist, "LSApplicationCategoryType", "public.app-category.graphics-design");
+  setPlistValue(
+    infoPlist,
+    "NSLocalNetworkUsageDescription",
+    "World Studio uses your selected local network only when you explicitly pair Capture Splat."
+  );
+  setPlistJsonValue(infoPlist, "NSBonjourServices", ["_capturesplat._tcp"]);
 
   await stripMacMetadata(stagingApp);
   run("codesign", ["--force", "--deep", "--sign", "-", stagingApp], repoRoot);
@@ -72,6 +78,10 @@ function run(command, args, cwd) {
 
 function setPlistValue(file, key, value) {
   run("plutil", ["-replace", key, "-string", value, file], repoRoot);
+}
+
+function setPlistJsonValue(file, key, value) {
+  run("plutil", ["-replace", key, "-json", JSON.stringify(value), file], repoRoot);
 }
 
 async function writeArtifactsRuntimePackage(payloadDir) {

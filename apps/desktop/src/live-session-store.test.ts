@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  LIVE_AUTH_RECEIPT_SCHEMA,
+  LIVE_AUTH_SCHEME,
+  LIVE_PAIRING_PERMISSIONS,
+  type LiveAuthReceipt
+} from "./live-auth-contract.js";
+import {
   LIVE_ACK_SCHEMA,
   LIVE_FRAME_SCHEMA,
   LIVE_SESSION_SCHEMA,
@@ -51,6 +57,61 @@ describe("live contract validation", () => {
 });
 
 describe("LiveSessionStore", () => {
+  it("persists authenticated provenance and never crosses the LAN/loopback ownership boundary", async () => {
+    const root = await tempRoot("authenticated-owner");
+    const receipt = authReceipt();
+    const store = new LiveSessionStore(root);
+    expect((await store.putSession(session(1), receipt)).status).toBe("accepted");
+    await expect(store.putFrame(frame(1, Buffer.from("secure"))))
+      .rejects.toMatchObject({ code: "conflict" });
+    await expect(store.putFrame(
+      frame(1, Buffer.from("secure")),
+      { ...receipt, device_id: `csd_${"A".repeat(43)}` }
+    )).rejects.toMatchObject({ code: "conflict" });
+
+    const bytes = Buffer.from("secure");
+    await store.putFrame(frame(1, bytes), receipt);
+    await expect(store.putAsset(
+      "test-session",
+      1,
+      "source",
+      chunks(Buffer.from("tamper")),
+      hash(bytes),
+      receipt
+    )).rejects.toMatchObject({ code: "auth_body" });
+    await expect(store.putAsset(
+      "test-session",
+      1,
+      "source",
+      chunks(bytes),
+      hash(Buffer.from("different")),
+      receipt
+    )).rejects.toMatchObject({ code: "auth_body" });
+    await store.putAsset("test-session", 1, "source", chunks(bytes), hash(bytes), receipt);
+    await store.finalize(finalize(1), receipt);
+    const receiptBytes = await readFile(path.join(root, "test-session", "auth-receipt.json"));
+    expect(JSON.parse(receiptBytes.toString("utf8"))).toEqual(receipt);
+    expect(JSON.parse(
+      await readFile(path.join(root, "test-session", "capture-splat.world-studio.json"), "utf8")
+    )).toMatchObject({
+      live_auth_receipt: "auth-receipt.json",
+      live_auth_receipt_sha256: hash(receiptBytes)
+    });
+
+    const recovered = new LiveSessionStore(root);
+    await recovered.initialize();
+    await expect(recovered.resume("test-session")).rejects.toMatchObject({ code: "conflict" });
+    await expect(recovered.resume("test-session", receipt)).resolves.toMatchObject({
+      finalized: true
+    });
+
+    const loopbackRoot = await tempRoot("loopback-owner");
+    const loopback = new LiveSessionStore(loopbackRoot);
+    await loopback.putSession(session(1));
+    await expect(loopback.putSession(session(1), receipt)).rejects.toMatchObject({ code: "conflict" });
+    await expect(loopback.putFrame(frame(1, bytes), receipt)).rejects.toMatchObject({ code: "conflict" });
+  });
+
   it("persists out-of-order frames, reports gaps, resumes, and finalizes an importable handoff", async () => {
     const root = await tempRoot("out-of-order");
     const store = new LiveSessionStore(root);
@@ -234,6 +295,26 @@ describe("LiveSessionStore", () => {
     await writeFile(sourcePath, bytes);
     await writeFile(path.join(root, "test-session", "capture-splat.world-studio.json"), "{}\n");
     await expect(store.finalize(finalize(1))).rejects.toThrow(/handoff checksum differs/);
+  });
+
+  it("integrity-binds schema-valid authentication provenance across finalization and restart", async () => {
+    const root = await tempRoot("auth-receipt-integrity");
+    const receipt = authReceipt();
+    const store = new LiveSessionStore(root);
+    await store.putSession(session(1), receipt);
+    const bytes = Buffer.from("authenticated-frame");
+    await store.putFrame(frame(1, bytes), receipt);
+    await store.putAsset("test-session", 1, "source", chunks(bytes), hash(bytes), receipt);
+    await store.finalize(finalize(1), receipt);
+
+    const receiptPath = path.join(root, "test-session", "auth-receipt.json");
+    const changedReceipt: LiveAuthReceipt = {
+      ...receipt,
+      desktop_id: `wsd_${Buffer.alloc(32, 10).toString("base64url")}`
+    };
+    await writeFile(receiptPath, `${JSON.stringify(changedReceipt, null, 2)}\n`);
+    await expect(store.finalize(finalize(1), receipt)).rejects.toThrow(/receipt changed/);
+    await expect(new LiveSessionStore(root).initialize()).rejects.toThrow(/handoff differs/);
   });
 
   it("rejects display-camera intrinsics that become non-finite while scaling", async () => {
@@ -452,4 +533,21 @@ async function tempRoot(name: string): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), `world-studio-live-${name}-`));
   roots.push(root);
   return root;
+}
+
+function authReceipt(): LiveAuthReceipt {
+  return {
+    schema: LIVE_AUTH_RECEIPT_SCHEMA,
+    session_id: "test-session",
+    desktop_id: "wsd_wWnhZxTueI6DlyzNcbPEU_iTcCxdZmDP3x3La5ZDbHE",
+    device_id: "csd_cJ0JB4zCGIKQsIFSxLzy0owayS74AO-GOjY-Eo9MGoY",
+    grant_id: "csg_ICEiIyQlJicoKSorLC0uLw",
+    pairing_epoch: 1,
+    permissions: [...LIVE_PAIRING_PERMISSIONS],
+    auth_scheme: LIVE_AUTH_SCHEME,
+    tls_certificate_sha256: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    authenticated_at: "2026-07-29T10:32:00.000Z",
+    grant_expires_at: "2026-08-28T10:31:01.000Z",
+    authority: "proposal_only"
+  };
 }

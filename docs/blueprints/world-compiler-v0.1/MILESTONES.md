@@ -19,6 +19,12 @@ Status: completed.
 
 Outcome: bounded iPhone-to-Mac transfer with useful immediate evidence.
 
+Status: partial. The M1A desktop boundary keeps M0 loopback unchanged and adds explicit
+selected-interface pairing seams, QR invitation state, pinned TLS identity, P-256
+device-request authentication, finite grants, expiry/revocation, signed-body binding, and
+durable request-counter replay defense. The iPhone sender, progressive mesh/worker path, and
+physical acceptance remain open.
+
 Acceptance:
 
 - Bonjour discovery and QR or short-code pairing with authenticated TLS.
@@ -28,6 +34,11 @@ Acceptance:
 - Optional reconstruction workers have explicit lifecycle, provenance, resource budgets,
   and failure isolation.
 - Two physical-device cycles preserve throughput, thermal behavior, and finalization.
+
+The desktop implementation and software tests do not by themselves satisfy the first or
+last acceptance items. Packaged macOS local-network permission/firewall behavior, physical
+Bonjour discovery, real QR pairing, receiver restart, Wi-Fi interruption, and two complete
+iPhone cycles must still be recorded.
 
 ## M2 Canonical World Package And Editor
 

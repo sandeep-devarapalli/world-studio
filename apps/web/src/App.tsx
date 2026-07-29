@@ -69,6 +69,8 @@ import type {
   LocalPackageIssue,
   LiveFramePreview,
   LiveFrameSummary,
+  LivePairedDevice,
+  LiveSecuritySnapshot,
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
   EpisodeBundleAsset,
@@ -174,6 +176,22 @@ const stoppedLiveSnapshot: LiveSessionSnapshot = {
   missingRanges: [],
   frames: [],
   authority: "proposal_only",
+  updatedAt: null
+};
+
+const unavailableLiveSecuritySnapshot: LiveSecuritySnapshot = {
+  state: "unavailable",
+  desktopId: null,
+  desktopName: "World Studio",
+  interfaces: [],
+  selectedInterfaceId: null,
+  secureListening: null,
+  pairingInvitationUri: null,
+  pairingVerificationCode: null,
+  tlsCertificateSha256: null,
+  pairingExpiresAt: null,
+  pendingDevice: null,
+  pairedDevices: [],
   updatedAt: null
 };
 
@@ -577,6 +595,13 @@ export function App() {
   const [liveReceiverBusy, setLiveReceiverBusy] = useState(false);
   const [liveReceiverError, setLiveReceiverError] = useState<string | null>(null);
   const livePreviewCacheRef = useRef(new Map<string, LiveFramePreview>());
+  const [liveSecurity, setLiveSecurity] = useState<LiveSecuritySnapshot>(unavailableLiveSecuritySnapshot);
+  const [selectedLiveInterfaceId, setSelectedLiveInterfaceId] = useState("");
+  const [liveSecurityBusy, setLiveSecurityBusy] = useState(false);
+  const [liveSecurityError, setLiveSecurityError] = useState<string | null>(null);
+  const [pairingQrDataUrl, setPairingQrDataUrl] = useState<string | null>(null);
+  const [pairingQrExpanded, setPairingQrExpanded] = useState(false);
+  const [liveSecurityNow, setLiveSecurityNow] = useState(() => Date.now());
   const [sensorCaptures, setSensorCaptures] = useState<SensorCaptureArtifact[]>([]);
   const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
   const [stepCount, setStepCount] = useState(0);
@@ -638,6 +663,14 @@ export function App() {
   const selectedSourceFrame = captureFrames[selectedSourceFrameIndex] ?? captureFrames.find((frame) => frame.previewDataUrl) ?? null;
   const selectedLiveFrame = liveSnapshot.frames.find((frame) => frame.sequenceId === selectedLiveSequence) ?? null;
   const liveTrajectorySegments = useMemo(() => splitLiveTrajectory(liveSnapshot.frames), [liveSnapshot.frames]);
+  const orderedPairedDevices = useMemo(
+    () => [...liveSecurity.pairedDevices].sort((left, right) => (
+      liveDeviceRank(left, liveSecurityNow) - liveDeviceRank(right, liveSecurityNow)
+      || left.displayName.localeCompare(right.displayName)
+      || left.deviceId.localeCompare(right.deviceId)
+    )),
+    [liveSecurity.pairedDevices, liveSecurityNow]
+  );
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
   const simulateSourceFrame = simulateComparisonCapture ? null : selectedSourceFrame;
   const worldOrientation = useMemo<WorldOrientation | undefined>(
@@ -1130,6 +1163,14 @@ export function App() {
     });
   }, []);
 
+  const acceptLiveSecuritySnapshot = useCallback((snapshot: LiveSecuritySnapshot) => {
+    setLiveSecurity(snapshot);
+    setSelectedLiveInterfaceId((current) => {
+      if (snapshot.interfaces.some((entry) => entry.id === current)) return current;
+      return snapshot.selectedInterfaceId ?? snapshot.interfaces[0]?.id ?? "";
+    });
+  }, []);
+
   const startLiveReceiver = useCallback(async () => {
     const start = getDesktopApi()?.startLiveReceiver;
     if (!start) return;
@@ -1173,6 +1214,103 @@ export function App() {
       unsubscribe?.();
     };
   }, [acceptLiveSnapshot]);
+
+  useEffect(() => {
+    const desktop = getDesktopApi();
+    let active = true;
+    const onSnapshot = (snapshot: LiveSecuritySnapshot) => {
+      if (active) acceptLiveSecuritySnapshot(snapshot);
+    };
+    const unsubscribe = desktop?.onLiveSecurityUpdate?.(onSnapshot);
+    void desktop?.getLiveSecurityStatus?.().then(onSnapshot).catch((error: unknown) => {
+      if (active) setLiveSecurityError(error instanceof Error ? error.message : "Failed to read live security status");
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [acceptLiveSecuritySnapshot]);
+
+  useEffect(() => {
+    const invitationUri = liveSecurity.pairingInvitationUri;
+    if (!invitationUri) {
+      setPairingQrDataUrl(null);
+      setPairingQrExpanded(false);
+      return;
+    }
+    let active = true;
+    setPairingQrDataUrl(null);
+    setPairingQrExpanded(false);
+    void import("qrcode")
+      .then((qrcode) => qrcode.toDataURL(invitationUri, {
+        errorCorrectionLevel: "M",
+        margin: 4,
+        width: 960,
+        color: { dark: "#000000", light: "#ffffff" }
+      }))
+      .then((dataUrl) => {
+        if (active) setPairingQrDataUrl(dataUrl);
+      })
+      .catch((error: unknown) => {
+        if (active) setLiveSecurityError(error instanceof Error ? error.message : "Failed to render pairing QR code");
+      });
+    return () => {
+      active = false;
+    };
+  }, [liveSecurity.pairingInvitationUri]);
+
+  useEffect(() => {
+    if (!pairingQrExpanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPairingQrExpanded(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pairingQrExpanded]);
+
+  useEffect(() => {
+    if (!liveSecurity.pairedDevices.length) return;
+    const expiresAt = liveSecurity.pairedDevices
+      .filter((device) => !device.revokedAt)
+      .map((device) => new Date(device.expiresAt).getTime())
+      .filter((value) => Number.isFinite(value) && value > liveSecurityNow)
+      .sort((left, right) => left - right)[0];
+    if (expiresAt === undefined) return;
+    const delay = Math.min(Math.max(expiresAt - liveSecurityNow + 50, 50), 60_000);
+    const timer = window.setTimeout(() => setLiveSecurityNow(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [liveSecurity.pairedDevices, liveSecurityNow]);
+
+  const runLiveSecurityAction = useCallback(async (
+    action: (() => Promise<LiveSecuritySnapshot>) | undefined
+  ) => {
+    if (!action) return;
+    setLiveSecurityBusy(true);
+    setLiveSecurityError(null);
+    try {
+      acceptLiveSecuritySnapshot(await action());
+    } catch (error) {
+      setLiveSecurityError(error instanceof Error ? error.message : "Live security action failed");
+    } finally {
+      setLiveSecurityBusy(false);
+    }
+  }, [acceptLiveSecuritySnapshot]);
+
+  const beginLivePairing = useCallback(() => {
+    const begin = getDesktopApi()?.beginLivePairing;
+    return runLiveSecurityAction(
+      begin && selectedLiveInterfaceId ? () => begin({ interfaceId: selectedLiveInterfaceId }) : undefined
+    );
+  }, [runLiveSecurityAction, selectedLiveInterfaceId]);
+
+  const startPairedLiveReceiver = useCallback((grantId: string) => {
+    const start = getDesktopApi()?.startPairedLiveReceiver;
+    return runLiveSecurityAction(
+      start && selectedLiveInterfaceId
+        ? () => start({ interfaceId: selectedLiveInterfaceId, grantId })
+        : undefined
+    );
+  }, [runLiveSecurityAction, selectedLiveInterfaceId]);
 
   useEffect(() => {
     const sessionId = liveSnapshot.sessionId;
@@ -2427,7 +2565,8 @@ export function App() {
   const rootClass = `ws-root mode-${mode} ${dense ? "dense" : ""} ${docked ? "docked" : ""}`.trim();
   const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
   const hasLiveReceiverApi = Boolean(getDesktopApi()?.startLiveReceiver && getDesktopApi()?.stopLiveReceiver);
-  const showLiveSession = hasLiveReceiverApi || Boolean(liveSnapshot.sessionId);
+  const hasLiveSecurityApi = Boolean(getDesktopApi()?.beginLivePairing && getDesktopApi()?.getLiveSecurityStatus);
+  const showLiveSession = hasLiveReceiverApi || hasLiveSecurityApi || Boolean(liveSnapshot.sessionId);
   const measureStart = measurePoints[0];
   const measureEnd = measurePoints[1];
   const measureLineStyle =
@@ -3232,6 +3371,24 @@ export function App() {
           />
         </main>
       </div>
+      {pairingQrExpanded && pairingQrDataUrl && liveSecurity.pairingInvitationUri ? (
+        <div
+          aria-label="Large Capture Splat pairing QR code"
+          aria-modal="true"
+          className="ws-pairing-qr-lightbox"
+          data-testid="live-pairing-qr-lightbox"
+          role="dialog"
+        >
+          <div className="ws-pairing-qr-lightbox-card">
+            <div>
+              <span>Capture Splat pairing</span>
+              <b>{liveSecurity.pairingVerificationCode ?? "pending"}</b>
+              <WSButton autoFocus onClick={() => setPairingQrExpanded(false)}>Close QR</WSButton>
+            </div>
+            <img alt="Large Capture Splat pairing QR code" src={pairingQrDataUrl} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -3399,6 +3556,155 @@ export function App() {
               <span>authority</span>
               <b>proposal only · never world or collision authority</b>
             </div>
+            {hasLiveSecurityApi ? (
+              <div className="ws-live-security" data-testid="live-security-panel">
+                <div className="ws-live-security-head">
+                  <span>iPhone security</span>
+                  <WSChip>{liveSecurity.state.replaceAll("_", " ")}</WSChip>
+                </div>
+                <label className="ws-live-interface">
+                  <span>Mac interface</span>
+                  <select
+                    aria-label="Mac network interface"
+                    disabled={liveSecurityBusy || liveSecurity.state === "pairing" || liveSecurity.state === "pairing_pending" || liveSecurity.state === "secure_listening"}
+                    onChange={(event) => setSelectedLiveInterfaceId(event.target.value)}
+                    value={selectedLiveInterfaceId}
+                  >
+                    {liveSecurity.interfaces.length ? liveSecurity.interfaces.map((entry) => (
+                      <option key={entry.id} value={entry.id}>{entry.name} · {entry.address}</option>
+                    )) : <option value="">No private LAN interface</option>}
+                  </select>
+                </label>
+                <div className="ws-btn-row">
+                  <WSButton
+                    accent
+                    disabled={
+                      liveSecurityBusy
+                      || !selectedLiveInterfaceId
+                      || liveSecurity.state === "pairing"
+                      || liveSecurity.state === "pairing_pending"
+                      || liveSecurity.state === "secure_listening"
+                    }
+                    onClick={() => void beginLivePairing()}
+                  >
+                    Pair iPhone
+                  </WSButton>
+                  {(liveSecurity.state === "pairing" || liveSecurity.state === "pairing_pending") ? (
+                    <WSButton
+                      disabled={liveSecurityBusy}
+                      onClick={() => void runLiveSecurityAction(getDesktopApi()?.cancelLivePairing)}
+                    >
+                      Cancel Pairing
+                    </WSButton>
+                  ) : null}
+                  {liveSecurity.state === "secure_listening" ? (
+                    <WSButton
+                      disabled={liveSecurityBusy}
+                      onClick={() => void runLiveSecurityAction(getDesktopApi()?.stopPairedLiveReceiver)}
+                    >
+                      Stop Secure LAN
+                    </WSButton>
+                  ) : null}
+                </div>
+                {liveSecurity.secureListening ? (
+                  <div className="ws-kv">
+                    <span>TLS endpoint</span>
+                    <b>{liveSecurity.secureListening.host}:{liveSecurity.secureListening.port}</b>
+                  </div>
+                ) : null}
+                {pairingQrDataUrl && liveSecurity.pairingInvitationUri ? (
+                  <div className="ws-pairing-qr" data-testid="live-pairing-qr">
+                    <img alt="Capture Splat pairing QR code" src={pairingQrDataUrl} />
+                    <div>
+                      <span>Compare on iPhone</span>
+                      <b>{liveSecurity.pairingVerificationCode ?? "pending"}</b>
+                      <small>Expires {formatSecurityTime(liveSecurity.pairingExpiresAt)}</small>
+                      <WSButton
+                        aria-expanded={pairingQrExpanded}
+                        onClick={() => setPairingQrExpanded(true)}
+                      >
+                        Open Full-Size QR
+                      </WSButton>
+                    </div>
+                  </div>
+                ) : null}
+                {liveSecurity.pendingDevice ? (
+                  <div className="ws-pairing-pending" data-testid="live-pairing-pending">
+                    <span>Pairing request</span>
+                    <b>{liveSecurity.pendingDevice.displayName}</b>
+                    <small>{shortSecurityId(liveSecurity.pendingDevice.deviceId)}</small>
+                    <div className="ws-btn-row">
+                      <WSButton
+                        accent
+                        disabled={liveSecurityBusy}
+                        onClick={() => void runLiveSecurityAction(getDesktopApi()?.approveLivePairing)}
+                      >
+                        Approve Device
+                      </WSButton>
+                      <WSButton
+                        disabled={liveSecurityBusy}
+                        onClick={() => void runLiveSecurityAction(getDesktopApi()?.rejectLivePairing)}
+                      >
+                        Reject
+                      </WSButton>
+                    </div>
+                  </div>
+                ) : null}
+                {orderedPairedDevices.map((device) => {
+                  const state = liveDeviceState(device, liveSecurityNow);
+                  return (
+                    <div
+                      className="ws-paired-device"
+                      data-device-state={state}
+                      data-grant-id={device.grantId}
+                      data-testid="live-paired-device"
+                      key={device.deviceId}
+                    >
+                      <div>
+                        <span>Paired device</span>
+                        <b>{device.displayName}</b>
+                        <small>
+                          {state === "revoked" ? `revoked ${formatSecurityDateTime(device.revokedAt)}` : null}
+                          {state === "expired" ? `grant expired ${formatSecurityDateTime(device.expiresAt)}` : null}
+                          {state === "available" ? `expires ${formatSecurityDateTime(device.expiresAt)}` : null}
+                        </small>
+                      </div>
+                      <div className="ws-btn-row">
+                        {state !== "revoked" && liveSecurity.state !== "secure_listening" ? (
+                          <WSButton
+                            aria-label={
+                              state === "expired"
+                                ? `Grant expired for ${device.displayName}`
+                                : `Start Secure LAN for ${device.displayName}`
+                            }
+                            disabled={liveSecurityBusy || !selectedLiveInterfaceId || state === "expired"}
+                            onClick={() => void startPairedLiveReceiver(device.grantId)}
+                          >
+                            {state === "expired" ? "Grant Expired" : "Start Secure LAN"}
+                          </WSButton>
+                        ) : null}
+                        {state !== "revoked" ? (
+                          <WSButton
+                            aria-label={`Revoke ${device.displayName}`}
+                            disabled={liveSecurityBusy}
+                            onClick={() => void runLiveSecurityAction(
+                              getDesktopApi()?.revokeLiveDevice
+                                ? () => getDesktopApi()!.revokeLiveDevice!({ grantId: device.grantId })
+                                : undefined
+                            )}
+                          >
+                            Revoke
+                          </WSButton>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {liveSecurityError || liveSecurity.error ? (
+                  <div className="ws-live-error">{liveSecurityError ?? liveSecurity.error}</div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="ws-btn-row">
               <WSButton accent disabled={!hasLiveReceiverApi || liveReceiverBusy || liveSnapshot.state !== "stopped"} onClick={() => void startLiveReceiver()}>
                 Start Listening
@@ -5533,6 +5839,39 @@ function formatLiveMissingRanges(ranges: LiveSessionSnapshot["missingRanges"]): 
   if (!ranges.length) return "none";
   const shown = ranges.slice(0, 4).map((range) => range.start === range.end ? String(range.start) : `${range.start}–${range.end}`);
   return ranges.length > shown.length ? `${shown.join(", ")} +${ranges.length - shown.length}` : shown.join(", ");
+}
+
+function formatSecurityTime(value: string | null): string {
+  if (!value) return "not set";
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime())
+    ? parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "invalid";
+}
+
+function formatSecurityDateTime(value: string | null): string {
+  if (!value) return "not set";
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime())
+    ? parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
+    : "invalid";
+}
+
+function liveDeviceState(
+  device: LivePairedDevice,
+  now: number
+): "available" | "expired" | "revoked" {
+  if (device.revokedAt) return "revoked";
+  return new Date(device.expiresAt).getTime() <= now ? "expired" : "available";
+}
+
+function liveDeviceRank(device: LivePairedDevice, now: number): number {
+  const state = liveDeviceState(device, now);
+  return state === "available" ? 0 : state === "expired" ? 1 : 2;
+}
+
+function shortSecurityId(value: string): string {
+  return value.length <= 18 ? value : `${value.slice(0, 10)}…${value.slice(-6)}`;
 }
 
 function LiveTrajectory({

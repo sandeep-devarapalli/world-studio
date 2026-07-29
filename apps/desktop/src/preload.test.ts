@@ -16,4 +16,15 @@ describe("desktop preload live-session bridge", () => {
       'return () => ipcRenderer.removeListener("world-studio:live-session-update", handler);'
     );
   });
+
+  it("unsubscribes the exact live-security IPC handler registered for the renderer", async () => {
+    const source = await readFile(preloadPath, "utf8");
+    expect(source).toMatch(
+      /const handler = \(_event: Electron\.IpcRendererEvent, snapshot: LiveSecuritySnapshot\) => listener\(snapshot\);/
+    );
+    expect(source).toContain('ipcRenderer.on("world-studio:live-security-update", handler);');
+    expect(source).toContain(
+      'return () => ipcRenderer.removeListener("world-studio:live-security-update", handler);'
+    );
+  });
 });

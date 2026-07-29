@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import type { LiveReceiverState, LiveSessionSnapshot } from "@world-studio/world-core";
@@ -16,6 +17,10 @@ import {
   type LiveFramePreviewBytes,
   type LiveStoreSnapshot
 } from "./live-session-store.js";
+import {
+  LIVE_AUTH_ERROR_SCHEMA,
+  type LiveAuthReceipt
+} from "./live-auth-contract.js";
 
 const apiRoot = "/api/capture-splat/live/v0.1";
 const defaultHost = "127.0.0.1";
@@ -28,6 +33,12 @@ export interface LiveSessionReceiverOptions {
   port?: number;
   maxJsonBytes?: number;
   maxAssetBytes?: number;
+}
+
+export interface LiveRequestContext {
+  expectedBodySha256?: string;
+  authReceipt?: LiveAuthReceipt;
+  onSessionAuthorized?: () => Promise<void>;
 }
 
 export type LiveSessionUpdateListener = (snapshot: LiveSessionSnapshot) => void;
@@ -67,25 +78,10 @@ export class LiveSessionReceiver {
     if (this.server) return this.status();
     await this.store.initialize();
     const server = createServer((request, response) => {
-      void this.handleRequest(request, response);
+      void this.dispatch(request, response);
     });
     server.on("connection", (socket) => {
-      this.socketSessions.set(socket, new Set());
-      socket.once("close", () => {
-        const sessions = this.socketSessions.get(socket);
-        this.socketSessions.delete(socket);
-        if (
-          this.server
-          && this.receiverState !== "stopped"
-          && this.receiverState !== "finalized"
-          && this.activeSessionId
-          && sessions?.has(this.activeSessionId)
-          && ![...this.socketSessions.values()].some((otherSessions) => otherSessions.has(this.activeSessionId!))
-        ) {
-          this.receiverState = "interrupted";
-          void this.emitCurrent();
-        }
-      });
+      this.registerSocket(socket);
     });
     server.on("clientError", (_error, socket) => {
       if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
@@ -114,6 +110,7 @@ export class LiveSessionReceiver {
 
   async stop(): Promise<LiveSessionSnapshot> {
     const server = this.server;
+    this.receiverState = "stopped";
     if (server) {
       this.server = null;
       server.closeAllConnections();
@@ -122,7 +119,6 @@ export class LiveSessionReceiver {
       });
     }
     this.actualPort = null;
-    this.receiverState = "stopped";
     this.socketSessions.clear();
     return this.emitCurrent();
   }
@@ -138,6 +134,18 @@ export class LiveSessionReceiver {
     };
   }
 
+  async markTransportInterrupted(): Promise<LiveSessionSnapshot> {
+    if (
+      this.activeSessionId
+      && this.receiverState !== "finalized"
+      && this.receiverState !== "stopped"
+      && this.receiverState !== "interrupted"
+    ) {
+      this.receiverState = "interrupted";
+    }
+    return this.emitCurrent();
+  }
+
   async readFramePreview(
     sessionId: string,
     sequenceId: number,
@@ -146,7 +154,11 @@ export class LiveSessionReceiver {
     return this.store.readFramePreview(sessionId, sequenceId, maxBytes);
   }
 
-  private async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  async dispatch(
+    request: IncomingMessage,
+    response: ServerResponse,
+    context: LiveRequestContext = {}
+  ): Promise<void> {
     try {
       const url = new URL(request.url ?? "/", this.host === "::1" ? "http://[::1]" : `http://${this.host}`);
       const pathParts = decodePath(url.pathname);
@@ -168,9 +180,10 @@ export class LiveSessionReceiver {
       const sessionId = validSessionId(pathParts[1]);
       this.trackSocket(request.socket, sessionId);
       if (pathParts.length === 2 && request.method === "PUT") {
-        const session = validateLiveSession(await readJsonRequest(request, this.maxJsonBytes));
+        const session = validateLiveSession(await readJsonRequest(request, this.maxJsonBytes, context.expectedBodySha256));
         if (session.session_id !== sessionId) throw new LiveContractError("Route and session body IDs differ.", "conflict");
-        const ack = await this.store.putSession(session);
+        const ack = await this.store.putSession(session, context.authReceipt);
+        await context.onSessionAuthorized?.();
         await this.activate(
           sessionId,
           ack.finalized
@@ -183,7 +196,8 @@ export class LiveSessionReceiver {
         return;
       }
       if (pathParts.length === 2 && request.method === "GET") {
-        const ack = await this.store.resume(sessionId);
+        const ack = await this.store.resume(sessionId, context.authReceipt);
+        await context.onSessionAuthorized?.();
         if (ack.finalized) {
           await this.activate(sessionId, "finalized");
         } else if (this.receiverState === "interrupted" || this.activeSessionId !== sessionId) {
@@ -195,9 +209,10 @@ export class LiveSessionReceiver {
       if (pathParts.length === 2) throw new RouteError(405, "Method not allowed for endpoint.");
       if (pathParts.length === 3 && pathParts[2] === "finalize") {
         if (request.method !== "POST") throw new RouteError(405, "Method not allowed for endpoint.");
-        const finalize = validateLiveFinalize(await readJsonRequest(request, this.maxJsonBytes));
+        const finalize = validateLiveFinalize(await readJsonRequest(request, this.maxJsonBytes, context.expectedBodySha256));
         if (finalize.session_id !== sessionId) throw new LiveContractError("Route and finalization body IDs differ.", "conflict");
-        const ack = await this.store.finalize(finalize);
+        const ack = await this.store.finalize(finalize, context.authReceipt);
+        await context.onSessionAuthorized?.();
         await this.activate(sessionId, "finalized");
         sendJson(response, 200, ack);
         return;
@@ -205,18 +220,27 @@ export class LiveSessionReceiver {
       if (pathParts[2] !== "frames" || !pathParts[3]) throw new RouteError(404, "Endpoint not found.");
       const sequenceId = parseSequenceId(pathParts[3]);
       if (pathParts.length === 4 && request.method === "PUT") {
-        const frame = validateLiveFrame(await readJsonRequest(request, this.maxJsonBytes));
+        const frame = validateLiveFrame(await readJsonRequest(request, this.maxJsonBytes, context.expectedBodySha256));
         if (frame.session_id !== sessionId || frame.sequence_id !== sequenceId) {
           throw new LiveContractError("Route and frame metadata identity differ.", "conflict");
         }
-        const ack = await this.store.putFrame(frame);
+        const ack = await this.store.putFrame(frame, context.authReceipt);
+        await context.onSessionAuthorized?.();
         await this.activate(sessionId, "receiving");
         sendJson(response, ack.status === "incomplete" ? 202 : 200, ack);
         return;
       }
       if (pathParts.length === 6 && pathParts[4] === "assets" && request.method === "PUT") {
         const role = assertLiveAssetRole(pathParts[5] ?? "");
-        const ack = await this.store.putAsset(sessionId, sequenceId, role, request);
+        const ack = await this.store.putAsset(
+          sessionId,
+          sequenceId,
+          role,
+          request,
+          context.expectedBodySha256,
+          context.authReceipt
+        );
+        await context.onSessionAuthorized?.();
         await this.activate(sessionId, "receiving");
         sendJson(response, ack.status === "incomplete" ? 202 : 200, ack);
         return;
@@ -231,15 +255,23 @@ export class LiveSessionReceiver {
       const message = error instanceof Error ? error.message : "Unknown receiver error.";
       this.lastError = statusCode >= 500 ? message : undefined;
       if (!response.headersSent) {
-        sendJson(response, statusCode, {
-          schema: "capture_splat.live_error.v0.1",
-          error: error instanceof LiveContractError
-            ? error.code
-            : error instanceof RouteError
-              ? error.statusCode === 404 ? "not_found" : "method_not_allowed"
-              : "internal_error",
-          message
-        });
+        if (error instanceof LiveContractError && error.code === "auth_body") {
+          sendJson(response, statusCode, {
+            schema: LIVE_AUTH_ERROR_SCHEMA,
+            code: "body_digest_mismatch",
+            retryable: true
+          });
+        } else {
+          sendJson(response, statusCode, {
+            schema: "capture_splat.live_error.v0.1",
+            error: error instanceof LiveContractError
+              ? error.code
+              : error instanceof RouteError
+                ? error.statusCode === 404 ? "not_found" : "method_not_allowed"
+                : "internal_error",
+            message
+          });
+        }
       } else {
         response.destroy();
       }
@@ -248,9 +280,33 @@ export class LiveSessionReceiver {
   }
 
   private trackSocket(socket: Socket, sessionId: string): void {
-    const sessions = this.socketSessions.get(socket) ?? new Set<string>();
+    const sessions = this.registerSocket(socket);
     sessions.add(sessionId);
+  }
+
+  private registerSocket(socket: Socket): Set<string> {
+    const existing = this.socketSessions.get(socket);
+    if (existing) return existing;
+    const sessions = new Set<string>();
     this.socketSessions.set(socket, sessions);
+    socket.once("close", () => {
+      const closedSessions = this.socketSessions.get(socket);
+      if (!closedSessions) return;
+      this.socketSessions.delete(socket);
+      if (
+        this.receiverState !== "stopped"
+        && this.receiverState !== "finalized"
+        && this.activeSessionId
+        && closedSessions.has(this.activeSessionId)
+        && ![...this.socketSessions.values()].some(
+          (otherSessions) => otherSessions.has(this.activeSessionId!)
+        )
+      ) {
+        this.receiverState = "interrupted";
+        void this.emitCurrent();
+      }
+    });
+    return sessions;
   }
 
   private async activate(sessionId: string, state: LiveReceiverState): Promise<void> {
@@ -340,7 +396,11 @@ function emptySnapshot(
   };
 }
 
-async function readJsonRequest(request: IncomingMessage, maxBytes: number): Promise<unknown> {
+async function readJsonRequest(
+  request: IncomingMessage,
+  maxBytes: number,
+  expectedBodySha256?: string
+): Promise<unknown> {
   const contentType = request.headers["content-type"];
   if (typeof contentType !== "string" || contentType.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
     throw new LiveContractError("JSON requests require Content-Type: application/json.");
@@ -351,19 +411,35 @@ async function readJsonRequest(request: IncomingMessage, maxBytes: number): Prom
     throw new LiveContractError("JSON request exceeds the receiver byte limit.");
   }
   const chunks: Buffer[] = [];
+  const digest = expectedBodySha256 ? createHash("sha256") : null;
   let received = 0;
   try {
     for await (const value of request) {
       const chunk = Buffer.from(value);
       received += chunk.byteLength;
       if (received > maxBytes) throw new LiveContractError("JSON request exceeds the receiver byte limit.");
+      digest?.update(chunk);
       chunks.push(chunk);
     }
   } catch (error) {
     if (error instanceof LiveContractError) throw error;
-    throw new LiveContractError("Request body was truncated.");
+    throw new LiveContractError(
+      "Request body was truncated.",
+      expectedBodySha256 ? "auth_body" : "bad_request"
+    );
   }
-  if (declaredLength !== undefined && received !== declaredLength) throw new LiveContractError("Request body was truncated.");
+  if (declaredLength !== undefined && received !== declaredLength) {
+    throw new LiveContractError(
+      "Request body was truncated.",
+      expectedBodySha256 ? "auth_body" : "bad_request"
+    );
+  }
+  if (
+    expectedBodySha256
+    && (!/^sha256:[0-9a-f]{64}$/.test(expectedBodySha256) || `sha256:${digest!.digest("hex")}` !== expectedBodySha256)
+  ) {
+    throw new LiveContractError("Authenticated body SHA-256 mismatch.", "auth_body");
+  }
   return parseLiveJson(Buffer.concat(chunks).toString("utf8"));
 }
 

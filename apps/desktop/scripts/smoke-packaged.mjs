@@ -15,20 +15,48 @@ const desktopDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(desktopDir, "../..");
 const releaseDir = path.join(repoRoot, "release", `mac-${process.arch}`);
 const appBundle = process.env.WORLD_STUDIO_DESKTOP_APP ?? path.join(releaseDir, "World Studio.app");
-const screenshotDir =
+const screenshotDir = path.resolve(
   process.env.WORLD_STUDIO_DESKTOP_SMOKE_ARTIFACTS ??
-  path.join(os.tmpdir(), `world-studio-desktop-smoke-${Date.now()}`);
+  path.join(os.tmpdir(), `world-studio-desktop-smoke-${Date.now()}`)
+);
+const smokeUserDataDir = path.join(screenshotDir, "user-data");
 
 await stat(appBundle);
-await mkdir(screenshotDir, { recursive: true });
+await mkdir(smokeUserDataDir, { recursive: true });
 
-const executableName = execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", path.join(appBundle, "Contents", "Info.plist")], {
+const infoPlist = path.join(appBundle, "Contents", "Info.plist");
+const executableName = execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", infoPlist], {
   encoding: "utf8"
 }).trim();
+const localNetworkUsage = execFileSync(
+  "plutil",
+  ["-extract", "NSLocalNetworkUsageDescription", "raw", infoPlist],
+  { encoding: "utf8" }
+).trim();
+if (localNetworkUsage !== "World Studio uses your selected local network only when you explicitly pair Capture Splat.") {
+  throw new Error("Packaged app has an unexpected NSLocalNetworkUsageDescription.");
+}
+const bonjourServices = JSON.parse(execFileSync(
+  "plutil",
+  ["-extract", "NSBonjourServices", "json", "-o", "-", infoPlist],
+  { encoding: "utf8" }
+));
+if (
+  !Array.isArray(bonjourServices)
+  || bonjourServices.length !== 1
+  || bonjourServices[0] !== "_capturesplat._tcp"
+) {
+  throw new Error("Packaged app must declare only the _capturesplat._tcp Bonjour service.");
+}
 const executable = path.join(appBundle, "Contents", "MacOS", executableName);
 const cdpPort = await findOpenPort();
 const appProcess = spawn(executable, [`--remote-debugging-port=${cdpPort}`], {
-  env: { ...process.env, WORLD_STUDIO_DESKTOP_SMOKE: "1" },
+  env: {
+    ...process.env,
+    WORLD_STUDIO_DESKTOP_SMOKE: "1",
+    WORLD_STUDIO_DESKTOP_SMOKE_ARTIFACTS: screenshotDir,
+    WORLD_STUDIO_DESKTOP_SMOKE_USER_DATA: smokeUserDataDir
+  },
   stdio: ["ignore", "pipe", "pipe"]
 });
 
@@ -78,6 +106,9 @@ try {
         url: page.url(),
         title: await page.title(),
         screenshotDir,
+        smokeUserDataDir,
+        localNetworkUsage,
+        bonjourServices,
         modes: ["View", "Edit", "Simulate", "Pilot", "Sensors", "Episode"]
       },
       null,

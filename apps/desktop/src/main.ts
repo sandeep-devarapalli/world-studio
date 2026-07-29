@@ -1,21 +1,36 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, safeStorage } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
 import type {
   EpisodeBundleAsset,
   LiveFramePreview,
+  LiveSecuritySnapshot,
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
   SaveEpisodeBundleInput
 } from "@world-studio/world-core";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { desktopSmokeUserDataPath } from "./desktop-smoke.js";
 import { LiveSessionReceiver } from "./live-session-receiver.js";
+import { DesktopIdentityStore, type SecretProtector } from "./live-desktop-identity.js";
+import { PairingStore } from "./live-pairing-store.js";
+import { LiveSecureGateway } from "./live-secure-gateway.js";
 import { createOpenLocalPackageDialogOptions } from "./open-local-dialog-options.js";
 import { readLocalPackage } from "./package-reader.js";
+import {
+  assertTrustedRendererInvocation,
+  isTrustedRendererUrl,
+  trustedRendererUrl
+} from "./renderer-security.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const smokeUserDataPath = desktopSmokeUserDataPath(process.env);
+if (smokeUserDataPath) app.setPath("userData", smokeUserDataPath);
 let liveReceiver: LiveSessionReceiver | null = null;
-let liveReceiverStoppedForQuit = false;
+let liveSecurityGateway: LiveSecureGateway | null = null;
+let liveTransportsStoppedForQuit = false;
+const trustedRendererUrls = new Map<number, string>();
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -35,10 +50,23 @@ async function createWindow() {
   });
 
   const rendererUrl = process.env.WORLD_STUDIO_RENDERER_URL;
+  const rendererPath = path.resolve(__dirname, "../../web/dist/index.html");
+  const trustedUrl = trustedRendererUrl(rendererUrl ?? pathToFileURL(rendererPath).href);
+  const webContentsId = win.webContents.id;
+  trustedRendererUrls.set(webContentsId, trustedUrl);
+  win.once("closed", () => trustedRendererUrls.delete(webContentsId));
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (event, navigationUrl) => {
+    if (!isTrustedRendererUrl(navigationUrl, trustedUrl)) event.preventDefault();
+  });
+  win.webContents.on("will-redirect", (event, navigationUrl) => {
+    if (!isTrustedRendererUrl(navigationUrl, trustedUrl)) event.preventDefault();
+  });
+
   if (rendererUrl) {
-    await win.loadURL(rendererUrl);
+    await win.loadURL(trustedUrl);
   } else {
-    await win.loadFile(path.resolve(__dirname, "../../web/dist/index.html"));
+    await win.loadFile(rendererPath);
   }
 }
 
@@ -144,17 +172,94 @@ ipcMain.handle(
   }
 );
 
-app.whenReady().then(createWindow);
+ipcMain.handle("world-studio:get-live-security-status", async (event): Promise<LiveSecuritySnapshot> => {
+  assertTrustedSecurityIpcSender(event);
+  return readLiveSecurityStatus();
+});
+
+ipcMain.handle(
+  "world-studio:begin-live-pairing",
+  async (event, input: { interfaceId?: string }): Promise<LiveSecuritySnapshot> => {
+    assertTrustedSecurityIpcSender(event);
+    if (!input || typeof input.interfaceId !== "string" || !input.interfaceId) {
+      throw new Error("Pairing requires an exact private network interface.");
+    }
+    return getLiveSecurityGateway().beginPairing(input.interfaceId);
+  }
+);
+
+ipcMain.handle("world-studio:cancel-live-pairing", async (event): Promise<LiveSecuritySnapshot> => {
+  assertTrustedSecurityIpcSender(event);
+  return liveSecurityGateway ? liveSecurityGateway.cancelPairing() : readLiveSecurityStatus();
+});
+
+ipcMain.handle("world-studio:approve-live-pairing", async (event): Promise<LiveSecuritySnapshot> => {
+  assertTrustedSecurityIpcSender(event);
+  return getLiveSecurityGateway().approvePairing();
+});
+
+ipcMain.handle("world-studio:reject-live-pairing", async (event): Promise<LiveSecuritySnapshot> => {
+  assertTrustedSecurityIpcSender(event);
+  return getLiveSecurityGateway().rejectPairing();
+});
+
+ipcMain.handle(
+  "world-studio:start-paired-live-receiver",
+  async (event, input: { interfaceId?: string; grantId?: string }): Promise<LiveSecuritySnapshot> => {
+    assertTrustedSecurityIpcSender(event);
+    if (
+      !input
+      || typeof input.interfaceId !== "string"
+      || !input.interfaceId
+      || typeof input.grantId !== "string"
+      || !input.grantId
+    ) {
+      throw new Error("Secure LAN start requires an exact interface and pairing grant.");
+    }
+    return getLiveSecurityGateway().startPairedReceiver({
+      interfaceId: input.interfaceId,
+      grantId: input.grantId
+    });
+  }
+);
+
+ipcMain.handle("world-studio:stop-paired-live-receiver", async (event): Promise<LiveSecuritySnapshot> => {
+  assertTrustedSecurityIpcSender(event);
+  return liveSecurityGateway ? liveSecurityGateway.stopPairedReceiver() : readLiveSecurityStatus();
+});
+
+ipcMain.handle(
+  "world-studio:revoke-live-device",
+  async (event, input: { grantId?: string }): Promise<LiveSecuritySnapshot> => {
+    assertTrustedSecurityIpcSender(event);
+    if (!input || typeof input.grantId !== "string" || !/^csg_[A-Za-z0-9_-]{21}[AQgw]$/.test(input.grantId)) {
+      throw new Error("Revocation requires a valid pairing grant ID.");
+    }
+    return getLiveSecurityGateway().revokeGrant(input.grantId);
+  }
+);
+
+app.whenReady().then(async () => {
+  const stopSecureLan = () => {
+    if (liveSecurityGateway) void liveSecurityGateway.stop();
+  };
+  powerMonitor.on("suspend", stopSecureLan);
+  powerMonitor.on("lock-screen", stopSecureLan);
+  await createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
 app.on("before-quit", (event) => {
-  if (!liveReceiver || liveReceiverStoppedForQuit) return;
+  if ((!liveReceiver && !liveSecurityGateway) || liveTransportsStoppedForQuit) return;
   event.preventDefault();
-  liveReceiverStoppedForQuit = true;
-  void liveReceiver.stop().finally(() => app.quit());
+  liveTransportsStoppedForQuit = true;
+  void Promise.all([
+    liveReceiver ? liveReceiver.stop() : Promise.resolve(),
+    liveSecurityGateway ? liveSecurityGateway.stop() : Promise.resolve()
+  ]).finally(() => app.quit());
 });
 
 app.on("activate", () => {
@@ -175,6 +280,83 @@ function getLiveReceiver(): LiveSessionReceiver {
   return receiver;
 }
 
+function assertTrustedSecurityIpcSender(event: IpcMainInvokeEvent): void {
+  const trustedUrl = trustedRendererUrls.get(event.sender.id);
+  const senderFrame = event.senderFrame;
+  if (!trustedUrl || !senderFrame) {
+    throw new Error("Live security IPC is restricted to the trusted World Studio renderer.");
+  }
+  assertTrustedRendererInvocation({
+    isMainFrame: senderFrame === event.sender.mainFrame,
+    senderUrl: senderFrame.url,
+    trustedUrl
+  });
+}
+
+function getLiveSecurityGateway(): LiveSecureGateway {
+  if (liveSecurityGateway) return liveSecurityGateway;
+  const securityRoot = path.join(app.getPath("userData"), "live-security");
+  const secretProtector: SecretProtector = {
+    protect: async (plaintext) => {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error("macOS Keychain encryption is unavailable.");
+      }
+      return safeStorage.encryptString(plaintext.toString("utf8"));
+    },
+    unprotect: async (protectedBytes) => {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error("macOS Keychain encryption is unavailable.");
+      }
+      return Buffer.from(safeStorage.decryptString(protectedBytes), "utf8");
+    }
+  };
+  const identityStore = new DesktopIdentityStore(path.join(securityRoot, "identity"), {
+    secretProtector
+  });
+  const pairingStore = new PairingStore(path.join(securityRoot, "registry"));
+  const securePort = parseOptionalPort(process.env.WORLD_STUDIO_LIVE_SECURE_PORT, "WORLD_STUDIO_LIVE_SECURE_PORT");
+  const gateway = new LiveSecureGateway({
+    receiver: getLiveReceiver(),
+    identityStore,
+    pairingStore,
+    ...(securePort === undefined ? {} : { port: securePort })
+  });
+  gateway.subscribe((snapshot) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send("world-studio:live-security-update", snapshot);
+    }
+  });
+  liveSecurityGateway = gateway;
+  return gateway;
+}
+
+async function readLiveSecurityStatus(): Promise<LiveSecuritySnapshot> {
+  try {
+    return await getLiveSecurityGateway().status();
+  } catch (error) {
+    return unavailableLiveSecuritySnapshot(error instanceof Error ? error.message : "Live security is unavailable.");
+  }
+}
+
+function unavailableLiveSecuritySnapshot(error: string): LiveSecuritySnapshot {
+  return {
+    state: "error",
+    desktopId: null,
+    desktopName: "World Studio",
+    interfaces: [],
+    selectedInterfaceId: null,
+    secureListening: null,
+    pairingInvitationUri: null,
+    pairingVerificationCode: null,
+    tlsCertificateSha256: null,
+    pairingExpiresAt: null,
+    pendingDevice: null,
+    pairedDevices: [],
+    updatedAt: new Date().toISOString(),
+    error
+  };
+}
+
 function stoppedLiveSnapshot(): LiveSessionSnapshot {
   return {
     state: "stopped",
@@ -193,6 +375,14 @@ function stoppedLiveSnapshot(): LiveSessionSnapshot {
     authority: "proposal_only",
     updatedAt: null
   };
+}
+
+function parseOptionalPort(value: string | undefined, name: string): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (!/^(?:0|[1-9][0-9]*)$/.test(value)) throw new Error(`${name} is invalid.`);
+  const port = Number(value);
+  if (!Number.isSafeInteger(port) || port > 65_535) throw new Error(`${name} is invalid.`);
+  return port;
 }
 
 function safeFileName(value: string): string {

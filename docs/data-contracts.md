@@ -49,6 +49,65 @@ through the declared final sequence before atomically sealing the session.
 Live source frames, poses, and quality fields are proposal evidence. They are not
 reconstruction, collision, semantic, measurement, navigation, or safety authority.
 
+## Capture Splat Live Security
+
+M1 security is additive. It does not change the byte-identical M0 session, frame, or ACK
+schemas and does not create a second evidence ledger.
+
+The pairing boundary carries:
+
+- a short-lived QR invitation scoped to one desktop identity and one exact TLS endpoint;
+- a persistent P-256 desktop identity and pinned self-signed certificate fingerprint;
+- a P-256 device identity proved during pairing;
+- a finite grant with explicit issuance, expiry, scopes, pairing epoch, and revocation;
+- signed request metadata binding credential, method, exact path, content type and length,
+  body SHA-256, timestamp, and an unsigned 64-bit request counter.
+
+The implemented persistent security records are
+`capture_splat.desktop_identity.v0.1` and `capture_splat.pairing_registry.v0.1`. Capture
+Splat owns the canonical M1 wire schemas and fixtures under `contracts/live-auth/v0.1`;
+World Studio mirrors those bytes and asserts their fingerprints. The mirrored set covers
+the invitation, request, signed grant, authenticated request metadata, authentication
+receipt, strict authentication error, and deterministic signing vectors.
+
+The schemas close the wire shape and canonical encodings. Runtime semantic validators also
+enforce identity hashes, curve points, permission order, validity intervals, canonical
+payload bytes, and signatures that JSON Schema alone cannot prove.
+
+Private keys are never placed in renderer snapshots, Bonjour TXT records, logs, or evidence
+packages. The short-lived `pairingInvitationUri` intentionally carries its ephemeral invitation secret
+through the trusted Electron IPC boundary so the bundled renderer can draw the QR. It is
+cleared when pairing is submitted, cancelled, consumed, or expired and is never advertised,
+logged, or persisted with capture evidence.
+
+An authenticated session persists `auth-receipt.json` beside the receiver-owned session
+state. Finalized handoffs reference that receipt as `live_auth_receipt`; the receipt records
+the paired desktop, device, grant, pairing epoch, permissions, certificate fingerprint,
+authentication time, grant expiry, and permanent `proposal_only` authority. Loopback and
+paired-LAN sessions cannot claim or resume one another's session IDs.
+
+An authenticated request is authorized before it can reach the M0 session router. JSON
+bodies are rehash-checked against the signed digest, while asset uploads additionally
+require the signed digest to equal the frame-declared digest before the existing streamed
+byte/hash verification can ACK them.
+
+The registry persists the highest accepted counter and a 256-bit sliding replay bitmap per
+grant. A previously unseen out-of-order counter inside the window may be accepted once;
+duplicates and counters older than the window are rejected after restart. `request_id` is
+correlation metadata only. A lost ACK is retried as the same idempotent evidence operation
+under a new signed request counter; M0 duplicate handling then returns the existing logical
+result.
+
+`LiveSecuritySnapshot` is a bounded UI/IPC contract separate from both `WorldSession` and
+`LiveSessionSnapshot`. It reports state, selected interface, TLS endpoint/fingerprint,
+pairing expiry, pending device metadata, grants, expiry/revocation, and last authentication.
+Its only sensitive field is the short-lived invitation URI described above. It grants no
+reconstruction, metric, collision, semantic, navigation, physics, or safety authority.
+
+The iPhone sender and its durable queue/resume records are not implemented in this
+checkpoint. Physical Bonjour, firewall, local-network permission, and device-cycle evidence
+are also not contract acceptance proof.
+
 ## Render Modes
 
 ```ts

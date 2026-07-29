@@ -10,11 +10,34 @@ World Studio is a shared web/desktop app:
 - `packages/artifacts` owns PLY/OBJ/JSON/Budo package ingestion and validation.
 - `packages/renderer` owns the renderer adapter contract and current canvas fallback.
 
-## Live Capture Boundary
+## Live Capture And Security Boundary
 
-The Electron main process owns the Phase 1 Capture Splat receiver. It listens on
-`127.0.0.1` only after an explicit renderer action and uses pure Node HTTP, contract,
-and store modules so durability and corruption behavior can be tested without Electron.
+The Electron main process owns the Capture Splat transport. M0 remains a plaintext HTTP
+receiver restricted to `127.0.0.1` or `::1`; environment configuration cannot widen it.
+It starts only after an explicit renderer action and uses pure Node HTTP, contract, and
+store modules so durability and corruption behavior can be tested without Electron.
+
+M1 adds a separate secure local-network boundary rather than weakening the M0 bind guard.
+The user must explicitly choose one enumerated interface and begin pairing. A short-lived QR
+offer identifies this Mac and pins its self-signed TLS certificate. Bonjour publishes the
+allowlisted `_capturesplat._tcp` registration through `/usr/bin/dns-sd`; it never browses for
+or trusts discovered host data, and its TXT records contain no invitation secret.
+
+The desktop identity is a P-256 key protected by the Electron/macOS secret-storage boundary.
+Its self-signed certificate is issued through the absolute `/usr/bin/openssl` system tool.
+A pairing request proves possession of both the QR invitation and the iPhone's P-256 device
+key. Paired LAN requests use P-256 ES256/P1363 signatures binding the grant, method, exact
+path, content metadata, body SHA-256, and an unsigned 64-bit request counter. The paired
+device registry persists the highest counter and a 256-bit sliding replay bitmap per grant:
+previously unseen out-of-order counters inside the window are accepted once, while
+duplicates and counters older than the window fail across receiver restart. `request_id` is
+correlation metadata, not replay authority. Credential expiry and explicit revocation are
+checked independently.
+
+Only the pairing exchange is reachable before pairing succeeds. Live-session routes become
+available on the selected interface only through pinned TLS and successful device
+authentication. The authenticated gateway delegates to the same receiver/store boundary as
+loopback, so checksum, ACK, duplicate, gap, resume, and finalization semantics do not fork.
 
 Live sessions are stored under:
 
@@ -35,7 +58,15 @@ X/Z evidence rather than being overlaid onto an unrelated loaded world. A finali
 `capture-splat.world-studio.json` can be opened later only through the existing explicit
 package action.
 
-Phase 1 transports source evidence. It does not run or claim live 3D Gaussian Splatting.
+M1 security state is also separate from `WorldSession` and `LiveSessionSnapshot`. Pairing or
+receiving evidence cannot replace a loaded world. All streamed evidence remains
+`proposal_only`.
+
+This checkpoint does not modify the Capture Splat iPhone capture loop, implement the bounded
+iPhone store-and-forward sender, or run live 3D Gaussian Splatting. Reconstruction workers
+remain optional external processes. Physical Bonjour discovery, macOS firewall/local-network
+permission, Wi-Fi interruption, receiver restart, and two complete iPhone capture cycles are
+deferred acceptance gates.
 
 ## World Compiler Boundary
 
