@@ -4,17 +4,34 @@ You are working in the public World Studio and Capture Splat repositories. Read 
 blueprint, the active live-session contracts, both repository contribution guides, and the
 current roadmap before editing.
 
-Implement **M1 Authenticated LAN And Progressive World** in small reviewable PRs. Do not
-redo M0.
+Continue **M1 Authenticated LAN And Progressive World** in small reviewable PRs. Do not
+redo M0 or replace the M1 desktop security boundary.
+
+## Current Checkpoint
+
+M0 is complete and unchanged. World Studio now has the desktop-side seams for:
+
+- explicit selected-interface pairing rather than a wildcard listener;
+- QR invitation state and pinned self-signed TLS identity;
+- P-256 desktop/device identities and signed request metadata;
+- finite grants with expiry, revocation, and scopes;
+- durable unsigned 64-bit request-counter replay defense with a 256-bit sliding window;
+- authenticated body-digest binding before delegation to the existing durable M0 store;
+- byte-identical Capture Splat-owned live-auth schemas, fixtures, and fingerprints;
+- authenticated session receipts linked from finalized handoffs;
+- secret-free `_capturesplat._tcp` Bonjour publication through `/usr/bin/dns-sd`.
+
+This is a partial M1 checkpoint. It does not implement the iPhone sender or capture-loop
+networking, start reconstruction workers, or satisfy physical Bonjour, firewall, Wi-Fi, or
+two-cycle iPhone acceptance.
 
 ## Required Sequence
 
-1. Specify authenticated discovery and pairing:
-   - Bonjour discovery on the local network;
-   - QR or short-code pairing;
-   - authenticated TLS with explicit device and desktop identities;
-   - revocation and session expiry;
-   - no public or wildcard listener by default.
+1. Close the pairing integration gates without widening M0:
+   - render the short-lived QR invitation in packaged Electron;
+   - validate Bonjour discovery, exact-interface binding, pinned TLS, expiry, revocation,
+     replay rejection, and receiver restart on a physical Mac/iPhone pair;
+   - keep pre-pairing LAN routes limited to the pairing exchange.
 2. Add a bounded Capture Splat sender:
    - durable phone write before enqueue;
    - queue and byte budgets;
@@ -51,6 +68,8 @@ redo M0.
 
 - Positive and negative protocol tests for authentication, expiry, replay, corruption,
   traversal, duplicate conflict, resume, and finalization.
+- Packaged and physical evidence that QR, Bonjour, TLS pinning, macOS local-network
+  permission, firewall behavior, expiry, and revocation work as designed.
 - iPhone queue, thermal, writer-drop, and finalization reports.
 - Desktop receiver persistence and restart tests.
 - Browser/Electron UI tests showing proposal labels and no loaded-world replacement.

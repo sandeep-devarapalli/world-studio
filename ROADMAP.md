@@ -8,7 +8,7 @@ outcomes and acceptance gates.
 | Milestone | Outcome | Status |
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
-| M1 Authenticated LAN And Progressive World | Paired TLS sender, bounded queues, live RGB-D/mesh proposals, isolated worker lifecycle | next |
+| M1 Authenticated LAN And Progressive World | Paired TLS sender, bounded queues, live RGB-D/mesh proposals, isolated worker lifecycle | partial |
 | M2 Canonical World Package And Editor | Immutable versions, transform graph, content-addressed artifacts, reversible edits | partial/planned |
 | M3 Indoor Navigation Ready - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
 | M4 Physical Asset Calibration Foundation | Objectization, direct measurements, geometry/collision validation, C0-C2 recipes | planned |
@@ -21,9 +21,15 @@ outcomes and acceptance gates.
 ### Live Evidence
 
 - M0 evidence is recorded in `docs/live_session_phase1.md`.
-- M1 starts with authenticated local-network pairing and a bounded iPhone sender.
+- The M1 desktop boundary now keeps M0 loopback unchanged while adding explicit
+  selected-interface pairing, pinned TLS, P-256 device identity, signed requests,
+  expiry/revocation, and durable request-counter replay defense.
+- The bounded iPhone sender remains the next implementation slice. It must enqueue only
+  after durable local writes and cannot change keyframe acceptance.
 - Live reconstruction workers remain isolated proposals and cannot mutate Capture Splat
   evidence or a loaded World.
+- Physical Bonjour, firewall, Wi-Fi interruption, receiver-restart, and two-cycle iPhone
+  evidence remain acceptance gates; software-only tests do not close them.
 
 ### World And Editor
 
