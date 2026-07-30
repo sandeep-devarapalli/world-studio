@@ -36,6 +36,9 @@ verified exports, or local desktop files.
   Budo-compatible manifests, article figure views, and verified export folders.
 - An explicit loopback-only Capture Splat live-session receiver for replaying source-frame
   and camera evidence into Simulate without replacing the loaded world.
+- An additive progressive-session path that accepts an immutable v0.2 session identity
+  before `capture.json` exists, then checksum-binds the declared final manifest identity
+  while sealing the same proposal-only evidence ledger.
 - An M1 desktop security boundary for explicit selected-interface pairing, pinned TLS,
   P-256 device identity, signed requests, credential expiry/revocation, and durable replay
   defense. It does not yet include the iPhone sender or physical-device acceptance.
@@ -100,9 +103,9 @@ metadata. Expired or revoked grants fail closed, and durable request counters re
 after restart. Bonjour advertises only the allowlisted `_capturesplat._tcp` service metadata
 and never an invitation secret. See [Live Security M1](docs/live_security_m1.md).
 
-This checkpoint does not modify Capture Splat's iPhone capture loop, implement its bounded
-sender, or start reconstruction workers. Local-network permission, firewall, Bonjour, and
-two-cycle iPhone evidence remain physical acceptance gates.
+This checkpoint does not modify Capture Splat's iPhone capture loop, connect its dormant
+bounded sender foundation to capture writes, or start reconstruction workers. Local-network
+permission, firewall, Bonjour, and two-cycle iPhone evidence remain physical acceptance gates.
 
 ## Package Desktop App
 
@@ -137,7 +140,9 @@ The Capture Splat repository owns the canonical
 byte-identical mirrors and verifies their fingerprints.
 `test:live-e2e` builds the pure desktop receiver, creates a temporary two-frame
 capture, runs the sibling Capture Splat replay CLI through duplicate/disconnect/resume
-simulation, finalizes it, and reopens the emitted handoff through the package reader.
+simulation, finalizes it, then exercises progressive v0.2 receipt across receiver restart
+before binding the final manifest identity. Both emitted handoffs reopen through the package
+reader.
 M1 security tests exercise the desktop identity, pairing/authentication boundary, expiry,
 revocation, signed-body binding, and replay rejection without claiming physical iPhone or
 Bonjour acceptance.

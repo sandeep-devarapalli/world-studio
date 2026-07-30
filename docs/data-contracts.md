@@ -58,6 +58,30 @@ through the declared final sequence before atomically sealing the session.
 Live source frames, poses, and quality fields are proposal evidence. They are not
 reconstruction, collision, semantic, measurement, navigation, or safety authority.
 
+Progressive recording adds two contracts under `contracts/live-session/v0.2` without
+changing any v0.1 schema, fixture, route, ACK, or replay behavior:
+
+```text
+capture_splat.live_session.v0.2
+capture_splat.live_finalize.v0.2
+```
+
+The v0.2 session carries a canonical unpadded 32-byte Base64URL seed. Its `csl_` session ID
+is derived by hashing the fixed protocol domain, a zero delimiter, and the decoded seed.
+The expected frame count is explicitly null while the session is open, so source frames may
+arrive before `capture.json` exists. Finalization supplies the final sequence and the
+declared `capture.json` path, schema, size, and SHA-256. World Studio persists that exact
+binding atomically with the finalized handoff; after sealing, ACKs and snapshots expose the
+final sequence as the expected count.
+
+This binds sender-declared manifest identity but does not upload or independently rehash
+the `capture.json` bytes. V0.2 handoffs therefore carry
+`source_manifest_verification = "declared_checksum_reference_only"`; an authentication
+receipt separately proves paired transport ownership when present. Frame and sidecar assets
+retain their existing streamed byte/hash verification. The finalized marker remains the
+publication commit point, identical retries are idempotent, conflicting bindings fail, and
+restart revalidates the binding, handoff, frames, assets, and transport ownership.
+
 ## Capture Splat Live Security
 
 M1 security is additive. It does not change the byte-identical M0 session, frame, or ACK

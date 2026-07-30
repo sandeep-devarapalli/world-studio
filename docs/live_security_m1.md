@@ -123,7 +123,7 @@ outputs remain source evidence or proposals according to their existing contract
 This checkpoint does not:
 
 - modify the Capture Splat iPhone capture loop;
-- add the bounded durable iPhone sender, queue budgets, retry engine, or thermal telemetry;
+- connect the bounded sender foundation to capture writes or claim physical queue budgets;
 - run i3dgs, LingBot Map, gsplat, or another reconstruction worker;
 - mutate or replace an already loaded world;
 - establish metric, collision, semantic, navigation, physics, or safety authority.
@@ -133,7 +133,8 @@ This checkpoint does not:
 The following remain required before M1 can be marked complete:
 
 1. A real Capture Splat pairing client outside the capture loop and physical QR scan.
-2. Bounded local-first iPhone store-and-forward with persistent resume state.
+2. Nonblocking capture-writer integration and physical validation of bounded local-first
+   store-and-forward with persistent resume state.
 3. Packaged-app verification of macOS local-network permission and firewall behavior.
 4. Physical Bonjour discovery and pinned-TLS pairing on the intended Wi-Fi network.
 5. Two complete iPhone-to-Mac capture cycles, including receiver restart and Wi-Fi
