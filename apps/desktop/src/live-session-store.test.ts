@@ -11,15 +11,21 @@ import {
 } from "./live-auth-contract.js";
 import {
   LIVE_ACK_SCHEMA,
+  LIVE_FINALIZE_V2_SCHEMA,
   LIVE_FRAME_SCHEMA,
   LIVE_SESSION_SCHEMA,
+  LIVE_SESSION_V2_SCHEMA,
   LiveContractError,
+  deriveLiveSessionV2Id,
   parseLiveJson,
   validateLiveAck,
+  validateLiveFinalize,
   validateLiveFrame,
   validateLiveSession,
+  validateLiveSessionDeclaration,
   type LiveFrame,
-  type LiveSession
+  type LiveSession,
+  type LiveSessionV2
 } from "./live-session-contract.js";
 import { LiveSessionStore } from "./live-session-store.js";
 
@@ -53,6 +59,68 @@ describe("live contract validation", () => {
       missing_ranges: [{ start: 2, end: 2 }, { start: 1, end: 1 }],
       finalized: false
     })).toThrow(/sorted and disjoint/);
+  });
+
+  it("derives progressive session IDs and rejects malformed or noncanonical seeds", () => {
+    const seed = Buffer.from(Array.from({ length: 32 }, (_, index) => index));
+    expect(deriveLiveSessionV2Id(seed))
+      .toBe("csl_SMOhjzjH7dE8x3yB5A0KBAo4YL6A4IzY1U570kVX_D8");
+    expect(validateLiveSessionDeclaration(sessionV2()).schema).toBe(LIVE_SESSION_V2_SCHEMA);
+    expect(() => validateLiveSessionDeclaration({
+      ...sessionV2(),
+      session_id: `csl_${"A".repeat(43)}`
+    })).toThrow(/does not match/);
+    expect(() => validateLiveSessionDeclaration({
+      ...sessionV2(),
+      source_session_seed_b64u: `${sessionV2().source_session_seed_b64u}=`
+    })).toThrow(/canonical unpadded/);
+    expect(() => validateLiveSessionDeclaration({
+      ...sessionV2(),
+      source_session_seed_b64u: Buffer.alloc(31).toString("base64url")
+    })).toThrow(/canonical unpadded/);
+    const missingExpected = { ...sessionV2() } as Record<string, unknown>;
+    delete missingExpected.expected_frame_count;
+    expect(() => validateLiveSessionDeclaration(missingExpected)).toThrow(/expected_frame_count is required/);
+    expect(() => validateLiveSessionDeclaration({
+      ...sessionV2(),
+      expected_frame_count: 2
+    })).toThrow(/must be null/);
+    expect(() => validateLiveFinalize({
+      ...finalizeV2(2),
+      source_manifest: {
+        ...finalizeV2(2).source_manifest,
+        path: "../capture.json"
+      }
+    })).toThrow(/must equal capture\.json/);
+    expect(() => validateLiveFinalize({
+      ...finalizeV2(2),
+      source_manifest: {
+        ...finalizeV2(2).source_manifest,
+        sha256: "sha256:not-a-checksum"
+      }
+    })).toThrow(/sha256:/);
+    expect(() => validateLiveFinalize({
+      ...finalizeV2(2),
+      source_manifest: {
+        ...finalizeV2(2).source_manifest,
+        size_bytes: 0
+      }
+    })).toThrow(/at least 1/);
+    expect(() => validateLiveFinalize({
+      ...finalizeV2(2),
+      source_manifest: {
+        ...finalizeV2(2).source_manifest,
+        extra: true
+      }
+    })).toThrow(/not allowed/);
+    expect(() => validateLiveFinalize({
+      ...finalizeV2(2),
+      session_id: `csl_${"A".repeat(42)}9`
+    })).toThrow(/canonical csl_/);
+    expect(() => validateLiveFinalize({
+      ...finalizeV2(2),
+      session_id: "not-progressive"
+    })).toThrow(/canonical csl_/);
   });
 });
 
@@ -176,6 +244,143 @@ describe("LiveSessionStore", () => {
     expect((await recovered.putSession(session())).status).toBe("duplicate");
     expect((await recovered.finalize(finalize(2))).status).toBe("finalized");
     await expect(recovered.finalize(finalize(1))).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("accepts frames before a progressive manifest binding and seals it idempotently", async () => {
+    const root = await tempRoot("progressive");
+    const store = new LiveSessionStore(root);
+    const progressive = sessionV2();
+    const sessionId = progressive.session_id;
+    expect(await store.putSession(progressive)).toMatchObject({
+      status: "accepted",
+      expected_frame_count: null
+    });
+    expect(await store.putSession(progressive)).toMatchObject({
+      status: "duplicate",
+      expected_frame_count: null
+    });
+    await expect(store.putSession({
+      ...progressive,
+      created_at: "2026-07-30T10:00:01.000Z"
+    })).rejects.toMatchObject({ code: "conflict" });
+    expect(await store.snapshot(sessionId)).toMatchObject({
+      sourceManifestId: null,
+      expectedCount: null,
+      finalSequenceId: null
+    });
+
+    const bytes2 = Buffer.from("progressive-two");
+    const metadata2 = { ...frame(2, bytes2), session_id: sessionId };
+    await store.putFrame(metadata2);
+    await store.putAsset(sessionId, 2, "source", chunks(bytes2));
+    const finalization = finalizeV2(2);
+    await expect(store.finalize(finalization)).rejects.toThrow(/missing frame ranges: 1/);
+    for (const fileName of ["source-manifest-binding.json", "capture-splat.world-studio.json", "finalized.json"]) {
+      await expect(readFile(path.join(root, sessionId, fileName))).rejects.toMatchObject({ code: "ENOENT" });
+    }
+    await expect(store.finalize({
+      schema: "capture_splat.live_finalize.v0.1",
+      session_id: sessionId,
+      final_sequence_id: 2
+    })).rejects.toMatchObject({ code: "conflict" });
+
+    const bytes1 = Buffer.from("progressive-one");
+    const metadata1 = { ...frame(1, bytes1), session_id: sessionId };
+    await store.putFrame(metadata1);
+    await store.putAsset(sessionId, 1, "source", chunks(bytes1));
+    expect(await store.finalize(finalization)).toMatchObject({
+      status: "finalized",
+      finalized: true,
+      expected_frame_count: 2
+    });
+    expect(await store.snapshot(sessionId)).toMatchObject({
+      sourceManifestId: finalization.source_manifest.sha256,
+      expectedCount: 2,
+      finalSequenceId: 2,
+      finalized: true
+    });
+    expect(JSON.parse(
+      await readFile(path.join(root, sessionId, "source-manifest-binding.json"), "utf8")
+    )).toEqual(finalization);
+    expect(JSON.parse(
+      await readFile(path.join(root, sessionId, "capture-splat.world-studio.json"), "utf8")
+    )).toMatchObject({
+      live_session_schema: LIVE_SESSION_V2_SCHEMA,
+      source_manifest: finalization.source_manifest,
+      source_manifest_verification: "declared_checksum_reference_only",
+      authority: "proposal_only"
+    });
+
+    await expect(store.putFrame(metadata1)).rejects.toMatchObject({ code: "sealed" });
+    await expect(store.putAsset(sessionId, 1, "source", chunks(bytes1)))
+      .rejects.toMatchObject({ code: "sealed" });
+    expect(await store.finalize(finalization)).toMatchObject({
+      status: "finalized",
+      expected_frame_count: 2
+    });
+    await expect(store.finalize({
+      ...finalization,
+      source_manifest: {
+        ...finalization.source_manifest,
+        sha256: `sha256:${"5".repeat(64)}`
+      }
+    })).rejects.toMatchObject({ code: "conflict" });
+
+    const recovered = new LiveSessionStore(root);
+    await recovered.initialize();
+    expect(await recovered.snapshot(sessionId)).toMatchObject({
+      sourceManifestId: finalization.source_manifest.sha256,
+      expectedCount: 2,
+      finalized: true
+    });
+    expect(await recovered.finalize(finalization)).toMatchObject({
+      status: "finalized",
+      expected_frame_count: 2
+    });
+  });
+
+  it("recovers open progressive sessions and fails closed on sealed binding corruption", async () => {
+    const root = await tempRoot("progressive-restart");
+    const sessionId = sessionV2().session_id;
+    const first = new LiveSessionStore(root);
+    await first.putSession(sessionV2());
+    const bytes = Buffer.from("progressive-restart");
+    const metadata = { ...frame(1, bytes), session_id: sessionId };
+    await first.putFrame(metadata);
+    await first.putAsset(sessionId, 1, "source", chunks(bytes));
+    await writeFile(
+      path.join(root, sessionId, "source-manifest-binding.json"),
+      `${JSON.stringify(finalizeV2(1))}\n`
+    );
+    await writeFile(path.join(root, sessionId, "capture-splat.world-studio.json"), "{}\n");
+
+    const recovered = new LiveSessionStore(root);
+    await recovered.initialize();
+    expect(await recovered.snapshot(sessionId)).toMatchObject({
+      sourceManifestId: null,
+      expectedCount: null,
+      receivedCount: 1
+    });
+    for (const fileName of ["source-manifest-binding.json", "capture-splat.world-studio.json"]) {
+      await expect(readFile(path.join(root, sessionId, fileName))).rejects.toMatchObject({ code: "ENOENT" });
+    }
+
+    const finalization = finalizeV2(1);
+    await recovered.finalize(finalization);
+    const bindingPath = path.join(root, sessionId, "source-manifest-binding.json");
+    await writeFile(bindingPath, `${JSON.stringify({
+      ...finalization,
+      source_manifest: {
+        ...finalization.source_manifest,
+        size_bytes: finalization.source_manifest.size_bytes + 1
+      }
+    })}\n`);
+    await expect(recovered.finalize(finalization)).rejects.toThrow(/binding checksum differs/);
+    await expect(new LiveSessionStore(root).initialize()).rejects.toThrow(/binding checksum differs/);
+    await writeFile(bindingPath, `${JSON.stringify(finalization, null, 2)}\n`);
+    await writeFile(path.join(root, sessionId, "capture-splat.world-studio.json"), "{}\n");
+    await expect(recovered.finalize(finalization)).rejects.toThrow(/handoff checksum differs/);
+    await expect(new LiveSessionStore(root).initialize()).rejects.toThrow(/handoff checksum differs/);
   });
 
   it("validates bytes before ACK, rejects corruption on final rehash, and rejects symlinks", async () => {
@@ -459,6 +664,26 @@ function session(expectedFrameCount = 2): LiveSession {
   };
 }
 
+function sessionV2(): LiveSessionV2 {
+  return {
+    schema: LIVE_SESSION_V2_SCHEMA,
+    session_id: "csl_SMOhjzjH7dE8x3yB5A0KBAo4YL6A4IzY1U570kVX_D8",
+    created_at: "2026-07-30T10:00:00.000Z",
+    source_session_seed_b64u: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    expected_frame_count: null,
+    coordinate_system: {
+      id: "arkit_world",
+      units: "meters",
+      handedness: "right",
+      world_up: "+Y",
+      camera_forward: "-Z",
+      matrix_layout: "row-major",
+      vector_convention: "column-vector"
+    },
+    authority: "proposal_only"
+  };
+}
+
 function frame(sequenceId: number, bytes: Buffer): LiveFrame {
   return {
     schema: LIVE_FRAME_SCHEMA,
@@ -517,6 +742,20 @@ function finalize(finalSequenceId: number) {
     session_id: "test-session",
     final_sequence_id: finalSequenceId
   };
+}
+
+function finalizeV2(finalSequenceId: number) {
+  return {
+    schema: LIVE_FINALIZE_V2_SCHEMA,
+    session_id: sessionV2().session_id,
+    final_sequence_id: finalSequenceId,
+    source_manifest: {
+      path: "capture.json",
+      sha256: `sha256:${"4".repeat(64)}`,
+      size_bytes: 456,
+      schema: "capture_splat.v0.3"
+    }
+  } as const;
 }
 
 function hash(bytes: Buffer): string {

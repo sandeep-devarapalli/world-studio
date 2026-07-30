@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  LIVE_FINALIZE_V2_SCHEMA,
   LIVE_FRAME_SCHEMA,
   LIVE_SESSION_SCHEMA,
+  LIVE_SESSION_V2_SCHEMA,
   type LiveFrame,
-  type LiveSession
+  type LiveSession,
+  type LiveSessionV2
 } from "./live-session-contract.js";
 import { LiveSessionReceiver } from "./live-session-receiver.js";
 
@@ -101,6 +104,62 @@ describe("LiveSessionReceiver", () => {
     await restarted.stop();
   });
 
+  it("receives a progressive session before capture.json exists and binds it at finalization", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "world-studio-receiver-progressive-"));
+    roots.push(root);
+    const progressive = sessionV2();
+    const sessionId = progressive.session_id;
+    const first = new LiveSessionReceiver({ root, port: 0 });
+    const firstStatus = await first.start();
+    const firstBase = `http://127.0.0.1:${firstStatus.listening?.port}/api/capture-splat/live/v0.1`;
+    expect(await jsonRequest(`${firstBase}/sessions/${sessionId}`, "PUT", progressive).then((value) => value.json()))
+      .toMatchObject({ status: "accepted", expected_frame_count: null });
+    expect(await first.status()).toMatchObject({
+      sessionId,
+      sourceManifestId: null,
+      expectedCount: null
+    });
+
+    const bytes = Buffer.from("progressive-receiver-frame");
+    const metadata = { ...frame(bytes), session_id: sessionId };
+    await jsonRequest(`${firstBase}/sessions/${sessionId}/frames/1`, "PUT", metadata);
+    await fetch(`${firstBase}/sessions/${sessionId}/frames/1/assets/source`, {
+      method: "PUT",
+      body: bytes
+    });
+    await first.stop();
+
+    const restarted = new LiveSessionReceiver({ root, port: 0 });
+    const restartedStatus = await restarted.start();
+    const base = `http://127.0.0.1:${restartedStatus.listening?.port}/api/capture-splat/live/v0.1`;
+    expect(await fetch(`${base}/sessions/${sessionId}`).then((value) => value.json())).toMatchObject({
+      operation: "resume",
+      received_count: 1,
+      expected_frame_count: null
+    });
+    const finalization = finalizeV2(1);
+    expect(await jsonRequest(`${base}/sessions/${sessionId}/finalize`, "POST", finalization).then((value) => value.json()))
+      .toMatchObject({
+        operation: "finalize",
+        status: "finalized",
+        expected_frame_count: 1
+      });
+    expect(await jsonRequest(`${base}/sessions/${sessionId}/finalize`, "POST", finalization).then((value) => value.json()))
+      .toMatchObject({
+        operation: "finalize",
+        status: "finalized",
+        expected_frame_count: 1
+      });
+    expect(await restarted.status()).toMatchObject({
+      state: "finalized",
+      sessionId,
+      sourceManifestId: finalization.source_manifest.sha256,
+      expectedCount: 1,
+      finalSequenceId: 1
+    });
+    await restarted.stop();
+  });
+
   it("rejects non-loopback bindings", () => {
     expect(() => new LiveSessionReceiver({ root: "/tmp/not-used", host: "0.0.0.0" })).toThrow(/only on loopback/);
   });
@@ -177,6 +236,26 @@ function session(): LiveSession {
   };
 }
 
+function sessionV2(): LiveSessionV2 {
+  return {
+    schema: LIVE_SESSION_V2_SCHEMA,
+    session_id: "csl_SMOhjzjH7dE8x3yB5A0KBAo4YL6A4IzY1U570kVX_D8",
+    created_at: "2026-07-30T10:00:00.000Z",
+    source_session_seed_b64u: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    expected_frame_count: null,
+    coordinate_system: {
+      id: "arkit_world",
+      units: "meters",
+      handedness: "right",
+      world_up: "+Y",
+      camera_forward: "-Z",
+      matrix_layout: "row-major",
+      vector_convention: "column-vector"
+    },
+    authority: "proposal_only"
+  };
+}
+
 function frame(bytes: Buffer): LiveFrame {
   return {
     schema: LIVE_FRAME_SCHEMA,
@@ -210,6 +289,20 @@ function frame(bytes: Buffer): LiveFrame {
 
 function sha(bytes: Buffer): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function finalizeV2(finalSequenceId: number) {
+  return {
+    schema: LIVE_FINALIZE_V2_SCHEMA,
+    session_id: sessionV2().session_id,
+    final_sequence_id: finalSequenceId,
+    source_manifest: {
+      path: "capture.json",
+      sha256: `sha256:${"4".repeat(64)}`,
+      size_bytes: 456,
+      schema: "capture_splat.v0.3"
+    }
+  } as const;
 }
 
 function jsonRequest(url: string, method: string, body: unknown): Promise<Response> {

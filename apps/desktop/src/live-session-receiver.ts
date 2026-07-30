@@ -9,7 +9,7 @@ import {
   validSessionId,
   validateLiveFinalize,
   validateLiveFrame,
-  validateLiveSession,
+  validateLiveSessionDeclaration,
   type LiveAck
 } from "./live-session-contract.js";
 import {
@@ -180,7 +180,9 @@ export class LiveSessionReceiver {
       const sessionId = validSessionId(pathParts[1]);
       this.trackSocket(request.socket, sessionId);
       if (pathParts.length === 2 && request.method === "PUT") {
-        const session = validateLiveSession(await readJsonRequest(request, this.maxJsonBytes, context.expectedBodySha256));
+        const session = validateLiveSessionDeclaration(
+          await readJsonRequest(request, this.maxJsonBytes, context.expectedBodySha256)
+        );
         if (session.session_id !== sessionId) throw new LiveContractError("Route and session body IDs differ.", "conflict");
         const ack = await this.store.putSession(session, context.authReceipt);
         await context.onSessionAuthorized?.();
