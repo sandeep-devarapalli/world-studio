@@ -22,6 +22,9 @@ import {
 import {
   LIVE_ACK_SCHEMA,
   LIVE_FINALIZE_SCHEMA,
+  LIVE_FINALIZE_V2_SCHEMA,
+  LIVE_SESSION_SCHEMA,
+  LIVE_SESSION_V2_SCHEMA,
   LiveContractError,
   assertLiveAssetRole,
   declaredLiveAssets,
@@ -30,7 +33,7 @@ import {
   validSessionId,
   validateLiveFinalize,
   validateLiveFrame,
-  validateLiveSession,
+  validateLiveSessionDeclaration,
   type DeclaredLiveAsset,
   type LiveAck,
   type LiveAssetReference,
@@ -38,7 +41,8 @@ import {
   type LiveFinalizeRequest,
   type LiveFrame,
   type LiveMissingRange,
-  type LiveSession
+  type LiveSessionDeclaration,
+  type LiveSourceManifestReference
 } from "./live-session-contract.js";
 
 const frameDirectoryPattern = /^[0-9]{8}$/;
@@ -46,13 +50,14 @@ const frameMetadataFile = "metadata.json";
 const authReceiptFile = "auth-receipt.json";
 const handoffFile = "capture-splat.world-studio.json";
 const finalizedFile = "finalized.json";
+const sourceManifestBindingFile = "source-manifest-binding.json";
 const stateFile = "state.json";
 const defaultMaxAssetBytes = 1024 * 1024 * 1024;
 const maxStoredSequenceId = 99_999_999;
 
 export interface LiveStoreSnapshot {
   sessionId: string;
-  sourceManifestId: string;
+  sourceManifestId: string | null;
   expectedCount: number | null;
   finalSequenceId: number | null;
   receivedCount: number;
@@ -77,7 +82,8 @@ export interface LiveFramePreviewBytes {
 }
 
 interface StoredSession {
-  session: LiveSession;
+  session: LiveSessionDeclaration;
+  sourceManifestBinding: LiveSourceManifestReference | null;
   authReceipt: LiveAuthReceipt | null;
   authReceiptSha256: string | null;
   frames: Map<number, LiveFrame>;
@@ -93,6 +99,19 @@ interface FinalizedMarker {
   handoff_sha256: string;
   finalized_at: string;
 }
+
+interface FinalizedMarkerV2 {
+  schema: "capture_splat.live_finalized.v0.2";
+  session_id: string;
+  final_sequence_id: number;
+  source_manifest_binding_path: typeof sourceManifestBindingFile;
+  source_manifest_binding_sha256: string;
+  handoff_path: typeof handoffFile;
+  handoff_sha256: string;
+  finalized_at: string;
+}
+
+type StoredFinalizedMarker = FinalizedMarker | FinalizedMarkerV2;
 
 export class LiveSessionStore {
   readonly root: string;
@@ -135,7 +154,7 @@ export class LiveSessionStore {
   }
 
   async putSession(input: unknown, authReceiptValue?: unknown): Promise<LiveAck> {
-    const session = validateLiveSession(input);
+    const session = validateLiveSessionDeclaration(input);
     const authReceipt = authReceiptValue === undefined
       ? null
       : validateLiveAuthReceipt(authReceiptValue);
@@ -180,6 +199,9 @@ export class LiveSessionStore {
         : null;
       const stored: StoredSession = {
         session,
+        sourceManifestBinding: session.schema === LIVE_SESSION_SCHEMA
+          ? session.source_manifest
+          : null,
         authReceipt,
         authReceiptSha256,
         frames: new Map(),
@@ -364,27 +386,58 @@ export class LiveSessionStore {
     return this.withLock(request.session_id, async () => {
       const stored = await this.requireSession(request.session_id);
       assertTransportOwnership(stored, authReceipt);
+      const sourceManifestBinding = sourceManifestForFinalization(stored.session, request);
       if (stored.finalSequenceId !== null) {
         if (stored.finalSequenceId !== request.final_sequence_id) {
           throw new LiveContractError("Session was already finalized with a different final sequence.", "conflict");
+        }
+        if (
+          !stored.sourceManifestBinding
+          || stableLiveJson(stored.sourceManifestBinding) !== stableLiveJson(sourceManifestBinding)
+        ) {
+          throw new LiveContractError(
+            "Session was already finalized with different source manifest metadata.",
+            "conflict"
+          );
         }
         await this.verifyFinalSequence(stored, request);
         await this.verifyFinalizedPublication(stored, request);
         return this.ack(stored, "finalize", "finalized", undefined, undefined, "Finalization was already durable.");
       }
       await this.verifyFinalSequence(stored, request);
-      const handoff = buildHandoff(stored, request);
-      const handoffPath = path.join(this.sessionRoot(stored.session.session_id), handoffFile);
+      const handoff = buildHandoff(stored, request, sourceManifestBinding);
+      const sessionRoot = this.sessionRoot(stored.session.session_id);
+      let sourceManifestBindingSha256: string | null = null;
+      if (request.schema === LIVE_FINALIZE_V2_SCHEMA) {
+        const bindingPath = path.join(sessionRoot, sourceManifestBindingFile);
+        await atomicWriteJson(bindingPath, request);
+        sourceManifestBindingSha256 = await hashFile(bindingPath);
+      }
+      const handoffPath = path.join(sessionRoot, handoffFile);
       await atomicWriteJson(handoffPath, handoff);
-      const marker: FinalizedMarker = {
-        schema: "capture_splat.live_finalized.v0.1",
-        session_id: stored.session.session_id,
-        final_sequence_id: request.final_sequence_id,
-        handoff_path: handoffFile,
-        handoff_sha256: await hashFile(handoffPath),
-        finalized_at: new Date().toISOString()
-      };
-      await atomicWriteJson(path.join(this.sessionRoot(stored.session.session_id), finalizedFile), marker);
+      const handoffSha256 = await hashFile(handoffPath);
+      const finalizedAt = new Date().toISOString();
+      const marker: StoredFinalizedMarker = request.schema === LIVE_FINALIZE_SCHEMA
+        ? {
+            schema: "capture_splat.live_finalized.v0.1",
+            session_id: stored.session.session_id,
+            final_sequence_id: request.final_sequence_id,
+            handoff_path: handoffFile,
+            handoff_sha256: handoffSha256,
+            finalized_at: finalizedAt
+          }
+        : {
+            schema: "capture_splat.live_finalized.v0.2",
+            session_id: stored.session.session_id,
+            final_sequence_id: request.final_sequence_id,
+            source_manifest_binding_path: sourceManifestBindingFile,
+            source_manifest_binding_sha256: sourceManifestBindingSha256!,
+            handoff_path: handoffFile,
+            handoff_sha256: handoffSha256,
+            finalized_at: finalizedAt
+          };
+      await atomicWriteJson(path.join(sessionRoot, finalizedFile), marker);
+      stored.sourceManifestBinding = sourceManifestBinding;
       stored.finalSequenceId = request.final_sequence_id;
       stored.updatedAt = marker.finalized_at;
       await this.writeDerivedState(stored);
@@ -397,8 +450,8 @@ export class LiveSessionStore {
     const progress = progressFor(stored);
     return {
       sessionId: stored.session.session_id,
-      sourceManifestId: stored.session.source_manifest.sha256,
-      expectedCount: stored.session.expected_frame_count ?? null,
+      sourceManifestId: stored.sourceManifestBinding?.sha256 ?? null,
+      expectedCount: effectiveExpectedFrameCount(stored),
       finalSequenceId: stored.finalSequenceId,
       receivedCount: progress.receivedCount,
       contiguousCount: progress.contiguousCount,
@@ -449,7 +502,9 @@ export class LiveSessionStore {
   private async recoverSession(sessionId: string): Promise<StoredSession> {
     const sessionRoot = this.sessionRoot(sessionId);
     await assertDirectory(sessionRoot, "session directory");
-    const session = validateLiveSession(await readRequiredJson(path.join(sessionRoot, "session.json"), "Session metadata is missing."));
+    const session = validateLiveSessionDeclaration(
+      await readRequiredJson(path.join(sessionRoot, "session.json"), "Session metadata is missing.")
+    );
     const authReceiptValue = await readOptionalJson(path.join(sessionRoot, authReceiptFile));
     const authReceipt = authReceiptValue === undefined
       ? null
@@ -503,9 +558,47 @@ export class LiveSessionStore {
     }
     const markerValue = await readOptionalJson(path.join(sessionRoot, finalizedFile));
     const marker = markerValue === undefined ? undefined : validateFinalizedMarker(markerValue, sessionId);
+    let sourceManifestBinding: LiveSourceManifestReference | null = session.schema === LIVE_SESSION_SCHEMA
+      ? session.source_manifest
+      : null;
+    let finalizedRequest: LiveFinalizeRequest | null = null;
+    if (!marker && session.schema === LIVE_SESSION_V2_SCHEMA) {
+      await rm(path.join(sessionRoot, sourceManifestBindingFile), { force: true });
+      await rm(path.join(sessionRoot, handoffFile), { force: true });
+    }
     if (marker) {
       if (
-        session.expected_frame_count !== undefined
+        (session.schema === LIVE_SESSION_SCHEMA && marker.schema !== "capture_splat.live_finalized.v0.1")
+        || (session.schema === LIVE_SESSION_V2_SCHEMA && marker.schema !== "capture_splat.live_finalized.v0.2")
+      ) {
+        throw new LiveContractError("Finalized marker version differs from the session version.", "corrupt");
+      }
+      if (marker.schema === "capture_splat.live_finalized.v0.2") {
+        const bindingPath = path.join(sessionRoot, sourceManifestBindingFile);
+        if (await hashFile(bindingPath) !== marker.source_manifest_binding_sha256) {
+          throw new LiveContractError("Finalized source manifest binding checksum differs.", "corrupt");
+        }
+        const binding = validateLiveFinalize(
+          await readRequiredJson(bindingPath, "Finalized source manifest binding is missing.")
+        );
+        if (
+          binding.schema !== LIVE_FINALIZE_V2_SCHEMA
+          || binding.session_id !== sessionId
+          || binding.final_sequence_id !== marker.final_sequence_id
+        ) {
+          throw new LiveContractError("Finalized source manifest binding identity differs.", "corrupt");
+        }
+        sourceManifestBinding = binding.source_manifest;
+        finalizedRequest = binding;
+      } else {
+        finalizedRequest = {
+          schema: LIVE_FINALIZE_SCHEMA,
+          session_id: sessionId,
+          final_sequence_id: marker.final_sequence_id
+        };
+      }
+      if (
+        typeof session.expected_frame_count === "number"
         && marker.final_sequence_id !== session.expected_frame_count
       ) {
         throw new LiveContractError("Finalized marker differs from session expected_frame_count.", "corrupt");
@@ -527,6 +620,7 @@ export class LiveSessionStore {
       : marker?.finalized_at ?? session.created_at;
     const stored = {
       session,
+      sourceManifestBinding,
       authReceipt,
       authReceiptSha256,
       frames,
@@ -534,11 +628,7 @@ export class LiveSessionStore {
       updatedAt
     };
     if (marker) {
-      await this.verifyFinalizedPublication(stored, {
-        schema: LIVE_FINALIZE_SCHEMA,
-        session_id: sessionId,
-        final_sequence_id: marker.final_sequence_id
-      });
+      await this.verifyFinalizedPublication(stored, finalizedRequest!);
     }
     await this.writeDerivedState(stored);
     return stored;
@@ -547,7 +637,7 @@ export class LiveSessionStore {
   private async verifyFinalSequence(stored: StoredSession, request: LiveFinalizeRequest): Promise<void> {
     await this.verifyStoredAuthReceipt(stored);
     const expected = stored.session.expected_frame_count;
-    if (expected !== undefined && request.final_sequence_id !== expected) {
+    if (typeof expected === "number" && request.final_sequence_id !== expected) {
       throw new LiveContractError(
         `Final sequence ${request.final_sequence_id} does not match expected frame count ${expected}.`,
         "conflict"
@@ -574,7 +664,7 @@ export class LiveSessionStore {
   private async verifyFinalizedPublication(stored: StoredSession, request: LiveFinalizeRequest): Promise<void> {
     const sessionRoot = this.sessionRoot(stored.session.session_id);
     await this.verifyStoredAuthReceipt(stored);
-    const session = validateLiveSession(
+    const session = validateLiveSessionDeclaration(
       await readRequiredJson(path.join(sessionRoot, "session.json"), "Session metadata is missing.")
     );
     if (stableLiveJson(session) !== stableLiveJson(stored.session)) {
@@ -587,12 +677,38 @@ export class LiveSessionStore {
     if (marker.final_sequence_id !== request.final_sequence_id) {
       throw new LiveContractError("Finalized marker differs from the declared final sequence.", "corrupt");
     }
+    if (
+      (request.schema === LIVE_FINALIZE_SCHEMA && marker.schema !== "capture_splat.live_finalized.v0.1")
+      || (request.schema === LIVE_FINALIZE_V2_SCHEMA && marker.schema !== "capture_splat.live_finalized.v0.2")
+    ) {
+      throw new LiveContractError("Finalized marker differs from the finalization version.", "corrupt");
+    }
+    if (request.schema === LIVE_FINALIZE_V2_SCHEMA) {
+      const bindingPath = path.join(sessionRoot, sourceManifestBindingFile);
+      if (
+        marker.schema !== "capture_splat.live_finalized.v0.2"
+        || await hashFile(bindingPath) !== marker.source_manifest_binding_sha256
+      ) {
+        throw new LiveContractError("Finalized source manifest binding checksum differs.", "corrupt");
+      }
+      const binding = validateLiveFinalize(
+        await readRequiredJson(bindingPath, "Finalized source manifest binding is missing.")
+      );
+      if (stableLiveJson(binding) !== stableLiveJson(request)) {
+        throw new LiveContractError("Finalized source manifest binding differs.", "corrupt");
+      }
+    }
     const handoffPath = path.join(sessionRoot, handoffFile);
     if (await hashFile(handoffPath) !== marker.handoff_sha256) {
       throw new LiveContractError("Finalized handoff checksum differs.", "corrupt");
     }
     const handoff = await readRequiredJson(handoffPath, "Finalized handoff is missing.");
-    if (stableLiveJson(handoff) !== stableLiveJson(buildHandoff(stored, request))) {
+    if (
+      !stored.sourceManifestBinding
+      || stableLiveJson(handoff) !== stableLiveJson(
+        buildHandoff(stored, request, stored.sourceManifestBinding)
+      )
+    ) {
       throw new LiveContractError("Finalized handoff differs from committed session evidence.", "corrupt");
     }
   }
@@ -646,12 +762,15 @@ export class LiveSessionStore {
     }
   }
 
-  private assertFrameMatchesSession(session: LiveSession, frame: LiveFrame): void {
+  private assertFrameMatchesSession(session: LiveSessionDeclaration, frame: LiveFrame): void {
     if (frame.session_id !== session.session_id) throw new LiveContractError("Frame session_id differs from the route.", "conflict");
     if (frame.coordinate_frame !== session.coordinate_system.id) {
       throw new LiveContractError("Frame coordinate_frame differs from the session coordinate system.", "conflict");
     }
-    if (session.expected_frame_count !== undefined && frame.sequence_id > session.expected_frame_count) {
+    if (
+      typeof session.expected_frame_count === "number"
+      && frame.sequence_id > session.expected_frame_count
+    ) {
       throw new LiveContractError("Frame sequence exceeds expected_frame_count.", "conflict");
     }
   }
@@ -708,7 +827,7 @@ export class LiveSessionStore {
       received_count: progress.receivedCount,
       contiguous_count: progress.contiguousCount,
       pending_count: progress.pendingCount,
-      expected_frame_count: stored.session.expected_frame_count ?? null,
+      expected_frame_count: effectiveExpectedFrameCount(stored),
       next_expected_sequence_id: progress.nextExpectedSequenceId,
       missing_ranges: progress.missingRanges,
       finalized: stored.finalSequenceId !== null,
@@ -721,7 +840,7 @@ export class LiveSessionStore {
     await atomicWriteJson(path.join(this.sessionRoot(stored.session.session_id), stateFile), {
       schema: "capture_splat.live_store_state.v0.1",
       session_id: stored.session.session_id,
-      expected_frame_count: stored.session.expected_frame_count ?? null,
+      expected_frame_count: effectiveExpectedFrameCount(stored),
       final_sequence_id: stored.finalSequenceId,
       received_count: progress.receivedCount,
       contiguous_count: progress.contiguousCount,
@@ -786,6 +905,11 @@ function assertTransportOwnership(stored: StoredSession, receipt: LiveAuthReceip
   ) {
     throw new LiveContractError("Authenticated live session belongs to a different paired device.", "conflict");
   }
+}
+
+function effectiveExpectedFrameCount(stored: StoredSession): number | null {
+  if (stored.session.schema === LIVE_SESSION_V2_SCHEMA) return stored.finalSequenceId;
+  return stored.session.expected_frame_count ?? null;
 }
 
 function progressFor(stored: StoredSession): {
@@ -858,8 +982,11 @@ function frameDirectoryName(sequenceId: number): string {
   return sequenceId.toString().padStart(8, "0");
 }
 
-function assertSessionStoreBounds(session: LiveSession): void {
-  if (session.expected_frame_count !== undefined && session.expected_frame_count > maxStoredSequenceId) {
+function assertSessionStoreBounds(session: LiveSessionDeclaration): void {
+  if (
+    typeof session.expected_frame_count === "number"
+    && session.expected_frame_count > maxStoredSequenceId
+  ) {
     throw new LiveContractError(`expected_frame_count must not exceed ${maxStoredSequenceId}.`);
   }
 }
@@ -1026,13 +1153,49 @@ async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-function validateFinalizedMarker(value: unknown, sessionId: string): FinalizedMarker {
+function sourceManifestForFinalization(
+  session: LiveSessionDeclaration,
+  request: LiveFinalizeRequest
+): LiveSourceManifestReference {
+  if (session.schema === LIVE_SESSION_SCHEMA) {
+    if (request.schema !== LIVE_FINALIZE_SCHEMA) {
+      throw new LiveContractError(
+        "live_session.v0.1 requires live_finalize.v0.1.",
+        "conflict"
+      );
+    }
+    return session.source_manifest;
+  }
+  if (request.schema !== LIVE_FINALIZE_V2_SCHEMA) {
+    throw new LiveContractError(
+      "live_session.v0.2 requires live_finalize.v0.2 source manifest metadata.",
+      "conflict"
+    );
+  }
+  return request.source_manifest;
+}
+
+function validateFinalizedMarker(value: unknown, sessionId: string): StoredFinalizedMarker {
   if (!isRecord(value)) throw new LiveContractError("Finalized marker must be an object.", "corrupt");
   const keys = Object.keys(value).sort();
-  const expected = ["final_sequence_id", "finalized_at", "handoff_path", "handoff_sha256", "schema", "session_id"];
+  const v2 = value.schema === "capture_splat.live_finalized.v0.2";
+  const expected = (
+    v2
+      ? [
+          "final_sequence_id",
+          "finalized_at",
+          "handoff_path",
+          "handoff_sha256",
+          "schema",
+          "session_id",
+          "source_manifest_binding_path",
+          "source_manifest_binding_sha256"
+        ]
+      : ["final_sequence_id", "finalized_at", "handoff_path", "handoff_sha256", "schema", "session_id"]
+  ).sort();
   if (stableLiveJson(keys) !== stableLiveJson(expected)) throw new LiveContractError("Finalized marker has unexpected fields.", "corrupt");
   if (
-    value.schema !== "capture_splat.live_finalized.v0.1"
+    (value.schema !== "capture_splat.live_finalized.v0.1" && !v2)
     || value.session_id !== sessionId
     || value.handoff_path !== handoffFile
     || typeof value.final_sequence_id !== "number"
@@ -1044,10 +1207,24 @@ function validateFinalizedMarker(value: unknown, sessionId: string): FinalizedMa
   ) {
     throw new LiveContractError("Finalized marker is invalid.", "corrupt");
   }
-  return value as unknown as FinalizedMarker;
+  if (
+    v2
+    && (
+      value.source_manifest_binding_path !== sourceManifestBindingFile
+      || typeof value.source_manifest_binding_sha256 !== "string"
+      || !/^sha256:[0-9a-f]{64}$/.test(value.source_manifest_binding_sha256)
+    )
+  ) {
+    throw new LiveContractError("Finalized source manifest marker is invalid.", "corrupt");
+  }
+  return value as unknown as StoredFinalizedMarker;
 }
 
-function buildHandoff(stored: StoredSession, request: LiveFinalizeRequest): Record<string, unknown> {
+function buildHandoff(
+  stored: StoredSession,
+  request: LiveFinalizeRequest,
+  sourceManifest: LiveSourceManifestReference
+): Record<string, unknown> {
   if (stored.authReceipt && !stored.authReceiptSha256) {
     throw new LiveContractError("Authentication receipt checksum is missing.", "corrupt");
   }
@@ -1115,7 +1292,10 @@ function buildHandoff(stored: StoredSession, request: LiveFinalizeRequest): Reco
       live_auth_receipt: authReceiptFile,
       live_auth_receipt_sha256: stored.authReceiptSha256
     } : {}),
-    source_manifest: stored.session.source_manifest,
+    source_manifest: sourceManifest,
+    ...(request.schema === LIVE_FINALIZE_V2_SCHEMA ? {
+      source_manifest_verification: "declared_checksum_reference_only"
+    } : {}),
     coordinate_system: stored.session.coordinate_system,
     final_sequence_id: request.final_sequence_id,
     source_frames: sourceFrames,

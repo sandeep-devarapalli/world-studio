@@ -1,3 +1,4 @@
 contracts/live-session/v0.1/** text eol=lf
+contracts/live-session/v0.2/** text eol=lf
 contracts/live-auth/v0.1/** text eol=lf
 docs/blueprints/world-compiler-v0.1/source/** -whitespace

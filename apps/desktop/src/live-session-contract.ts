@@ -1,7 +1,11 @@
+import { createHash } from "node:crypto";
+
 export const LIVE_SESSION_SCHEMA = "capture_splat.live_session.v0.1" as const;
+export const LIVE_SESSION_V2_SCHEMA = "capture_splat.live_session.v0.2" as const;
 export const LIVE_FRAME_SCHEMA = "capture_splat.live_frame.v0.1" as const;
 export const LIVE_ACK_SCHEMA = "capture_splat.live_ack.v0.1" as const;
 export const LIVE_FINALIZE_SCHEMA = "capture_splat.live_finalize.v0.1" as const;
+export const LIVE_FINALIZE_V2_SCHEMA = "capture_splat.live_finalize.v0.2" as const;
 
 export type LiveAssetRole =
   | "source"
@@ -50,6 +54,25 @@ export interface LiveSession {
     vector_convention: "column-vector";
   };
   authority: "proposal_only";
+}
+
+export interface LiveSessionV2 {
+  schema: typeof LIVE_SESSION_V2_SCHEMA;
+  session_id: string;
+  created_at: string;
+  source_session_seed_b64u: string;
+  expected_frame_count: null;
+  coordinate_system: LiveSession["coordinate_system"];
+  authority: "proposal_only";
+}
+
+export type LiveSessionDeclaration = LiveSession | LiveSessionV2;
+
+export interface LiveSourceManifestReference {
+  path: string;
+  sha256: string;
+  size_bytes: number;
+  schema: string;
 }
 
 export interface LiveFrame {
@@ -128,11 +151,20 @@ export interface LiveAck {
   message?: string;
 }
 
-export interface LiveFinalizeRequest {
+export interface LiveFinalizeV1Request {
   schema: typeof LIVE_FINALIZE_SCHEMA;
   session_id: string;
   final_sequence_id: number;
 }
+
+export interface LiveFinalizeV2Request {
+  schema: typeof LIVE_FINALIZE_V2_SCHEMA;
+  session_id: string;
+  final_sequence_id: number;
+  source_manifest: LiveSourceManifestReference;
+}
+
+export type LiveFinalizeRequest = LiveFinalizeV1Request | LiveFinalizeV2Request;
 
 export interface DeclaredLiveAsset {
   role: LiveAssetRole;
@@ -163,6 +195,7 @@ export class LiveContractError extends Error {
 
 const sha256Pattern = /^sha256:[0-9a-f]{64}$/;
 const sessionIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const progressiveSessionIdPattern = /^csl_[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const mediaTypePattern = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 const rfc3339DateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -237,6 +270,87 @@ export function validateLiveSession(value: unknown): LiveSession {
   };
 }
 
+export function validateLiveSessionDeclaration(value: unknown): LiveSessionDeclaration {
+  const session = record(value, "session");
+  if (session.schema === LIVE_SESSION_SCHEMA) return validateLiveSession(value);
+  if (session.schema !== LIVE_SESSION_V2_SCHEMA) {
+    throw new LiveContractError(
+      `session.schema must be ${LIVE_SESSION_SCHEMA} or ${LIVE_SESSION_V2_SCHEMA}.`
+    );
+  }
+  exactKeys(session, [
+    "schema",
+    "session_id",
+    "created_at",
+    "source_session_seed_b64u",
+    "expected_frame_count",
+    "coordinate_system",
+    "authority"
+  ], "session");
+  if (!Object.prototype.hasOwnProperty.call(session, "expected_frame_count")) {
+    throw new LiveContractError("session.expected_frame_count is required.");
+  }
+  if (session.expected_frame_count !== null) {
+    throw new LiveContractError("session.expected_frame_count must be null for live_session.v0.2.");
+  }
+  const seed = canonicalSessionSeed(session.source_session_seed_b64u);
+  const sessionId = validProgressiveSessionId(session.session_id);
+  const derivedSessionId = deriveLiveSessionV2Id(seed);
+  if (sessionId !== derivedSessionId) {
+    throw new LiveContractError("session.session_id does not match source_session_seed_b64u.");
+  }
+  const createdAt = requiredString(session.created_at, "session.created_at");
+  if (!rfc3339DateTimePattern.test(createdAt) || !Number.isFinite(Date.parse(createdAt))) {
+    throw new LiveContractError("session.created_at must be an RFC 3339 timestamp.");
+  }
+  const coordinateSystem = record(session.coordinate_system, "session.coordinate_system");
+  exactKeys(coordinateSystem, [
+    "id",
+    "units",
+    "handedness",
+    "world_up",
+    "camera_forward",
+    "matrix_layout",
+    "vector_convention"
+  ], "session.coordinate_system");
+  literal(session.authority, "proposal_only", "session.authority");
+  literalOneOf(coordinateSystem.units, ["meters", "unknown"], "session.coordinate_system.units");
+  literal(coordinateSystem.handedness, "right", "session.coordinate_system.handedness");
+  literal(coordinateSystem.world_up, "+Y", "session.coordinate_system.world_up");
+  literal(coordinateSystem.camera_forward, "-Z", "session.coordinate_system.camera_forward");
+  literal(coordinateSystem.matrix_layout, "row-major", "session.coordinate_system.matrix_layout");
+  literal(coordinateSystem.vector_convention, "column-vector", "session.coordinate_system.vector_convention");
+  return {
+    schema: LIVE_SESSION_V2_SCHEMA,
+    session_id: sessionId,
+    created_at: createdAt,
+    source_session_seed_b64u: seed.toString("base64url"),
+    expected_frame_count: null,
+    coordinate_system: {
+      id: requiredString(coordinateSystem.id, "session.coordinate_system.id"),
+      units: coordinateSystem.units as "meters" | "unknown",
+      handedness: "right",
+      world_up: "+Y",
+      camera_forward: "-Z",
+      matrix_layout: "row-major",
+      vector_convention: "column-vector"
+    },
+    authority: "proposal_only"
+  };
+}
+
+export function deriveLiveSessionV2Id(seed: Buffer): string {
+  if (seed.byteLength !== 32) {
+    throw new LiveContractError("source_session_seed_b64u must decode to exactly 32 bytes.");
+  }
+  const digest = createHash("sha256")
+    .update(Buffer.from("CAPTURE-SPLAT-LIVE-SESSION-V2", "ascii"))
+    .update(Buffer.from([0]))
+    .update(seed)
+    .digest("base64url");
+  return `csl_${digest}`;
+}
+
 export function validateLiveFrame(value: unknown): LiveFrame {
   const frame = record(value, "frame");
   exactKeys(frame, [
@@ -304,12 +418,33 @@ export function validateLiveFrame(value: unknown): LiveFrame {
 
 export function validateLiveFinalize(value: unknown): LiveFinalizeRequest {
   const finalize = record(value, "finalize");
-  exactKeys(finalize, ["schema", "session_id", "final_sequence_id"], "finalize");
-  literal(finalize.schema, LIVE_FINALIZE_SCHEMA, "finalize.schema");
+  if (finalize.schema === LIVE_FINALIZE_SCHEMA) {
+    exactKeys(finalize, ["schema", "session_id", "final_sequence_id"], "finalize");
+    return {
+      schema: LIVE_FINALIZE_SCHEMA,
+      session_id: validSessionId(finalize.session_id),
+      final_sequence_id: positiveInteger(finalize.final_sequence_id, "finalize.final_sequence_id")
+    };
+  }
+  exactKeys(finalize, ["schema", "session_id", "final_sequence_id", "source_manifest"], "finalize");
+  literal(finalize.schema, LIVE_FINALIZE_V2_SCHEMA, "finalize.schema");
+  const sourceManifest = record(finalize.source_manifest, "finalize.source_manifest");
+  exactKeys(sourceManifest, ["path", "sha256", "size_bytes", "schema"], "finalize.source_manifest");
+  literal(sourceManifest.path, "capture.json", "finalize.source_manifest.path");
+  const finalSequenceId = positiveInteger(finalize.final_sequence_id, "finalize.final_sequence_id");
+  if (finalSequenceId > 99_999_999) {
+    throw new LiveContractError("finalize.final_sequence_id must not exceed 99999999.");
+  }
   return {
-    schema: LIVE_FINALIZE_SCHEMA,
-    session_id: validSessionId(finalize.session_id),
-    final_sequence_id: positiveInteger(finalize.final_sequence_id, "finalize.final_sequence_id")
+    schema: LIVE_FINALIZE_V2_SCHEMA,
+    session_id: validProgressiveSessionId(finalize.session_id),
+    final_sequence_id: finalSequenceId,
+    source_manifest: {
+      path: "capture.json",
+      sha256: validSha256(sourceManifest.sha256, "finalize.source_manifest.sha256"),
+      size_bytes: positiveInteger(sourceManifest.size_bytes, "finalize.source_manifest.size_bytes"),
+      schema: requiredString(sourceManifest.schema, "finalize.source_manifest.schema")
+    }
   };
 }
 
@@ -417,8 +552,34 @@ export function validSessionId(value: unknown): string {
   return text;
 }
 
+function validProgressiveSessionId(value: unknown): string {
+  const text = validSessionId(value);
+  if (!progressiveSessionIdPattern.test(text)) {
+    throw new LiveContractError(
+      "progressive session_id must be a canonical csl_ Base64URL identifier."
+    );
+  }
+  return text;
+}
+
 export function stableLiveJson(value: unknown): string {
   return JSON.stringify(sortJson(value));
+}
+
+function canonicalSessionSeed(value: unknown): Buffer {
+  const text = requiredString(value, "session.source_session_seed_b64u");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(text)) {
+    throw new LiveContractError(
+      "session.source_session_seed_b64u must be canonical unpadded Base64URL for 32 bytes."
+    );
+  }
+  const decoded = Buffer.from(text, "base64url");
+  if (decoded.byteLength !== 32 || decoded.toString("base64url") !== text) {
+    throw new LiveContractError(
+      "session.source_session_seed_b64u must be canonical unpadded Base64URL for 32 bytes."
+    );
+  }
+  return decoded;
 }
 
 function validateAssets(value: unknown): NonNullable<LiveFrame["assets"]> {

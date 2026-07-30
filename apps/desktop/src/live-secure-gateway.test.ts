@@ -1105,6 +1105,68 @@ describe("LiveSecureGateway", () => {
       final_sequence_id: 2,
       authority: "proposal_only"
     });
+
+    const progressiveSessionId = "csl_SMOhjzjH7dE8x3yB5A0KBAo4YL6A4IzY1U570kVX_D8";
+    const progressiveSession = await signedTlsRequest(restartedPort, signedLiveRequest({
+      ...auth,
+      counter: "10",
+      requestIdByte: 79,
+      method: "PUT",
+      path: `${apiRoot}/sessions/${progressiveSessionId}`,
+      contentType: "application/json",
+      body: liveSessionV2Body()
+    }));
+    expect(progressiveSession.json).toMatchObject({
+      operation: "session",
+      status: "accepted",
+      expected_frame_count: null
+    });
+    const progressiveSource = Buffer.from("secure-progressive-frame");
+    await signedTlsRequest(restartedPort, signedLiveRequest({
+      ...auth,
+      counter: "11",
+      requestIdByte: 80,
+      method: "PUT",
+      path: `${apiRoot}/sessions/${progressiveSessionId}/frames/1`,
+      contentType: "application/json",
+      body: liveFrameBody(1, progressiveSource, progressiveSessionId)
+    }));
+    await signedTlsRequest(restartedPort, signedLiveRequest({
+      ...auth,
+      counter: "12",
+      requestIdByte: 81,
+      method: "PUT",
+      path: `${apiRoot}/sessions/${progressiveSessionId}/frames/1/assets/source`,
+      contentType: "image/jpeg",
+      body: progressiveSource
+    }));
+    const progressiveFinalizeBody = liveFinalizeV2Body(1);
+    const progressiveFinalized = await signedTlsRequest(restartedPort, signedLiveRequest({
+      ...auth,
+      counter: "13",
+      requestIdByte: 82,
+      method: "POST",
+      path: `${apiRoot}/sessions/${progressiveSessionId}/finalize`,
+      contentType: "application/json",
+      body: progressiveFinalizeBody
+    }));
+    expect(progressiveFinalized.json).toMatchObject({
+      finalized: true,
+      status: "finalized",
+      expected_frame_count: 1
+    });
+    expect(JSON.parse(
+      await readFile(
+        path.join(liveRoot, progressiveSessionId, "capture-splat.world-studio.json"),
+        "utf8"
+      )
+    )).toMatchObject({
+      session_id: progressiveSessionId,
+      live_session_schema: "capture_splat.live_session.v0.2",
+      source_manifest: JSON.parse(progressiveFinalizeBody.toString("utf8")).source_manifest,
+      source_manifest_verification: "declared_checksum_reference_only",
+      authority: "proposal_only"
+    });
   }, 20_000);
 });
 
@@ -1451,10 +1513,48 @@ function liveSessionBody(sessionId = "secure-session"): Buffer {
   }));
 }
 
-function liveFrameBody(sequenceId: number, bytes: Buffer): Buffer {
+function liveSessionV2Body(): Buffer {
+  return Buffer.from(JSON.stringify({
+    schema: "capture_splat.live_session.v0.2",
+    session_id: "csl_SMOhjzjH7dE8x3yB5A0KBAo4YL6A4IzY1U570kVX_D8",
+    created_at: "2026-07-30T10:00:00.000Z",
+    source_session_seed_b64u: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+    expected_frame_count: null,
+    coordinate_system: {
+      id: "arkit_world",
+      units: "meters",
+      handedness: "right",
+      world_up: "+Y",
+      camera_forward: "-Z",
+      matrix_layout: "row-major",
+      vector_convention: "column-vector"
+    },
+    authority: "proposal_only"
+  }));
+}
+
+function liveFinalizeV2Body(finalSequenceId: number): Buffer {
+  return Buffer.from(JSON.stringify({
+    schema: "capture_splat.live_finalize.v0.2",
+    session_id: "csl_SMOhjzjH7dE8x3yB5A0KBAo4YL6A4IzY1U570kVX_D8",
+    final_sequence_id: finalSequenceId,
+    source_manifest: {
+      path: "capture.json",
+      sha256: `sha256:${"4".repeat(64)}`,
+      size_bytes: 456,
+      schema: "capture_splat.v0.3"
+    }
+  }));
+}
+
+function liveFrameBody(
+  sequenceId: number,
+  bytes: Buffer,
+  sessionId = "secure-session"
+): Buffer {
   return Buffer.from(JSON.stringify({
     schema: "capture_splat.live_frame.v0.1",
-    session_id: "secure-session",
+    session_id: sessionId,
     sequence_id: sequenceId,
     timestamp: {
       value: sequenceId * 0.25,

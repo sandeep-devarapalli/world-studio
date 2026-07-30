@@ -42,3 +42,18 @@ Capture Splat independently accepts `--receiver` or
 
 Moving beyond loopback requires an authenticated, paired, TLS-protected LAN transport.
 The iOS sender design remains documentation-only in this phase.
+
+## Additive Progressive Session Binding
+
+M1B adds `capture_splat.live_session.v0.2` and
+`capture_splat.live_finalize.v0.2` while preserving every v0.1 replay byte and behavior.
+The derived v0.2 session identity is immutable before the first frame, the expected count
+stays null while recording, and finalization atomically binds the sender-declared
+`capture.json` identity together with the final sequence. Receiver restart, missing frames,
+conflicting bindings, corrupt publications, and lost final ACKs fail closed or resume
+idempotently.
+
+The binding records path, schema, size, and SHA-256 metadata. It is not proof that World
+Studio received or rehashed the `capture.json` bytes. The finalized handoff records this as
+`source_manifest_verification = "declared_checksum_reference_only"`. This checkpoint does
+not connect the sender to the iPhone capture loop or close physical-device acceptance.

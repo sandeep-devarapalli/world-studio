@@ -27,8 +27,12 @@ outcomes and acceptance gates.
 - The M1 desktop boundary now keeps M0 loopback unchanged while adding explicit
   selected-interface pairing, pinned TLS, P-256 device identity, signed requests,
   expiry/revocation, and durable request-counter replay defense.
-- The bounded iPhone sender remains the next implementation slice. It must enqueue only
-  after durable local writes and cannot change keyframe acceptance.
+- The additive progressive-session contract now creates an immutable derived session
+  identity before `capture.json` exists and binds the declared final manifest identity only
+  during fail-closed sealing. M0 replay remains compatible.
+- Capture Splat's bounded sender foundation remains dormant until QR/Bonjour application
+  wiring and a nonblocking post-write integration land. Networking cannot change keyframe
+  acceptance.
 - Live reconstruction workers remain isolated proposals and cannot mutate Capture Splat
   evidence or a loaded World.
 - Physical Bonjour, firewall, Wi-Fi interruption, receiver-restart, and two-cycle iPhone
