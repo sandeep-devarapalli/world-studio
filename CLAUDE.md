@@ -1,7 +1,6 @@
 # World Studio: Claude Code Handoff
 
-You are working in `/Users/dev/Desktop/world-studio` for
-`sandeep-devarapalli/world-studio`.
+You are working in the `sandeep-devarapalli/world-studio` repository root.
 
 World Studio is a pnpm monorepo:
 
@@ -217,7 +216,7 @@ Keep Playwright assertions meaningful. Do not weaken tests to hide regressions.
 ## Paste-Ready Prompt
 
 ```text
-We need to continue World Studio UI/feature work in /Users/dev/Desktop/world-studio. Please read CLAUDE.md first, then verify the branch stack. The current priority is not the large spawn-props feature. Do the quick diagnostic win first: verify/fix whether splat mode actually renders loft_04/gaussians.ply through Spark instead of falling back to ordinary point-cloud rendering while the UI claims "three.js · spark path".
+We need to continue World Studio UI/feature work in the repository root. Please read CLAUDE.md first, then verify the branch stack. The current priority is not the large spawn-props feature. Do the quick diagnostic win first: verify/fix whether splat mode actually renders loft_04/gaussians.ply through Spark instead of falling back to ordinary point-cloud rendering while the UI claims "three.js · spark path".
 
 Preserve the six modes, explicit startup, provenance display, ordinary PLY vs Gaussian PLY separation, design-system tokens, 1920x1080 stage scaling, and browser/Electron support. Validate with pnpm typecheck, pnpm test, pnpm test:ui, pnpm desktop:package, and visual comparison against docs/extracted-prototype/reference/*.png.
 
