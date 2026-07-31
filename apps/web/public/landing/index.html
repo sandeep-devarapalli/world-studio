@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>World Studio</title>
+    <meta
+      name="description"
+      content="World Studio turns one physical robotics task into thousands of controllable, reusable simulated worlds for real-to-sim-to-real policy training and evaluation."
+    />
+    <link rel="icon" href="./world-studio-mark.svg" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080604;
+        --bg-2: #0d0b09;
+        --ink: #f7f2ea;
+        --muted: #b9b1a8;
+        --soft: #80776d;
+        --line: rgba(247, 242, 234, 0.14);
+        --line-strong: rgba(255, 106, 42, 0.44);
+        --accent: #ff6a2a;
+        --accent-2: #ff8b4d;
+        --panel: rgba(16, 14, 12, 0.72);
+        --shadow: 0 32px 90px rgba(0, 0, 0, 0.52);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { background: var(--bg); scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background:
+          radial-gradient(circle at 72% 18%, rgba(255, 106, 42, 0.13), transparent 30%),
+          radial-gradient(circle at 22% 20%, rgba(255, 106, 42, 0.08), transparent 24%),
+          linear-gradient(180deg, #090706 0%, #0c0a08 48%, #070604 100%);
+        color: var(--ink);
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      a { color: inherit; text-decoration: none; }
+
+      .page { min-height: 100vh; overflow: hidden; }
+
+      .nav {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 28px;
+        padding: 20px clamp(22px, 5vw, 64px);
+        border-bottom: 1px solid var(--line);
+        background: rgba(8, 6, 4, 0.78);
+        backdrop-filter: blur(18px);
+      }
+
+      .brand { display: inline-flex; align-items: center; gap: 14px; font-size: 21px; font-weight: 650; letter-spacing: 0; }
+      .brand img { width: 42px; height: 42px; }
+
+      .nav-links { display: flex; align-items: center; gap: 34px; color: var(--muted); font-size: 14px; }
+      .nav-links a:hover { color: var(--ink); }
+
+      .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 20px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 560;
+        transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+      }
+
+      .button:hover { transform: translateY(-1px); border-color: rgba(247, 242, 234, 0.34); }
+      .button.primary { border-color: transparent; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: white; box-shadow: 0 20px 40px rgba(255, 106, 42, 0.22); }
+      .button svg { width: 17px; height: 17px; margin-left: 10px; }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(500px, 0.72fr) minmax(660px, 1.28fr);
+        gap: clamp(28px, 4vw, 80px);
+        min-height: calc(100vh - 82px);
+        padding: clamp(44px, 6.5vw, 92px) clamp(22px, 5vw, 64px) 44px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .hero-copy { align-self: center; max-width: 620px; min-width: 0; }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(64px, 5.9vw, 88px);
+        line-height: 0.86;
+        font-weight: 760;
+        letter-spacing: 0;
+        white-space: nowrap;
+      }
+
+      .lead {
+        margin: 34px 0 0;
+        max-width: 560px;
+        color: #d8d1c8;
+        font-size: clamp(22px, 2.4vw, 34px);
+        line-height: 1.24;
+        letter-spacing: 0;
+      }
+
+      .body-copy {
+        margin: 26px 0 0;
+        max-width: 500px;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.72;
+      }
+
+      .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 42px; }
+      .hero-actions .button { min-width: 178px; min-height: 54px; font-size: 15px; }
+
+      .hero-visual {
+        position: relative;
+        align-self: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 620px;
+        overflow: visible;
+      }
+
+      .hero-art {
+        display: block;
+        width: min(900px, 100%);
+        height: auto;
+        filter: drop-shadow(0 32px 90px rgba(0, 0, 0, 0.48));
+      }
+
+      .hero-visual::before {
+        position: absolute;
+        inset: auto -12% -10% -42%;
+        height: 54%;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.055) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.055) 1px, transparent 1px);
+        background-size: 38px 38px;
+        mask-image: radial-gradient(ellipse at center, black 10%, transparent 68%);
+        content: "";
+        opacity: 0.86;
+        transform: perspective(720px) rotateX(64deg);
+        transform-origin: center bottom;
+      }
+
+      .world-card {
+        position: absolute;
+        left: -6px;
+        top: 154px;
+        width: 236px;
+        aspect-ratio: 0.76;
+        border: 1px solid rgba(247, 242, 234, 0.24);
+        background:
+          linear-gradient(180deg, rgba(247, 242, 234, 0.1), transparent 38%),
+          radial-gradient(circle at 62% 42%, rgba(255, 106, 42, 0.18), transparent 34%),
+          linear-gradient(115deg, rgba(255,255,255,0.04), transparent 42%),
+          #17130f;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+        z-index: 5;
+      }
+
+      .world-card::before {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(120deg, transparent 0 42%, rgba(255,255,255,0.08) 43% 45%, transparent 46%),
+          linear-gradient(90deg, transparent 0 45%, rgba(255,255,255,0.09) 45% 47%, transparent 48%),
+          linear-gradient(180deg, transparent 0 64%, rgba(255,255,255,0.12) 65% 66%, transparent 67%);
+        content: "";
+      }
+
+      .arm-base, .arm-one, .arm-two, .arm-grip { position: absolute; background: #c8beb1; box-shadow: 0 0 18px rgba(255,255,255,0.08); }
+      .arm-base { left: 82px; bottom: 46px; width: 60px; height: 18px; border-radius: 18px 18px 4px 4px; }
+      .arm-one { left: 98px; bottom: 62px; width: 20px; height: 88px; border-radius: 18px; transform: rotate(22deg); transform-origin: bottom; }
+      .arm-two { left: 121px; bottom: 123px; width: 18px; height: 82px; border-radius: 18px; transform: rotate(52deg); transform-origin: bottom; }
+      .arm-grip { left: 172px; bottom: 171px; width: 42px; height: 14px; border-radius: 14px; transform: rotate(12deg); }
+      .world-card span { position: absolute; top: -26px; left: 16px; color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+      .stack {
+        position: absolute;
+        right: -24px;
+        top: 28px;
+        width: min(760px, 92%);
+        height: 560px;
+      }
+
+      .model-label {
+        position: absolute;
+        left: 255px;
+        top: -22px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .volume {
+        position: absolute;
+        inset: 30px 96px 34px 92px;
+        border: 1px solid var(--line-strong);
+        transform: skewY(-5deg);
+      }
+
+      .volume::before,
+      .volume::after {
+        position: absolute;
+        inset: -1px;
+        border: inherit;
+        content: "";
+        opacity: 0.45;
+        transform: translate(-26px, 32px) skewY(5deg);
+      }
+
+      .volume::after {
+        opacity: 0.25;
+        transform: translate(32px, -28px) skewY(5deg);
+      }
+
+      .layer {
+        position: absolute;
+        left: 150px;
+        right: 155px;
+        height: 116px;
+        border: 1px solid rgba(247, 242, 234, 0.18);
+        background:
+          linear-gradient(rgba(247,242,234,0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(247,242,234,0.05) 1px, transparent 1px),
+          rgba(255,255,255,0.015);
+        background-size: 34px 34px;
+        transform: skewY(-7deg);
+      }
+      .layer.one { top: 94px; }
+      .layer.two { top: 236px; }
+      .layer.three { top: 392px; border-color: rgba(255, 106, 42, 0.36); }
+
+      .point-cloud {
+        position: absolute;
+        left: 178px;
+        top: 72px;
+        width: 440px;
+        height: 178px;
+        opacity: 0.95;
+      }
+      .point-cloud::before,
+      .point-cloud::after {
+        position: absolute;
+        inset: 0;
+        background-image:
+          radial-gradient(circle at 10% 62%, rgba(247,242,234,.86) 0 1px, transparent 1.6px),
+          radial-gradient(circle at 16% 43%, rgba(247,242,234,.72) 0 1px, transparent 1.5px),
+          radial-gradient(circle at 24% 68%, rgba(247,242,234,.82) 0 1px, transparent 1.6px),
+          radial-gradient(circle at 31% 35%, rgba(247,242,234,.74) 0 1px, transparent 1.4px),
+          radial-gradient(circle at 39% 55%, rgba(255,106,42,.9) 0 1.1px, transparent 1.7px),
+          radial-gradient(circle at 48% 22%, rgba(247,242,234,.82) 0 1px, transparent 1.5px),
+          radial-gradient(circle at 57% 38%, rgba(247,242,234,.78) 0 1px, transparent 1.5px),
+          radial-gradient(circle at 66% 60%, rgba(247,242,234,.86) 0 1px, transparent 1.6px),
+          radial-gradient(circle at 76% 31%, rgba(255,106,42,.88) 0 1.1px, transparent 1.7px),
+          radial-gradient(circle at 86% 52%, rgba(247,242,234,.8) 0 1px, transparent 1.5px);
+        background-size: 54px 42px, 64px 46px, 58px 52px, 72px 48px, 50px 44px, 68px 56px, 62px 50px, 70px 46px, 56px 42px, 66px 54px;
+        content: "";
+        opacity: .75;
+      }
+      .point-cloud::after {
+        inset: 16px 42px 20px 58px;
+        border-radius: 46% 44% 38% 50%;
+        background:
+          radial-gradient(ellipse at 52% 20%, rgba(247,242,234,.7), transparent 12%),
+          radial-gradient(ellipse at 44% 48%, rgba(247,242,234,.58), transparent 18%),
+          radial-gradient(ellipse at 60% 82%, rgba(247,242,234,.52), transparent 16%);
+        filter: blur(.2px);
+        opacity: .55;
+      }
+      .dot { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: rgba(247,242,234,0.8); }
+      .dot:nth-child(3n) { background: rgba(255,106,42,0.92); }
+
+      .wire-grid {
+        position: absolute;
+        left: 166px;
+        top: 158px;
+        width: 440px;
+        height: 170px;
+        opacity: 0.54;
+      }
+
+      .trajectory {
+        position: absolute;
+        left: 215px;
+        top: 330px;
+        width: 360px;
+        height: 128px;
+      }
+
+      .callouts {
+        position: absolute;
+        right: -10px;
+        top: 112px;
+        display: grid;
+        gap: 48px;
+        color: #d8d1c8;
+        font-size: 12px;
+        line-height: 1.35;
+        text-transform: uppercase;
+      }
+      .callout { position: relative; display: grid; grid-template-columns: 28px 116px; gap: 12px; align-items: center; }
+      .callout::before {
+        position: absolute;
+        right: calc(100% + 16px);
+        top: 50%;
+        width: 170px;
+        border-top: 1px dotted rgba(247,242,234,0.4);
+        content: "";
+      }
+      .callout svg { width: 27px; height: 27px; color: var(--ink); opacity: 0.82; }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-bottom: 1px solid var(--line);
+      }
+      .flow-card { min-height: 280px; padding: 46px clamp(22px, 5vw, 64px); border-right: 1px solid var(--line); background: rgba(255,255,255,0.01); }
+      .flow-card:last-child { border-right: 0; }
+      .flow-icon { width: 40px; height: 40px; color: var(--accent); margin-bottom: 34px; }
+      .flow h2 { margin: 0; font-size: clamp(24px, 2.1vw, 34px); line-height: 1.05; letter-spacing: 0; }
+      .flow p { margin: 18px 0 0; color: var(--muted); font-size: 16px; line-height: 1.55; max-width: 420px; }
+      .arrow { display: inline-flex; margin-top: 24px; color: var(--accent); font-size: 24px; }
+
+      .section {
+        display: grid;
+        grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr);
+        gap: clamp(32px, 6vw, 92px);
+        padding: clamp(64px, 8vw, 116px) clamp(22px, 5vw, 64px);
+        border-bottom: 1px solid var(--line);
+      }
+      .section h2 { margin: 0; font-size: clamp(38px, 5vw, 78px); line-height: 0.98; letter-spacing: 0; }
+      .section p { margin: 0; color: var(--muted); font-size: 19px; line-height: 1.7; }
+      .proof-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .proof { border: 1px solid var(--line); border-radius: 8px; padding: 20px; background: var(--panel); }
+      .proof b { display: block; margin-bottom: 10px; font-size: 15px; color: var(--ink); }
+      .proof span { color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+      .final { text-align: center; padding: 82px 22px 96px; }
+      .final h2 { margin: 0 auto; max-width: 860px; font-size: clamp(38px, 5.4vw, 82px); line-height: 0.98; letter-spacing: 0; }
+      .final p { margin: 24px auto 0; max-width: 680px; color: var(--muted); font-size: 18px; line-height: 1.7; }
+      .final .hero-actions { justify-content: center; }
+
+      @media (max-width: 1080px) {
+        .nav-links { display: none; }
+        .hero { grid-template-columns: 1fr; min-height: auto; }
+        .hero-visual { min-height: 560px; }
+        .flow { grid-template-columns: 1fr; }
+        .flow-card { border-right: 0; border-bottom: 1px solid var(--line); }
+        .flow-card:last-child { border-bottom: 0; }
+        .section { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 720px) {
+        .nav { padding: 14px 18px; }
+        .brand { font-size: 18px; }
+        .brand img { width: 36px; height: 36px; }
+        .nav-actions .button:not(.primary) { display: none; }
+        .nav-actions .button { min-height: 40px; padding: 0 14px; }
+        .hero { padding: 54px 18px 28px; }
+        h1 { font-size: clamp(58px, 18vw, 82px); }
+        h1 { white-space: normal; }
+        .lead { font-size: 23px; }
+        .body-copy { font-size: 16px; }
+        .hero-actions .button { width: 100%; }
+        .hero-visual { min-height: 310px; max-width: 100%; overflow: hidden; transform: none; margin-bottom: 0; }
+        .hero-art { width: 640px; max-width: none; margin-left: -132px; }
+        .world-card { left: -8px; top: 132px; width: 176px; }
+        .stack { right: -106px; width: 620px; transform: scale(0.78); transform-origin: top left; }
+        .callouts { display: none; }
+        .proof-grid { grid-template-columns: 1fr; }
+        .section, .flow-card { padding-right: 18px; padding-left: 18px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="./" aria-label="World Studio home">
+          <img src="./world-studio-mark.svg" alt="" />
+          <span>World Studio</span>
+        </a>
+        <div class="nav-links" aria-label="Sections">
+          <a href="#product">Product</a>
+          <a href="#technology">Technology</a>
+          <a href="#use-cases">Use cases</a>
+          <a href="https://github.com/sandeep-devarapalli/world-studio">Docs</a>
+          <a href="#contact">Company</a>
+        </div>
+        <div class="nav-actions">
+          <a class="button" href="https://github.com/sandeep-devarapalli/world-studio" target="_blank" rel="noreferrer">View GitHub<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <a class="button primary" href="https://github.com/sandeep-devarapalli/world-studio#run-browser-app" target="_blank" rel="noreferrer">Run locally</a>
+        </div>
+      </nav>
+
+      <section class="hero" id="product">
+        <div class="hero-copy">
+          <h1>World Studio</h1>
+          <p class="lead">Turn one physical task into thousands of controllable, reusable simulated worlds.</p>
+          <p class="body-copy">World Studio is a world simulator for robotics. Real-to-sim-to-real. Generative world models. Train, test, and evaluate policies at scale before you deploy.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="https://github.com/sandeep-devarapalli/world-studio#run-browser-app" target="_blank" rel="noreferrer">Run locally<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            <a class="button" href="https://github.com/sandeep-devarapalli/world-studio" target="_blank" rel="noreferrer">View GitHub<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="Real world task transformed into simulation layers">
+          <img class="hero-art" src="./world-studio-hero-r2s2r.png" alt="Real robot task transformed into layered generated worlds, scene distribution, geometry, policy trajectories, and evaluation metrics." />
+        </div>
+      </section>
+
+      <section class="flow" id="technology">
+        <article class="flow-card"><svg class="flow-icon" viewBox="0 0 24 24" fill="none"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="currentColor" stroke-width="1.5"/><path d="M12 12 4 7.5M12 12l8-4.5M12 12v9" stroke="currentColor" stroke-width="1.5" opacity=".55"/></svg><h2>Generate worlds</h2><p>Capture one real-world task and generate diverse, physically plausible worlds with controllable variation across appearance, geometry, and dynamics.</p><span class="arrow">→</span></article>
+        <article class="flow-card"><svg class="flow-icon" viewBox="0 0 24 24" fill="none"><path d="M4 17c4-10 9 2 16-10" stroke="currentColor" stroke-width="1.5"/><path d="M7 7h4v4M17 17h-4v-4" stroke="currentColor" stroke-width="1.5"/></svg><h2>Evaluate policies</h2><p>Run rollouts at scale across generated worlds. Measure performance, discover failure modes, and stress-test before real-world deployment.</p><span class="arrow">→</span></article>
+        <article class="flow-card"><svg class="flow-icon" viewBox="0 0 24 24" fill="none"><path d="M20 12a8 8 0 0 1-14.5 4.6M4 12A8 8 0 0 1 18.5 7.4" stroke="currentColor" stroke-width="1.5"/><path d="M20 5v6h-6M4 19v-6h6" stroke="currentColor" stroke-width="1.5"/></svg><h2>Close the loop</h2><p>Use simulation evidence to refine data, worlds, and policies. Continuously improve with a real-to-sim-to-real feedback loop.</p><span class="arrow">→</span></article>
+      </section>
+
+      <section class="section" id="use-cases">
+        <h2>Simulation aligned with reality.</h2>
+        <div class="proof-grid">
+          <div class="proof"><b>Zero-shot task expansion</b><span>Turn a single physical task into reusable environments for manipulation and navigation policy development.</span></div>
+          <div class="proof"><b>Failure discovery</b><span>Evaluate policy behavior across variations before the expensive hardware run.</span></div>
+          <div class="proof"><b>Evidence-backed worlds</b><span>Keep source captures, generated worlds, policy traces, and metrics connected for review.</span></div>
+          <div class="proof"><b>R2S2R workflow</b><span>Move from real capture to simulation, then back to robot validation with explicit gates.</span></div>
+        </div>
+      </section>
+
+      <section class="final" id="contact">
+        <h2>Build the place where agents can act, learn, and be evaluated.</h2>
+        <p>World Studio is open source and self-deployable. Use it locally to train policy models, test changes faster, uncover failures earlier, and reduce costly experimentation on hardware.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://github.com/sandeep-devarapalli/world-studio#run-browser-app" target="_blank" rel="noreferrer">Run locally</a>
+          <a class="button" href="https://github.com/sandeep-devarapalli/world-studio" target="_blank" rel="noreferrer">View source</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
