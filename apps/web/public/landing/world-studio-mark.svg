@@ -1,0 +1,10 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">World Studio mark</title>
+  <desc id="desc">A minimal orange ring with a white diamond-shaped world volume.</desc>
+  <rect width="256" height="256" rx="56" fill="#0A0806"/>
+  <circle cx="128" cy="128" r="86" stroke="#FF6A2A" stroke-width="12"/>
+  <path d="M128 52L190 147L128 204L66 147L128 52Z" stroke="#F6F2EA" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M128 52V204" stroke="#F6F2EA" stroke-width="5" stroke-linecap="round" opacity="0.52"/>
+  <path d="M66 147H190" stroke="#F6F2EA" stroke-width="5" stroke-linecap="round" opacity="0.38"/>
+  <circle cx="128" cy="128" r="96" stroke="#FF6A2A" stroke-width="2" opacity="0.28"/>
+</svg>

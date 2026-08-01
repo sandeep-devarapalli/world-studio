@@ -1,8 +1,21 @@
 # World Studio
 
-World Studio is a browser-capable and desktop-ready world rendering, editing, and
-simulation studio for Gaussian splats, point clouds, semantic world artifacts, sensor
-rigs, and robotics episodes.
+[Website](https://sandeep-devarapalli.github.io/world-studio/landing/)
+
+World Studio is a world simulator: the piece that turns a world into a place where
+agents can act, learn, and be evaluated. With the help of generative world models, our
+real-to-sim-to-real (R2S2R) engine turns a single physical task into thousands of
+controllable, reusable worlds, helping robotics teams train policy models and test
+changes faster, uncover failures earlier, and reduce costly experimentation on hardware.
+
+The broader World Studio product vision includes proprietary model technology that
+generates simulations aligned with reality, so robots can learn complex manipulation
+tasks with zero real-world training data, predict through simulation which policies will
+succeed or fail in the real world, and operate reliably for hours in real-world settings.
+This Apache-2.0 repository is the open implementation surface for that direction:
+a browser-capable and desktop-ready world rendering, editing, and simulation studio for
+Gaussian splats, point clouds, semantic world artifacts, sensor rigs, and robotics
+episodes.
 
 Its long-term product role is an evidence-backed world compiler between Capture Splat and
 task-scoped simulation. The public
