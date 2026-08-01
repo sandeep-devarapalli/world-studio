@@ -32,6 +32,21 @@ in `docs/source-materials/World studio development.docx` and designed in
 about what it has loaded, where data came from, and which artifacts are proposals,
 verified exports, or local desktop files.
 
+## Open Source Boundary
+
+The open-source repository is usable today as a local web and desktop world studio. It
+includes the app shell, local loading, rendering, proposal/verified artifact boundaries,
+simulation substrate, Episode workflows, Capture Splat receiver contracts, and GitHub
+Pages landing site.
+
+The broader product vision includes model-generated R2S2R worlds, policy prediction,
+large-scale variation generation, and long-horizon robot reliability. Those capabilities
+are product direction unless a feature is implemented, tested, and documented in this
+repository.
+
+People can self-deploy the current app from source. There is no hosted SaaS or cloud
+access flow in this repo today.
+
 ## Current State
 
 - A `pnpm` monorepo with React/Vite web app and Electron shell.
