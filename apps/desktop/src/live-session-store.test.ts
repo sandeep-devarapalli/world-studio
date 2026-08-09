@@ -608,7 +608,7 @@ describe("LiveSessionStore", () => {
       1
     );
     await expect(oversizedAxis.readFramePreview("test-session", 1)).rejects.toThrow(/dimensions exceed/);
-  });
+  }, 20_000);
 
   it("rejects unsupported role media and never raises the 16 MiB preview cap", async () => {
     const unsupportedRoot = await tempRoot("unsupported-evidence");

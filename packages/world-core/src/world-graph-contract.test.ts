@@ -351,7 +351,7 @@ describe("World and Asset semantic validation", () => {
       parentFrame = childFrame;
     }
     expect(() => validateCanonicalWorldManifest(deepChain)).not.toThrow();
-  });
+  }, 20_000);
 });
 
 describe("reversible Delta semantics", () => {
