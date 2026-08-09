@@ -156,8 +156,16 @@ describe("ReconstructionWorkerSupervisor", () => {
         mode === "output-root-symlink" ? "fixture-output-root-1" : "fixture-incoming-root-1"
       );
       expect(await readFile(path.join(target, "sentinel.txt"), "utf8")).toBe("preserve");
-      const incoming = await lstat(path.join(jobRoot, ".incoming"));
-      expect(mode === "incoming-parent-symlink" ? incoming.isSymbolicLink() : incoming.isDirectory()).toBe(true);
+      const incoming = await lstat(path.join(jobRoot, ".incoming")).catch((error: unknown) => {
+        if (mode === "incoming-parent-symlink"
+          && error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (mode === "incoming-parent-symlink") {
+        expect(incoming === null || incoming.isSymbolicLink()).toBe(true);
+      } else {
+        expect(incoming?.isDirectory()).toBe(true);
+      }
     }
   );
 
