@@ -1,0 +1,225 @@
+{
+  "$id": "urn:world-studio:schema:world_studio.reconstruction_worker_capability.v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authority": {
+      "const": "proposal_only"
+    },
+    "implementation": {
+      "additionalProperties": false,
+      "properties": {
+        "build_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "build_sha256"
+      ],
+      "type": "object"
+    },
+    "limits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_input_artifacts": {
+          "maximum": 65536,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_input_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_log_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_memory_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_output_artifacts": {
+          "maximum": 1024,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        },
+        "max_parallel_jobs": {
+          "maximum": 64,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_wall_time_ms": {
+          "maximum": 86400000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_input_artifacts",
+        "max_input_bytes",
+        "max_output_artifacts",
+        "max_output_bytes",
+        "max_wall_time_ms",
+        "max_memory_bytes",
+        "max_log_bytes",
+        "max_parallel_jobs"
+      ],
+      "type": "object"
+    },
+    "operations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/$defs/mediaRole"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "job_kind": {
+            "$ref": "#/$defs/identifier"
+          },
+          "outputs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "media_types": {
+                  "$ref": "#/$defs/mediaTypes"
+                },
+                "progressive": {
+                  "type": "boolean"
+                },
+                "role": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "role",
+                "media_types",
+                "progressive"
+              ],
+              "type": "object"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_kind",
+          "inputs",
+          "outputs"
+        ],
+        "type": "object"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "type": "array"
+    },
+    "protocol": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "world_studio.reconstruction_worker"
+        },
+        "version": {
+          "const": "0.1"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "reported_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "schema": {
+      "const": "world_studio.reconstruction_worker_capability.v0.1"
+    },
+    "worker_id": {
+      "$ref": "#/$defs/identifier"
+    }
+  },
+  "required": [
+    "schema",
+    "worker_id",
+    "reported_at",
+    "protocol",
+    "implementation",
+    "operations",
+    "limits",
+    "authority"
+  ],
+  "title": "World Studio reconstruction worker capability v0.1",
+  "type": "object",
+  "$defs": {
+    "identifier": {
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "type": "string"
+    },
+    "mediaRole": {
+      "additionalProperties": false,
+      "properties": {
+        "media_types": {
+          "$ref": "#/$defs/mediaTypes"
+        },
+        "role": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "role",
+        "media_types"
+      ],
+      "type": "object"
+    },
+    "mediaType": {
+      "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$",
+      "type": "string"
+    },
+    "mediaTypes": {
+      "items": {
+        "$ref": "#/$defs/mediaType"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "positiveSafeInteger": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "timestamp": {
+      "pattern": "^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
+      "type": "string"
+    }
+  }
+}

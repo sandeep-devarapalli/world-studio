@@ -229,6 +229,92 @@ export interface LiveFramePreview {
   height: number | null;
 }
 
+export type ReconstructionWorkerState =
+  | "unavailable"
+  | "idle"
+  | "queued"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "interrupted";
+
+export interface ReconstructionWorkerBudget {
+  maxWallTimeMs: number;
+  maxMemoryBytes: number;
+  maxOutputBytes: number;
+  maxLogBytes: number;
+  maxOutputArtifacts: number;
+}
+
+export interface ReconstructionWorkerCapabilitySummary {
+  workerId: string;
+  label: string;
+  protocolVersion: string;
+  available: boolean;
+  unavailableReason: string | null;
+  outputRoles: string[];
+  budget: ReconstructionWorkerBudget;
+}
+
+export interface ReconstructionWorkerOutputSummary {
+  outputId: string;
+  role: string;
+  mediaType: string;
+  sizeBytes: number;
+  sha256: string;
+  coordinateFrame: string | null;
+  status: "progressive" | "completed" | "discarded";
+  previewAvailable: boolean;
+}
+
+export interface ReconstructionWorkerLogSummary {
+  sequenceId: number;
+  timestamp: string;
+  level: "debug" | "info" | "warning" | "error";
+  code: string;
+  message: string;
+}
+
+export interface ReconstructionWorkerJobSummary {
+  jobId: string;
+  workerId: string;
+  attempt: number;
+  state: ReconstructionWorkerState;
+  input: {
+    sessionId: string;
+    throughSequenceId: number;
+    frameCount: number;
+    manifestSha256: string;
+  };
+  progress: number | null;
+  budget: ReconstructionWorkerBudget;
+  logs: ReconstructionWorkerLogSummary[];
+  outputs: ReconstructionWorkerOutputSummary[];
+  failure: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  } | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  updatedAt: string;
+  authority: "proposal_only";
+}
+
+export interface ReconstructionWorkerSnapshot {
+  state: ReconstructionWorkerState;
+  capabilities: ReconstructionWorkerCapabilitySummary[];
+  job: ReconstructionWorkerJobSummary | null;
+  authority: "proposal_only";
+  updatedAt: string | null;
+  error?: string;
+}
+
 export interface CameraState {
   yaw: number;
   pitch: number;

@@ -1,0 +1,47 @@
+{
+  "authority": "proposal_only",
+  "implementation": {
+    "build_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "id": "world-studio-fixture",
+    "version": "0.1.0"
+  },
+  "limits": {
+    "max_input_artifacts": 128,
+    "max_input_bytes": 67108864,
+    "max_log_bytes": 1048576,
+    "max_memory_bytes": 536870912,
+    "max_output_artifacts": 16,
+    "max_output_bytes": 134217728,
+    "max_parallel_jobs": 1,
+    "max_wall_time_ms": 60000
+  },
+  "operations": [
+    {
+      "inputs": [
+        {
+          "media_types": [
+            "application/json"
+          ],
+          "role": "capture-handoff"
+        }
+      ],
+      "job_kind": "fixture-proposal",
+      "outputs": [
+        {
+          "media_types": [
+            "application/json"
+          ],
+          "progressive": true,
+          "role": "preview-manifest"
+        }
+      ]
+    }
+  ],
+  "protocol": {
+    "name": "world_studio.reconstruction_worker",
+    "version": "0.1"
+  },
+  "reported_at": "2026-08-09T10:00:00.000Z",
+  "schema": "world_studio.reconstruction_worker_capability.v0.1",
+  "worker_id": "fixture-reconstruction-worker"
+}

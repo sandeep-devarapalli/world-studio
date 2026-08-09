@@ -1,0 +1,311 @@
+{
+  "$id": "urn:world-studio:schema:world_studio.reconstruction_event.v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "state"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "artifact": {
+            "type": "null"
+          },
+          "level": {
+            "type": "null"
+          },
+          "progress": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "log"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "artifact": {
+            "type": "null"
+          },
+          "level": {
+            "enum": [
+              "debug",
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "message": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "progress": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "progress"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "artifact": {
+            "type": "null"
+          },
+          "level": {
+            "type": "null"
+          },
+          "progress": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "state": {
+            "const": "running"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "artifact"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "artifact": {
+            "$ref": "#/$defs/outputArtifactReference"
+          },
+          "level": {
+            "type": "null"
+          },
+          "progress": {
+            "type": "null"
+          },
+          "state": {
+            "const": "running"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "artifact": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/outputArtifactReference"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attempt": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "authority": {
+      "const": "proposal_only"
+    },
+    "job_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "kind": {
+      "enum": [
+        "state",
+        "log",
+        "progress",
+        "artifact"
+      ]
+    },
+    "level": {
+      "anyOf": [
+        {
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "message": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "progress": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema": {
+      "const": "world_studio.reconstruction_event.v0.1"
+    },
+    "sequence_id": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "starting",
+        "running",
+        "stopping",
+        "completed",
+        "failed",
+        "cancelled",
+        "timed_out",
+        "interrupted"
+      ]
+    },
+    "timestamp": {
+      "$ref": "#/$defs/timestamp"
+    }
+  },
+  "required": [
+    "schema",
+    "job_id",
+    "attempt",
+    "sequence_id",
+    "timestamp",
+    "kind",
+    "state",
+    "level",
+    "message",
+    "progress",
+    "artifact",
+    "authority"
+  ],
+  "title": "World Studio reconstruction event v0.1",
+  "type": "object",
+  "$defs": {
+    "identifier": {
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "type": "string"
+    },
+    "mediaType": {
+      "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$",
+      "type": "string"
+    },
+    "outputArtifactReference": {
+      "additionalProperties": false,
+      "properties": {
+        "coordinate_frame": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "media_type": {
+          "$ref": "#/$defs/mediaType"
+        },
+        "path": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "role": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/positiveSafeInteger"
+        }
+      },
+      "required": [
+        "role",
+        "path",
+        "sha256",
+        "size_bytes",
+        "media_type",
+        "coordinate_frame"
+      ],
+      "type": "object"
+    },
+    "positiveSafeInteger": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "safeRelativePath": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "//|/$"
+          },
+          {
+            "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
+          },
+          {
+            "pattern": "(^|/)\\.\\.?(/|$)"
+          }
+        ]
+      },
+      "pattern": "^[^\\u0000]+$",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "timestamp": {
+      "pattern": "^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
+      "type": "string"
+    }
+  }
+}

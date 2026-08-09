@@ -1,0 +1,21 @@
+{
+  "artifact": {
+    "coordinate_frame": "arkit_world",
+    "media_type": "application/json",
+    "path": "attempts/0001/outputs/checkpoint-0001.json",
+    "role": "preview-manifest",
+    "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "size_bytes": 1024
+  },
+  "attempt": 1,
+  "authority": "proposal_only",
+  "job_id": "worker-job-0001",
+  "kind": "artifact",
+  "level": null,
+  "message": "Committed checkpoint 1.",
+  "progress": null,
+  "schema": "world_studio.reconstruction_event.v0.1",
+  "sequence_id": 4,
+  "state": "running",
+  "timestamp": "2026-08-09T10:01:04.000Z"
+}
