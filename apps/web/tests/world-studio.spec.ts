@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { LiveFrameSummary, LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 type PackageFixtureChoice = {
@@ -53,6 +54,32 @@ end_header
 
 const localGaussian = readFileSync(loftFixture("gaussians.ply"), "utf8");
 const onePixelDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==";
+const onePixelBytes = Buffer.from(onePixelDataUrl.split(",")[1]!, "base64");
+const onePixelSizeBytes = onePixelBytes.byteLength;
+const onePixelSha256 = `sha256:${createHash("sha256").update(onePixelBytes).digest("hex")}`;
+const corruptPixelBytes = Buffer.from([0]);
+const corruptPixelDataUrl = `data:image/png;base64,${corruptPixelBytes.toString("base64")}`;
+const corruptPixelSha256 = `sha256:${createHash("sha256").update(corruptPixelBytes).digest("hex")}`;
+
+function liveNpyFixture(descr: "<f4" | "|u1", width: number, height: number, values: number[]) {
+  const prefix = Buffer.from("\x93NUMPY\x01\x00", "binary");
+  const dictionary = `{'descr': '${descr}', 'fortran_order': False, 'shape': (${height}, ${width},), }`;
+  const padding = " ".repeat((16 - ((prefix.length + 2 + dictionary.length + 1) % 16)) % 16);
+  const header = Buffer.from(`${dictionary}${padding}\n`, "ascii");
+  const headerLength = Buffer.alloc(2);
+  headerLength.writeUInt16LE(header.byteLength);
+  const payload = descr === "<f4" ? Buffer.alloc(values.length * 4) : Buffer.from(values);
+  if (descr === "<f4") values.forEach((value, index) => payload.writeFloatLE(value, index * 4));
+  const bytes = Buffer.concat([prefix, headerLength, header, payload]);
+  return {
+    dataUrl: `data:application/x-npy;base64,${bytes.toString("base64")}`,
+    sizeBytes: bytes.byteLength,
+    sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`
+  };
+}
+
+const liveDepthFixture = liveNpyFixture("<f4", 2, 2, [0.75, 1, 1.25, 1.5]);
+const liveConfidenceFixture = liveNpyFixture("|u1", 2, 2, [2, 2, 1, 2]);
 const livePairingInvitationFixture = JSON.parse(
   readFileSync(
     new URL("../../../contracts/live-auth/v0.1/fixtures/valid_pairing_invitation.json", import.meta.url),
@@ -848,11 +875,53 @@ test("loads loft_04 and switches all six modes", async ({ page }) => {
 });
 
 test("shows an explicit proposal-only live session without replacing the loaded world", async ({ page }) => {
+  const liveFrame = (sequenceId: number, x: number, z: number): LiveFrameSummary => ({
+    sequenceId,
+    timestamp: (sequenceId - 1) * 0.1,
+    clockDomain: "arkit_session",
+    sourceFrameName: `frame_${String(sequenceId).padStart(6, "0")}.jpg`,
+    sourceWidth: 1,
+    sourceHeight: 1,
+    cameraToWorld: [1, 0, 0, x, 0, 1, 0, 1.1, 0, 0, 1, z, 0, 0, 0, 1],
+    coordinateFrame: "arkit_world",
+    previewAvailable: true,
+    intrinsics: {
+      model: "pinhole",
+      flX: 220,
+      flY: 221,
+      cx: 128,
+      cy: 96,
+      calibrationWidth: 256,
+      calibrationHeight: 192,
+      appliesTo: "depth"
+    },
+    tracking: { state: "normal" },
+    quality: {
+      accepted: true,
+      reason: "quality_gate_passed",
+      score: 0.92,
+      blurScore: 0.08,
+      exposureMean: 0.51,
+      featureGridCoverage: 0.84,
+      parallaxMeters: 0.12,
+      validDepthRatio: 0.89,
+      featurePointCount: 874
+    },
+    assets: [
+      { role: "source", sha256: onePixelSha256, sizeBytes: onePixelSizeBytes, mediaType: "image/png", width: 1, height: 1, previewAvailable: true },
+      { role: "depth", sha256: liveDepthFixture.sha256, sizeBytes: liveDepthFixture.sizeBytes, mediaType: "application/x-npy", width: 2, height: 2, previewAvailable: true },
+      { role: "confidence", sha256: liveConfidenceFixture.sha256, sizeBytes: liveConfidenceFixture.sizeBytes, mediaType: "application/x-npy", width: 2, height: 2, previewAvailable: true },
+      { role: "mask-person", sha256: onePixelSha256, sizeBytes: onePixelSizeBytes, mediaType: "image/png", width: 1, height: 1, previewAvailable: true },
+      { role: "mask-valid", sha256: onePixelSha256, sizeBytes: onePixelSizeBytes, mediaType: "image/png", width: 1, height: 1, previewAvailable: true },
+      { role: "mask-object", sha256: onePixelSha256, sizeBytes: onePixelSizeBytes, mediaType: "image/png", width: 1, height: 1, previewAvailable: true }
+    ]
+  });
   const stopped: LiveSessionSnapshot = {
     state: "stopped",
     listening: null,
     sessionId: null,
     sourceManifestId: null,
+    coordinateUnits: null,
     expectedCount: null,
     finalSequenceId: null,
     receivedCount: 0,
@@ -871,6 +940,7 @@ test("shows an explicit proposal-only live session without replacing the loaded 
     listening: { host: "127.0.0.1", port: 43127 },
     sessionId: "live-ui-test",
     sourceManifestId: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    coordinateUnits: "meters",
     expectedCount: 4,
     receivedCount: 3,
     contiguousCount: 2,
@@ -879,15 +949,31 @@ test("shows an explicit proposal-only live session without replacing the loaded 
     nextExpectedSequenceId: 3,
     missingRanges: [{ start: 3, end: 3 }],
     updatedAt: "2026-07-26T12:00:00.000Z",
-    frames: [
-      { sequenceId: 1, timestamp: 0, clockDomain: "arkit_session", sourceFrameName: "frame_000001.jpg", sourceWidth: 1920, sourceHeight: 1440, cameraToWorld: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], coordinateFrame: "arkit_world", previewAvailable: true },
-      { sequenceId: 2, timestamp: 0.1, clockDomain: "arkit_session", sourceFrameName: "frame_000002.jpg", sourceWidth: 1920, sourceHeight: 1440, cameraToWorld: [1, 0, 0, 0.1, 0, 1, 0, 0, 0, 0, 1, 0.2, 0, 0, 0, 1], coordinateFrame: "arkit_world", previewAvailable: true },
-      { sequenceId: 4, timestamp: 0.3, clockDomain: "arkit_session", sourceFrameName: "frame_000004.jpg", sourceWidth: 1920, sourceHeight: 1440, cameraToWorld: [1, 0, 0, 0.4, 0, 1, 0, 0, 0, 0, 1, 0.6, 0, 0, 0, 1], coordinateFrame: "arkit_world", previewAvailable: true }
-    ]
+    frames: (() => {
+      const corrupt = liveFrame(1, 0, 0);
+      corrupt.assets = corrupt.assets.map((asset) => (
+        asset.role === "source" ? { ...asset, sha256: corruptPixelSha256 } : asset
+      ));
+      const oversized = liveFrame(2, 0.1, 0.2);
+      oversized.sourceWidth = 4096;
+      oversized.sourceHeight = 4096;
+      oversized.assets = oversized.assets.map((asset) => (
+        asset.role === "source" ? { ...asset, width: 4096, height: 4096 } : asset
+      ));
+      return [corrupt, oversized, liveFrame(4, 0.4, 0.6)];
+    })()
   };
 
-  await page.addInitScript(({ stoppedSnapshot, receivingSnapshot, previewDataUrl, worldPayload }) => {
+  await page.addInitScript(({ stoppedSnapshot, receivingSnapshot, previewDataUrls, worldPayload }) => {
     let listener: ((snapshot: LiveSessionSnapshot) => void) | null = null;
+    let previewCalls = 0;
+    let frameFourSourceAttempts = 0;
+    const testWindow = window as typeof window & {
+      __emitLiveSnapshot?: (snapshot: LiveSessionSnapshot) => void;
+      __livePreviewCalls?: () => number;
+    };
+    testWindow.__emitLiveSnapshot = (snapshot) => listener?.(snapshot);
+    testWindow.__livePreviewCalls = () => previewCalls;
     window.worldStudioDesktop = {
       openLocalPackage: async () => worldPayload,
       startLiveReceiver: async () => {
@@ -905,16 +991,43 @@ test("shows an explicit proposal-only live session without replacing the loaded 
           listener = null;
         };
       },
-      getLiveFramePreview: async ({ sessionId, sequenceId }) => ({
-        sessionId,
-        sequenceId,
-        mediaType: "image/png",
-        dataUrl: previewDataUrl,
-        width: 1920,
-        height: 1440
-      })
+      getLiveFramePreview: async ({ sessionId, sequenceId, role = "source" }) => {
+        previewCalls += 1;
+        if (sequenceId === 4 && role === "source" && frameFourSourceAttempts++ === 0) return null;
+        const frame = receivingSnapshot.frames.find((entry) => entry.sequenceId === sequenceId);
+        const asset = frame?.assets.find((entry) => entry.role === role);
+        if (!asset) return null;
+        const dataUrl = role === "depth"
+          ? previewDataUrls.depth
+          : role === "confidence"
+            ? previewDataUrls.confidence
+            : sequenceId === 1 && role === "source"
+              ? previewDataUrls.corruptImage
+              : previewDataUrls.image;
+        return {
+          sessionId,
+          sequenceId,
+          role,
+          mediaType: asset.mediaType,
+          sha256: asset.sha256,
+          sizeBytes: asset.sizeBytes,
+          dataUrl,
+          width: asset.width,
+          height: asset.height
+        };
+      }
     };
-  }, { stoppedSnapshot: stopped, receivingSnapshot: receiving, previewDataUrl: onePixelDataUrl, worldPayload: genericManifestPayload });
+  }, {
+    stoppedSnapshot: stopped,
+    receivingSnapshot: receiving,
+    previewDataUrls: {
+      image: onePixelDataUrl,
+      corruptImage: corruptPixelDataUrl,
+      depth: liveDepthFixture.dataUrl,
+      confidence: liveConfidenceFixture.dataUrl
+    },
+    worldPayload: genericManifestPayload
+  });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Open Local" }).click();
@@ -928,7 +1041,60 @@ test("shows an explicit proposal-only live session without replacing the loaded 
   await expect(panel.locator(".ws-kv", { hasText: "gaps" })).toContainText("3");
   await expect(page.getByTestId("live-camera-trajectory").getByTestId("live-trajectory-segment")).toHaveCount(2);
   await page.getByRole("button", { name: /0004.*frame_000004/ }).click();
+  const evidence = page.getByTestId("live-frame-evidence");
+  await expect(evidence).toContainText("256×192 · depth");
+  await expect(evidence).toContainText("quality_gate_passed");
+  await expect(evidence).toContainText(onePixelSha256);
+  await expect(evidence).toContainText("arkit_world · meters");
+  await expect(evidence.getByTestId("live-depth-point-status")).toContainText("withheld");
+  await expect(evidence.getByTestId("live-depth-point-status")).toContainText("does not bind depth units or scale");
+  await expect(evidence.getByTestId("live-depth-point-proposal")).toHaveCount(0);
+  await expect(evidence.getByTestId("live-mesh-status")).toContainText("not transported by capture_splat.live_frame.v0.1");
+  await expect(evidence).toContainText("never measurement, world, collision, navigation, semantic, or physics authority");
+  await expect(page.getByTestId("live-evidence-error")).toContainText("Live source evidence is not available yet.");
+  await expect(evidence.getByRole("button", { name: "Retry evidence" })).toBeVisible();
+  await page.evaluate((snapshot) => (
+    window as typeof window & { __emitLiveSnapshot: (value: LiveSessionSnapshot) => void }
+  ).__emitLiveSnapshot({ ...structuredClone(snapshot), state: "resuming" }), receiving);
   await expect(page.getByAltText("Selected live source frame evidence")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await page.evaluate((snapshot) => (
+    window as typeof window & { __emitLiveSnapshot: (value: LiveSessionSnapshot) => void }
+  ).__emitLiveSnapshot(structuredClone(snapshot)), receiving);
+  await expect(page.getByTestId("live-connection-state")).toHaveText("receiving");
+  const stablePreviewCalls = await page.evaluate(() => (
+    window as typeof window & { __livePreviewCalls: () => number }
+  ).__livePreviewCalls());
+  await page.evaluate((snapshot) => (
+    window as typeof window & { __emitLiveSnapshot: (value: LiveSessionSnapshot) => void }
+  ).__emitLiveSnapshot(structuredClone(snapshot)), receiving);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => (
+    window as typeof window & { __livePreviewCalls: () => number }
+  ).__livePreviewCalls())).toBe(stablePreviewCalls);
+  await evidence.getByRole("button", { name: "Inspect Depth evidence" }).click();
+  await expect(page.getByTestId("live-scalar-preview")).toBeVisible();
+  await expect(evidence.locator(".ws-kv", { hasText: "range" })).toContainText("0.7500");
+  await evidence.getByRole("button", { name: "Inspect Person mask evidence" }).click();
+  await expect(page.getByTestId("live-mask-composite")).toBeVisible();
+  await expect(page.getByAltText("Selected live RGB evidence beneath mask")).toBeVisible();
+  await page.getByRole("button", { name: /0002.*frame_000002/ }).click();
+  await expect(page.getByAltText("Selected live person mask evidence")).toBeVisible();
+  await expect(page.getByTestId("live-mask-composite")).toHaveCount(0);
+  await expect(evidence.getByTestId("live-evidence-support-status")).toContainText("binds no alignment transform");
+  const callsBeforeOversizedSource = await page.evaluate(() => (
+    window as typeof window & { __livePreviewCalls: () => number }
+  ).__livePreviewCalls());
+  await evidence.getByRole("button", { name: "Inspect RGB evidence" }).click();
+  await expect(page.getByTestId("live-evidence-error")).toContainText(
+    "Live source preview was not requested to preserve the renderer memory bound."
+  );
+  await expect(page.getByAltText("Selected live source frame evidence")).toHaveCount(0);
+  expect(await page.evaluate(() => (
+    window as typeof window & { __livePreviewCalls: () => number }
+  ).__livePreviewCalls())).toBe(callsBeforeOversizedSource);
+  await page.getByRole("button", { name: /0001.*frame_000001/ }).click();
+  await expect(page.getByTestId("live-evidence-error")).toContainText("Live source image could not be decoded.");
+  await expect(page.getByAltText("Selected live source frame evidence")).toHaveCount(0);
   await expect(page.locator(".ws-view-tag.metric")).toContainText("Loaded world · unchanged");
   await expect(page.getByTestId("simulate-comparison-panel")).toContainText("no live 3DGS reconstruction");
   await panel.getByRole("button", { name: "Stop Listening" }).click();
