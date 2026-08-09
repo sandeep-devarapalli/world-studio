@@ -34,4 +34,20 @@ describe("desktop preload live-session bridge", () => {
       'return () => ipcRenderer.removeListener("world-studio:live-security-update", handler);'
     );
   });
+
+  it("exposes only identifier-based reconstruction worker actions and cleans up its listener", async () => {
+    const source = await readFile(preloadPath, "utf8");
+    expect(source).toContain('ipcRenderer.invoke("world-studio:get-reconstruction-worker-status")');
+    expect(source).toContain('ipcRenderer.invoke("world-studio:start-reconstruction-worker", input)');
+    expect(source).toContain('ipcRenderer.invoke("world-studio:stop-reconstruction-worker", input)');
+    expect(source).toContain('ipcRenderer.invoke("world-studio:retry-reconstruction-worker", input)');
+    expect(source).toMatch(
+      /const handler = \(_event: Electron\.IpcRendererEvent, snapshot: ReconstructionWorkerSnapshot\) => listener\(snapshot\);/
+    );
+    expect(source).toContain('ipcRenderer.on("world-studio:reconstruction-worker-update", handler);');
+    expect(source).toContain(
+      'return () => ipcRenderer.removeListener("world-studio:reconstruction-worker-update", handler);'
+    );
+    expect(source).not.toMatch(/executable|workingDirectory|environment|command|arguments/);
+  });
 });

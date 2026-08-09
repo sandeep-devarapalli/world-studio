@@ -8,6 +8,7 @@ test-results/
 .DS_Store
 .local/
 live-sessions/
+reconstruction-jobs/
 
 # Local upstream reference clones are kept for study, not shipped in the Apache repo.
 references/upstream/*
