@@ -1,0 +1,378 @@
+{
+  "schema": "world_studio.world.v0.2",
+  "world_id": "desk_room_demo",
+  "version_id": "desk_room_demo_v2",
+  "version": 2,
+  "parent": {
+    "kind": "world",
+    "id": "desk_room_demo",
+    "version_id": "desk_room_demo_v1",
+    "version": 1,
+    "manifest_sha256": "sha256:d0de5f356f65084bda881f9690cc854b6ae5ecee2ffe58388f714de54c50cf39"
+  },
+  "created_at": "2026-08-09T12:21:00.000Z",
+  "units": {
+    "length": "m",
+    "mass": "kg",
+    "time": "s",
+    "angle": "rad",
+    "force": "N",
+    "torque": "N*m"
+  },
+  "transform_graph": {
+    "root_frame_id": "world_metric",
+    "nodes": [
+      {
+        "frame_id": "world_metric",
+        "handedness": "right",
+        "up_axis": "+Y",
+        "forward_axis": "-Z"
+      },
+      {
+        "frame_id": "capture_arkit",
+        "handedness": "right",
+        "up_axis": "+Y",
+        "forward_axis": "-Z"
+      }
+    ],
+    "edges": [
+      {
+        "transform_id": "capture_to_world",
+        "parent_frame": "world_metric",
+        "child_frame": "capture_arkit",
+        "kind": "rigid",
+        "convention": "parent_from_child_column_vector",
+        "matrix_row_major": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "source_class": "registration",
+        "authority": {
+          "domain": "calibration",
+          "status": "validated",
+          "approved_for": [
+            "visual_alignment"
+          ],
+          "not_approved_for": [
+            "collision",
+            "navigation",
+            "physics"
+          ],
+          "limitations": [
+            "This transform is validated only for the declared capture evidence."
+          ],
+          "evidence_artifact_ids": [
+            "capture_manifest_001"
+          ]
+        },
+        "uncertainty": {
+          "status": "bounded",
+          "quantity": "registration_residual",
+          "unit": "m",
+          "lower": 0,
+          "upper": 0.02,
+          "confidence": 0.95,
+          "method": "Fixture registration bound.",
+          "evidence_artifact_ids": [
+            "capture_manifest_001"
+          ]
+        },
+        "provenance": {
+          "producer": "world-studio-fixture",
+          "producer_version": "0.1.0",
+          "created_at": "2026-08-09T12:05:00.000Z",
+          "run_id": "registration_fixture_run_001",
+          "input_artifact_ids": [
+            "capture_manifest_001"
+          ],
+          "input_versions": []
+        }
+      }
+    ]
+  },
+  "capture_evidence": [
+    {
+      "session_id": "capture_room_001",
+      "manifest": {
+        "path": "evidence/capture_room_001/capture.json",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 4096,
+        "media_type": "application/json"
+      },
+      "verification": "rehashed_bytes",
+      "authority": {
+        "domain": "capture",
+        "status": "validated",
+        "approved_for": [
+          "reconstruction_input"
+        ],
+        "not_approved_for": [
+          "measurement",
+          "collision",
+          "navigation",
+          "physics"
+        ],
+        "limitations": [
+          "Capture evidence does not promote derived representations."
+        ],
+        "evidence_artifact_ids": [
+          "capture_manifest_001"
+        ]
+      },
+      "uncertainty": {
+        "status": "unknown",
+        "reason": "The capture manifest carries per-frame quality rather than a world-level bound."
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "capture_manifest_001",
+      "role": "source_manifest",
+      "content": {
+        "path": "evidence/capture_room_001/capture.json",
+        "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 4096,
+        "media_type": "application/json"
+      },
+      "frame_id": "capture_arkit",
+      "transform_id": "capture_to_world",
+      "authority": {
+        "domain": "capture",
+        "status": "validated",
+        "approved_for": [
+          "reconstruction_input"
+        ],
+        "not_approved_for": [
+          "measurement",
+          "collision",
+          "navigation",
+          "physics"
+        ],
+        "limitations": [
+          "The manifest is immutable source evidence."
+        ],
+        "evidence_artifact_ids": []
+      },
+      "uncertainty": {
+        "status": "unknown",
+        "reason": "World-level uncertainty is not inferred from the source manifest."
+      },
+      "provenance": {
+        "producer": "capture-splat",
+        "producer_version": "0.1.0",
+        "created_at": "2026-08-09T11:50:00.000Z",
+        "run_id": "capture_room_001",
+        "input_artifact_ids": [],
+        "input_versions": []
+      }
+    },
+    {
+      "artifact_id": "visual_splat_002",
+      "role": "visual_splat",
+      "content": {
+        "path": "world/visual/desk_room_v2.spz",
+        "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size_bytes": 9216,
+        "media_type": "application/octet-stream"
+      },
+      "frame_id": "world_metric",
+      "transform_id": null,
+      "authority": {
+        "domain": "visual",
+        "status": "proposal",
+        "approved_for": [
+          "human_visual_review"
+        ],
+        "not_approved_for": [
+          "measurement",
+          "collision",
+          "semantic_ground_truth",
+          "navigation",
+          "physics"
+        ],
+        "limitations": [
+          "Replacement bytes remain a visual proposal."
+        ],
+        "evidence_artifact_ids": [
+          "capture_manifest_001"
+        ]
+      },
+      "uncertainty": {
+        "status": "unknown",
+        "reason": "No reconstruction-quality bound is attached."
+      },
+      "provenance": {
+        "producer": "fixture-reconstruction-worker",
+        "producer_version": "0.1.0",
+        "created_at": "2026-08-09T12:18:00.000Z",
+        "run_id": "visual_fixture_run_002",
+        "input_artifact_ids": [
+          "capture_manifest_001"
+        ],
+        "input_versions": [
+          {
+            "kind": "world",
+            "id": "desk_room_demo",
+            "version_id": "desk_room_demo_v1",
+            "version": 1,
+            "manifest_sha256": "sha256:d0de5f356f65084bda881f9690cc854b6ae5ecee2ffe58388f714de54c50cf39"
+          }
+        ]
+      }
+    }
+  ],
+  "assets": [
+    {
+      "revision": {
+        "kind": "asset",
+        "id": "chair_demo",
+        "version_id": "chair_demo_v1",
+        "version": 1,
+        "manifest_sha256": "sha256:4b4ec370d3440430662be3d3e91994b5336e328e5f04c0c79ec36e2da8b2ee54"
+      },
+      "manifest": {
+        "path": "assets/chair/manifest.json",
+        "sha256": "sha256:4b4ec370d3440430662be3d3e91994b5336e328e5f04c0c79ec36e2da8b2ee54",
+        "size_bytes": 3779,
+        "media_type": "application/json"
+      }
+    }
+  ],
+  "applied_delta": {
+    "delta_id": "replace_visual_001",
+    "manifest": {
+      "path": "history/replace_visual_001.delta.json",
+      "sha256": "sha256:d0d95760a7760315ec6961d9fbef14dc94cabe7ee080d4196d8f855c29524e37",
+      "size_bytes": 4840,
+      "media_type": "application/json"
+    }
+  },
+  "authorities": [
+    {
+      "domain": "visual",
+      "status": "proposal",
+      "approved_for": [
+        "world_package_review"
+      ],
+      "not_approved_for": [
+        "measurement",
+        "collision",
+        "semantic_ground_truth",
+        "navigation",
+        "physics",
+        "deployment"
+      ],
+      "limitations": [
+        "Every stronger authority requires its own evidence and promotion decision.",
+        "The replacement Delta grants no additional authority."
+      ],
+      "evidence_artifact_ids": [
+        "visual_splat_002"
+      ]
+    }
+  ],
+  "readiness": {
+    "visual": {
+      "status": "proposal",
+      "evidence_artifact_ids": [
+        "visual_splat_002"
+      ],
+      "report": null,
+      "limitations": [
+        "Fixed-camera visual QA is not attached.",
+        "The replacement requires visual QA."
+      ]
+    },
+    "metric": {
+      "status": "held",
+      "evidence_artifact_ids": [
+        "capture_manifest_001"
+      ],
+      "report": null,
+      "limitations": [
+        "Metric surfaces are not validated."
+      ]
+    },
+    "collision": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "No collision layer is present."
+      ]
+    },
+    "navigation": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Navigation has not been validated."
+      ]
+    },
+    "semantic": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Semantic authority is unavailable."
+      ]
+    },
+    "articulation": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Articulation is not modeled."
+      ]
+    },
+    "physics": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Physical parameters are unavailable."
+      ]
+    }
+  },
+  "provenance": {
+    "producer": "world-studio-fixture",
+    "producer_version": "0.1.0",
+    "created_at": "2026-08-09T12:21:00.000Z",
+    "run_id": "world_manifest_run_002",
+    "input_artifact_ids": [
+      "capture_manifest_001",
+      "visual_splat_002"
+    ],
+    "input_versions": [
+      {
+        "kind": "world",
+        "id": "desk_room_demo",
+        "version_id": "desk_room_demo_v1",
+        "version": 1,
+        "manifest_sha256": "sha256:d0de5f356f65084bda881f9690cc854b6ae5ecee2ffe58388f714de54c50cf39"
+      },
+      {
+        "kind": "asset",
+        "id": "chair_demo",
+        "version_id": "chair_demo_v1",
+        "version": 1,
+        "manifest_sha256": "sha256:4b4ec370d3440430662be3d3e91994b5336e328e5f04c0c79ec36e2da8b2ee54"
+      }
+    ]
+  }
+}

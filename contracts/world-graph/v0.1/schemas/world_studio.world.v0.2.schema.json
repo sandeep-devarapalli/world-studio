@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:schema:world_studio.world.v0.2",
+  "title": "World Studio Canonical World Manifest v0.2",
+  "description": "Active immutable World version contract. It links content-addressed evidence, artifacts, assets, and the reversible Delta that produced a child version without granting cross-layer authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "world_id",
+    "version_id",
+    "version",
+    "parent",
+    "created_at",
+    "units",
+    "transform_graph",
+    "capture_evidence",
+    "artifacts",
+    "assets",
+    "applied_delta",
+    "authorities",
+    "readiness",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "world_studio.world.v0.2"
+    },
+    "world_id": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/identifier"
+    },
+    "version_id": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/identifier"
+    },
+    "version": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/positiveVersion"
+    },
+    "parent": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/revisionReference"
+        }
+      ]
+    },
+    "created_at": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/timestamp"
+    },
+    "units": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/units"
+    },
+    "transform_graph": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/transformGraph"
+    },
+    "capture_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/captureEvidence"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 131072,
+      "items": {
+        "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/artifactBinding"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 65536,
+      "items": {
+        "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/versionedManifestReference"
+      }
+    },
+    "applied_delta": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/deltaReference"
+        }
+      ]
+    },
+    "authorities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/authority"
+      }
+    },
+    "readiness": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/readiness"
+    },
+    "provenance": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/provenance"
+    }
+  }
+}

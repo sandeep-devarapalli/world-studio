@@ -1,0 +1,152 @@
+{
+  "schema": "world_studio.delta.v0.1",
+  "delta_id": "replace_visual_001",
+  "scope": "world",
+  "parent": {
+    "kind": "world",
+    "id": "desk_room_demo",
+    "version_id": "desk_room_demo_v1",
+    "version": 1,
+    "manifest_sha256": "sha256:d0de5f356f65084bda881f9690cc854b6ae5ecee2ffe58388f714de54c50cf39"
+  },
+  "result": {
+    "kind": "world",
+    "id": "desk_room_demo",
+    "version_id": "desk_room_demo_v2",
+    "version": 2
+  },
+  "created_at": "2026-08-09T12:20:00.000Z",
+  "intent": "replace",
+  "operations": [
+    {
+      "operation_id": "replace_visual_splat_001",
+      "target_id": "visual_splat_001",
+      "effect": {
+        "kind": "artifact_binding",
+        "before": [
+          {
+            "artifact_id": "visual_splat_001",
+            "role": "visual_splat",
+            "content": {
+              "path": "world/visual/desk_room_v1.spz",
+              "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "size_bytes": 8192,
+              "media_type": "application/octet-stream"
+            },
+            "frame_id": "world_metric",
+            "transform_id": null,
+            "authority": {
+              "domain": "visual",
+              "status": "proposal",
+              "approved_for": [
+                "human_visual_review"
+              ],
+              "not_approved_for": [
+                "measurement",
+                "collision",
+                "semantic_ground_truth",
+                "navigation",
+                "physics"
+              ],
+              "limitations": [
+                "Gaussian appearance is not geometry authority."
+              ],
+              "evidence_artifact_ids": [
+                "capture_manifest_001"
+              ]
+            },
+            "uncertainty": {
+              "status": "unknown",
+              "reason": "No reconstruction-quality bound is attached."
+            },
+            "provenance": {
+              "producer": "fixture-reconstruction-worker",
+              "producer_version": "0.1.0",
+              "created_at": "2026-08-09T12:07:00.000Z",
+              "run_id": "visual_fixture_run_001",
+              "input_artifact_ids": [
+                "capture_manifest_001"
+              ],
+              "input_versions": []
+            }
+          }
+        ],
+        "after": [
+          {
+            "artifact_id": "visual_splat_002",
+            "role": "visual_splat",
+            "content": {
+              "path": "world/visual/desk_room_v2.spz",
+              "sha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "size_bytes": 9216,
+              "media_type": "application/octet-stream"
+            },
+            "frame_id": "world_metric",
+            "transform_id": null,
+            "authority": {
+              "domain": "visual",
+              "status": "proposal",
+              "approved_for": [
+                "human_visual_review"
+              ],
+              "not_approved_for": [
+                "measurement",
+                "collision",
+                "semantic_ground_truth",
+                "navigation",
+                "physics"
+              ],
+              "limitations": [
+                "Replacement bytes remain a visual proposal."
+              ],
+              "evidence_artifact_ids": [
+                "capture_manifest_001"
+              ]
+            },
+            "uncertainty": {
+              "status": "unknown",
+              "reason": "No reconstruction-quality bound is attached."
+            },
+            "provenance": {
+              "producer": "fixture-reconstruction-worker",
+              "producer_version": "0.1.0",
+              "created_at": "2026-08-09T12:18:00.000Z",
+              "run_id": "visual_fixture_run_002",
+              "input_artifact_ids": [
+                "capture_manifest_001"
+              ],
+              "input_versions": [
+                {
+                  "kind": "world",
+                  "id": "desk_room_demo",
+                  "version_id": "desk_room_demo_v1",
+                  "version": 1,
+                  "manifest_sha256": "sha256:d0de5f356f65084bda881f9690cc854b6ae5ecee2ffe58388f714de54c50cf39"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "authority_effect": "none",
+  "provenance": {
+    "producer": "world-studio-fixture",
+    "producer_version": "0.1.0",
+    "created_at": "2026-08-09T12:20:00.000Z",
+    "run_id": "delta_fixture_run_001",
+    "input_artifact_ids": [
+      "visual_splat_001"
+    ],
+    "input_versions": [
+      {
+        "kind": "world",
+        "id": "desk_room_demo",
+        "version_id": "desk_room_demo_v1",
+        "version": 1,
+        "manifest_sha256": "sha256:d0de5f356f65084bda881f9690cc854b6ae5ecee2ffe58388f714de54c50cf39"
+      }
+    ]
+  }
+}

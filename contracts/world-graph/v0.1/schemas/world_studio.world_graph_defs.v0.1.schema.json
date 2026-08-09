@@ -1,0 +1,933 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1",
+  "title": "World Studio World Graph Shared Definitions v0.1",
+  "description": "Closed shared value definitions for immutable World, Asset, and Delta records. This file is not a standalone payload contract.",
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "singleLineText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000\\r\\n]+$"
+    },
+    "shortSingleLineText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\u0000\\r\\n]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$"
+    },
+    "finiteNumber": {
+      "type": "number",
+      "minimum": -1000000000000,
+      "maximum": 1000000000000
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "safeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[A-Za-z0-9_@+-](?:[A-Za-z0-9._@+ -]*[A-Za-z0-9_@+-])?(?:/[A-Za-z0-9_@+-](?:[A-Za-z0-9._@+ -]*[A-Za-z0-9_@+-])?)*$"
+    },
+    "mediaType": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$"
+    },
+    "axis": {
+      "enum": [
+        "+X",
+        "-X",
+        "+Y",
+        "-Y",
+        "+Z",
+        "-Z"
+      ]
+    },
+    "matrix4": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/finiteNumber"
+      }
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "length",
+        "mass",
+        "time",
+        "angle",
+        "force",
+        "torque"
+      ],
+      "properties": {
+        "length": {
+          "const": "m"
+        },
+        "mass": {
+          "const": "kg"
+        },
+        "time": {
+          "const": "s"
+        },
+        "angle": {
+          "const": "rad"
+        },
+        "force": {
+          "const": "N"
+        },
+        "torque": {
+          "const": "N*m"
+        }
+      }
+    },
+    "contentReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "media_type"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/safeRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "media_type": {
+          "$ref": "#/$defs/mediaType"
+        }
+      }
+    },
+    "revisionIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "version_id",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "world",
+            "asset"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/positiveVersion"
+        }
+      }
+    },
+    "revisionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "version_id",
+        "version",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "world",
+            "asset"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/positiveVersion"
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "assetRevisionReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "version_id",
+        "version",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "asset"
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/positiveVersion"
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "deltaReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delta_id",
+        "manifest"
+      ],
+      "properties": {
+        "delta_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "manifest": {
+          "$ref": "#/$defs/contentReference"
+        }
+      }
+    },
+    "versionedManifestReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "manifest"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/revisionReference"
+        },
+        "manifest": {
+          "$ref": "#/$defs/contentReference"
+        }
+      }
+    },
+    "unknownUncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "const": "unknown"
+        },
+        "reason": {
+          "$ref": "#/$defs/singleLineText"
+        }
+      }
+    },
+    "boundedUncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "quantity",
+        "unit",
+        "lower",
+        "upper",
+        "confidence",
+        "method",
+        "evidence_artifact_ids"
+      ],
+      "properties": {
+        "status": {
+          "const": "bounded"
+        },
+        "quantity": {
+          "$ref": "#/$defs/identifier"
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "rad",
+            "m/s",
+            "m/s^2",
+            "kg",
+            "N",
+            "N*m",
+            "dimensionless"
+          ]
+        },
+        "lower": {
+          "$ref": "#/$defs/finiteNumber"
+        },
+        "upper": {
+          "$ref": "#/$defs/finiteNumber"
+        },
+        "confidence": {
+          "$ref": "#/$defs/probability"
+        },
+        "method": {
+          "$ref": "#/$defs/singleLineText"
+        },
+        "evidence_artifact_ids": {
+          "type": "array",
+          "maxItems": 65536,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "uncertainty": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/unknownUncertainty"
+        },
+        {
+          "$ref": "#/$defs/boundedUncertainty"
+        }
+      ]
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "status",
+        "approved_for",
+        "not_approved_for",
+        "limitations",
+        "evidence_artifact_ids"
+      ],
+      "properties": {
+        "domain": {
+          "enum": [
+            "capture",
+            "calibration",
+            "visual",
+            "metric",
+            "collision",
+            "navigation",
+            "semantic",
+            "articulation",
+            "physics",
+            "task",
+            "deployment"
+          ]
+        },
+        "status": {
+          "enum": [
+            "proposal",
+            "validated",
+            "promoted",
+            "held",
+            "rejected"
+          ]
+        },
+        "approved_for": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "not_approved_for": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/singleLineText"
+          }
+        },
+        "evidence_artifact_ids": {
+          "type": "array",
+          "maxItems": 65536,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer",
+        "producer_version",
+        "created_at",
+        "run_id",
+        "input_artifact_ids",
+        "input_versions"
+      ],
+      "properties": {
+        "producer": {
+          "$ref": "#/$defs/identifier"
+        },
+        "producer_version": {
+          "$ref": "#/$defs/shortSingleLineText"
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/identifier"
+            }
+          ]
+        },
+        "input_artifact_ids": {
+          "type": "array",
+          "maxItems": 65536,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "input_versions": {
+          "type": "array",
+          "maxItems": 4096,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/revisionReference"
+          }
+        }
+      }
+    },
+    "frameNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_id",
+        "handedness",
+        "up_axis",
+        "forward_axis"
+      ],
+      "properties": {
+        "frame_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "handedness": {
+          "enum": [
+            "right",
+            "left"
+          ]
+        },
+        "up_axis": {
+          "$ref": "#/$defs/axis"
+        },
+        "forward_axis": {
+          "$ref": "#/$defs/axis"
+        }
+      }
+    },
+    "transformEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transform_id",
+        "parent_frame",
+        "child_frame",
+        "kind",
+        "convention",
+        "matrix_row_major",
+        "source_class",
+        "authority",
+        "uncertainty",
+        "provenance"
+      ],
+      "properties": {
+        "transform_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "parent_frame": {
+          "$ref": "#/$defs/identifier"
+        },
+        "child_frame": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": [
+            "rigid",
+            "similarity"
+          ]
+        },
+        "convention": {
+          "const": "parent_from_child_column_vector"
+        },
+        "matrix_row_major": {
+          "$ref": "#/$defs/matrix4"
+        },
+        "source_class": {
+          "enum": [
+            "sensor_calibration",
+            "fiducial_alignment",
+            "registration",
+            "manual_edit",
+            "simulator_export"
+          ]
+        },
+        "authority": {
+          "$ref": "#/$defs/authority"
+        },
+        "uncertainty": {
+          "$ref": "#/$defs/uncertainty"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "transformGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_frame_id",
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "root_frame_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/$defs/frameNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 131072,
+          "items": {
+            "$ref": "#/$defs/transformEdge"
+          }
+        }
+      }
+    },
+    "artifactRole": {
+      "enum": [
+        "source_manifest",
+        "evidence_rgb",
+        "evidence_depth",
+        "evidence_confidence",
+        "evidence_mask",
+        "camera_poses",
+        "visual_splat",
+        "visual_mesh",
+        "visual_texture",
+        "metric_points",
+        "metric_mesh",
+        "collision_mesh",
+        "occupancy",
+        "navigation_graph",
+        "semantics",
+        "articulation",
+        "physics_parameters",
+        "validation_report",
+        "episode",
+        "annotation"
+      ]
+    },
+    "artifactBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "role",
+        "content",
+        "frame_id",
+        "transform_id",
+        "authority",
+        "uncertainty",
+        "provenance"
+      ],
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "role": {
+          "$ref": "#/$defs/artifactRole"
+        },
+        "content": {
+          "$ref": "#/$defs/contentReference"
+        },
+        "frame_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "transform_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/identifier"
+            }
+          ]
+        },
+        "authority": {
+          "$ref": "#/$defs/authority"
+        },
+        "uncertainty": {
+          "$ref": "#/$defs/uncertainty"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      }
+    },
+    "captureEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "manifest",
+        "verification",
+        "authority",
+        "uncertainty"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "manifest": {
+          "$ref": "#/$defs/contentReference"
+        },
+        "verification": {
+          "enum": [
+            "rehashed_bytes",
+            "declared_checksum_reference_only"
+          ]
+        },
+        "authority": {
+          "$ref": "#/$defs/authority"
+        },
+        "uncertainty": {
+          "$ref": "#/$defs/uncertainty"
+        }
+      }
+    },
+    "readinessLane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "evidence_artifact_ids",
+        "report",
+        "limitations"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unavailable",
+            "proposal",
+            "held",
+            "validated",
+            "promoted",
+            "rejected"
+          ]
+        },
+        "evidence_artifact_ids": {
+          "type": "array",
+          "maxItems": 65536,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "report": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/contentReference"
+            }
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/singleLineText"
+          }
+        }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "visual",
+        "metric",
+        "collision",
+        "navigation",
+        "semantic",
+        "articulation",
+        "physics"
+      ],
+      "properties": {
+        "visual": {
+          "$ref": "#/$defs/readinessLane"
+        },
+        "metric": {
+          "$ref": "#/$defs/readinessLane"
+        },
+        "collision": {
+          "$ref": "#/$defs/readinessLane"
+        },
+        "navigation": {
+          "$ref": "#/$defs/readinessLane"
+        },
+        "semantic": {
+          "$ref": "#/$defs/readinessLane"
+        },
+        "articulation": {
+          "$ref": "#/$defs/readinessLane"
+        },
+        "physics": {
+          "$ref": "#/$defs/readinessLane"
+        }
+      }
+    },
+    "artifactBindingEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "kind": {
+          "const": "artifact_binding"
+        },
+        "before": {
+          "type": "array",
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/$defs/artifactBinding"
+          }
+        },
+        "after": {
+          "type": "array",
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/$defs/artifactBinding"
+          }
+        }
+      }
+    },
+    "transformEdgeEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "kind": {
+          "const": "transform_edge"
+        },
+        "before": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/transformEdge"
+            }
+          ]
+        },
+        "after": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/transformEdge"
+            }
+          ]
+        }
+      }
+    },
+    "visibilityEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "kind": {
+          "const": "visibility"
+        },
+        "before": {
+          "type": "boolean"
+        },
+        "after": {
+          "type": "boolean"
+        }
+      }
+    },
+    "annotationEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "kind": {
+          "const": "annotation"
+        },
+        "before": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/contentReference"
+            }
+          ]
+        },
+        "after": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/contentReference"
+            }
+          ]
+        }
+      }
+    },
+    "membershipEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "before",
+        "after"
+      ],
+      "properties": {
+        "kind": {
+          "const": "membership"
+        },
+        "before": {
+          "type": "array",
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/$defs/assetRevisionReference"
+          }
+        },
+        "after": {
+          "type": "array",
+          "maxItems": 65536,
+          "items": {
+            "$ref": "#/$defs/assetRevisionReference"
+          }
+        }
+      }
+    },
+    "deltaOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "target_id",
+        "effect"
+      ],
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "target_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "effect": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/artifactBindingEffect"
+            },
+            {
+              "$ref": "#/$defs/transformEdgeEffect"
+            },
+            {
+              "$ref": "#/$defs/visibilityEffect"
+            },
+            {
+              "$ref": "#/$defs/annotationEffect"
+            },
+            {
+              "$ref": "#/$defs/membershipEffect"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
