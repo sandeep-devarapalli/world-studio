@@ -74,3 +74,18 @@ geometry. The live v0.1 frame contract also has no point-cloud or mesh asset rol
 statuses are reported instead of inferred or silently loaded. A future proposal-artifact or
 depth-metadata contract must add checksum-bound units/scale and explicit user selection before
 geometry can be treated as received evidence. All inspector output remains `proposal_only`.
+
+## Optional Reconstruction Worker Lifecycle
+
+World Studio now has a separate software-only boundary for optional external reconstruction
+workers. Electron owns the allowlisted registry and accepts only worker and session IDs from
+the trusted main renderer. It snapshots committed evidence into a bounded private job root,
+binds every input byte by SHA-256, and supervises explicit start, stop, timeout, crash,
+restart reconciliation, and retry over the same immutable input revision.
+
+Worker logs and outputs are bounded. Output publication requires strict result validation,
+safe receiver-owned paths, regular files, exact sizes, and matching SHA-256 values. The
+Simulate panel reports capabilities, lifecycle, requested budgets, bounded logs, and verified
+output metadata without modifying the loaded world. Browser builds and the default packaged
+app show `unavailable` because no production runtime is bundled. See
+[Reconstruction Worker M1](reconstruction_worker_m1.md).

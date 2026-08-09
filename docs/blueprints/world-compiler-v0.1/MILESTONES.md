@@ -22,8 +22,12 @@ Outcome: bounded iPhone-to-Mac transfer with useful immediate evidence.
 Status: partial. The M1A desktop boundary keeps M0 loopback unchanged and adds explicit
 selected-interface pairing seams, QR invitation state, pinned TLS identity, P-256
 device-request authentication, finite grants, expiry/revocation, signed-body binding, and
-durable request-counter replay defense. The iPhone sender, progressive mesh/worker path, and
-physical acceptance remain open.
+durable request-counter replay defense. The progressive inspector covers checksum-verified
+RGB-D, confidence, masks, cameras, quality, and trajectory without inferring unsupported
+geometry. A software-only optional reconstruction-worker lifecycle now binds immutable
+inputs, requested budgets, bounded logs, failures, retries, and verified proposal outputs;
+no production worker is bundled. Progressive mesh transport, physical iPhone acceptance,
+and reconstruction-quality evidence remain open.
 
 Acceptance:
 

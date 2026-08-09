@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LiveFrameSummary, LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { LiveFrameSummary, LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, ReconstructionWorkerSnapshot, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -1100,6 +1100,284 @@ test("shows an explicit proposal-only live session without replacing the loaded 
   await panel.getByRole("button", { name: "Stop Listening" }).click();
   await expect(page.getByTestId("live-connection-state")).toHaveText("stopped");
   await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
+});
+
+test("keeps reconstruction workers explicitly unavailable in the browser", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Simulate" }).click();
+
+  const panel = page.getByTestId("reconstruction-worker-panel");
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("unavailable");
+  await expect(panel).toContainText("packaged desktop only");
+  await expect(panel).toContainText(
+    "proposal only · never measurement, world, collision, navigation, semantic, or physics authority"
+  );
+  await expect(panel.getByRole("button", { name: "Start Worker" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Stop Worker" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Retry Same Input" })).toBeDisabled();
+});
+
+test("controls a bounded reconstruction worker without mutating the loaded world", async ({ page }) => {
+  const budget = {
+    maxWallTimeMs: 120_000,
+    maxMemoryBytes: 512 * 1024 * 1024,
+    maxOutputBytes: 256 * 1024 * 1024,
+    maxLogBytes: 64 * 1024,
+    maxOutputArtifacts: 32
+  };
+  const idle: ReconstructionWorkerSnapshot = {
+    state: "idle",
+    capabilities: [{
+      workerId: "fixture-worker",
+      label: "Deterministic fixture",
+      protocolVersion: "world_studio.reconstruction_worker.v0.1",
+      available: true,
+      unavailableReason: null,
+      outputRoles: ["render", "report"],
+      budget
+    }],
+    job: null,
+    authority: "proposal_only",
+    updatedAt: "2026-08-09T07:00:00.000Z"
+  };
+  const running: ReconstructionWorkerSnapshot = {
+    ...idle,
+    state: "running",
+    job: {
+      jobId: "worker-job-1",
+      workerId: "fixture-worker",
+      attempt: 1,
+      state: "running",
+      input: {
+        sessionId: "live-worker-session",
+        throughSequenceId: 11,
+        frameCount: 11,
+        manifestSha256: `sha256:${"a".repeat(64)}`
+      },
+      progress: 0.5,
+      budget,
+      logs: [{
+        sequenceId: 1,
+        timestamp: "2026-08-09T07:00:01.000Z",
+        level: "info",
+        code: "fixture_start",
+        message: "fixture worker started"
+      }],
+      outputs: [],
+      failure: null,
+      createdAt: "2026-08-09T07:00:00.000Z",
+      startedAt: "2026-08-09T07:00:01.000Z",
+      finishedAt: null,
+      updatedAt: "2026-08-09T07:00:01.000Z",
+      authority: "proposal_only"
+    },
+    updatedAt: "2026-08-09T07:00:01.000Z"
+  };
+  const cancelled: ReconstructionWorkerSnapshot = {
+    ...running,
+    state: "cancelled",
+    job: {
+      ...running.job!,
+      state: "cancelled",
+      finishedAt: "2026-08-09T07:00:02.000Z"
+    }
+  };
+  const failed: ReconstructionWorkerSnapshot = {
+    ...running,
+    state: "failed",
+    job: {
+      ...running.job!,
+      attempt: 2,
+      state: "failed",
+      failure: { code: "fixture_failure", message: "deterministic failure", retryable: true },
+      finishedAt: "2026-08-09T07:00:03.000Z"
+    }
+  };
+  const timedOut: ReconstructionWorkerSnapshot = {
+    ...running,
+    state: "timed_out",
+    job: {
+      ...running.job!,
+      attempt: 3,
+      state: "timed_out",
+      failure: { code: "timeout", message: "wall-time budget exceeded", retryable: true },
+      finishedAt: "2026-08-09T07:00:04.000Z"
+    }
+  };
+  const completed: ReconstructionWorkerSnapshot = {
+    ...running,
+    state: "completed",
+    job: {
+      ...running.job!,
+      attempt: 4,
+      state: "completed",
+      logs: Array.from({ length: 45 }, (_, index) => ({
+        sequenceId: index + 1,
+        timestamp: `2026-08-09T07:00:${String(index + 1).padStart(2, "0")}.000Z`,
+        level: "info" as const,
+        code: "fixture_progress",
+        message: `bounded log ${index + 1}`
+      })),
+      outputs: Array.from({ length: 25 }, (_, index) => ({
+        outputId: `output-${index + 1}`,
+        role: index % 2 === 0 ? "render" as const : "report" as const,
+        mediaType: index % 2 === 0 ? "image/png" : "application/json",
+        sizeBytes: index + 1,
+        sha256: `sha256:${String(index + 1).padStart(64, "0")}`,
+        coordinateFrame: index % 2 === 0 ? "arkit_world" : null,
+        status: "completed" as const,
+        previewAvailable: index % 2 === 0
+      })),
+      failure: null,
+      finishedAt: "2026-08-09T07:00:46.000Z"
+    },
+    updatedAt: "2026-08-09T07:00:46.000Z"
+  };
+  const finalizedLiveSession: LiveSessionSnapshot = {
+    state: "finalized",
+    listening: null,
+    sessionId: "live-worker-session",
+    sourceManifestId: `sha256:${"b".repeat(64)}`,
+    coordinateUnits: "meters",
+    expectedCount: 11,
+    finalSequenceId: 11,
+    receivedCount: 11,
+    contiguousCount: 11,
+    pendingCount: 0,
+    missingCount: 0,
+    nextExpectedSequenceId: 12,
+    missingRanges: [],
+    frames: [],
+    authority: "proposal_only",
+    updatedAt: "2026-08-09T07:00:00.000Z"
+  };
+
+  await page.addInitScript(({ finalizedSnapshot, idleSnapshot, runningSnapshot, stoppedSnapshot, worldPayload }) => {
+    let current = idleSnapshot;
+    let listener: ((snapshot: ReconstructionWorkerSnapshot) => void) | null = null;
+    const calls: Array<{ action: string; input: unknown }> = [];
+    const testWindow = window as typeof window & {
+      __emitReconstructionWorkerSnapshot?: (snapshot: ReconstructionWorkerSnapshot) => void;
+      __reconstructionWorkerCalls?: () => Array<{ action: string; input: unknown }>;
+    };
+    const publish = (snapshot: ReconstructionWorkerSnapshot) => {
+      current = snapshot;
+      listener?.(snapshot);
+      return snapshot;
+    };
+    testWindow.__emitReconstructionWorkerSnapshot = publish;
+    testWindow.__reconstructionWorkerCalls = () => structuredClone(calls);
+    window.worldStudioDesktop = {
+      openLocalPackage: async () => worldPayload,
+      getLiveSessionStatus: async () => finalizedSnapshot,
+      getReconstructionWorkerStatus: async () => current,
+      onReconstructionWorkerUpdate: (nextListener) => {
+        listener = nextListener;
+        return () => {
+          listener = null;
+        };
+      },
+      startReconstructionWorker: async (input) => {
+        calls.push({ action: "start", input });
+        return publish(runningSnapshot);
+      },
+      stopReconstructionWorker: async (input) => {
+        calls.push({ action: "stop", input });
+        return publish(stoppedSnapshot);
+      },
+      retryReconstructionWorker: async (input) => {
+        calls.push({ action: "retry", input });
+        if (!current.job) return current;
+        return publish({
+          ...runningSnapshot,
+          job: {
+            ...runningSnapshot.job!,
+            attempt: current.job.attempt + 1,
+            input: current.job.input
+          }
+        });
+      }
+    };
+  }, {
+    finalizedSnapshot: finalizedLiveSession,
+    idleSnapshot: idle,
+    runningSnapshot: running,
+    stoppedSnapshot: cancelled,
+    worldPayload: genericManifestPayload
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open Local" }).click();
+  await page.getByRole("button", { name: "Simulate" }).click();
+
+  const panel = page.getByTestId("reconstruction-worker-panel");
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("idle");
+  await expect(panel.getByRole("button", { name: "Start Worker" })).toBeEnabled();
+  await panel.getByRole("button", { name: "Start Worker" }).click();
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("running");
+  await expect(page.getByTestId("reconstruction-worker-logs")).toContainText("fixture_start");
+  await expect(panel.locator(".ws-kv", { hasText: "progress" })).toContainText("50%");
+
+  await panel.getByRole("button", { name: "Stop Worker" }).click();
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("cancelled");
+  await panel.getByRole("button", { name: "Retry Same Input" }).click();
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("running");
+  await expect(panel.locator(".ws-kv", { hasText: "job" })).toContainText("attempt 2");
+
+  await page.evaluate((snapshot) => (
+    window as typeof window & {
+      __emitReconstructionWorkerSnapshot: (value: ReconstructionWorkerSnapshot) => void;
+    }
+  ).__emitReconstructionWorkerSnapshot(snapshot), failed);
+  await expect(page.getByTestId("reconstruction-worker-failure")).toContainText(
+    "fixture_failure · deterministic failure"
+  );
+  await panel.getByRole("button", { name: "Retry Same Input" }).click();
+  await expect(panel.locator(".ws-kv", { hasText: "job" })).toContainText("attempt 3");
+
+  await page.evaluate((snapshot) => (
+    window as typeof window & {
+      __emitReconstructionWorkerSnapshot: (value: ReconstructionWorkerSnapshot) => void;
+    }
+  ).__emitReconstructionWorkerSnapshot(snapshot), timedOut);
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("timed_out");
+  await expect(page.getByTestId("reconstruction-worker-failure")).toContainText(
+    "timeout · wall-time budget exceeded"
+  );
+  await panel.getByRole("button", { name: "Retry Same Input" }).click();
+  await expect(panel.locator(".ws-kv", { hasText: "job" })).toContainText("attempt 4");
+
+  await page.evaluate((snapshot) => (
+    window as typeof window & {
+      __emitReconstructionWorkerSnapshot: (value: ReconstructionWorkerSnapshot) => void;
+    }
+  ).__emitReconstructionWorkerSnapshot(snapshot), completed);
+  await expect(page.getByTestId("reconstruction-worker-state")).toHaveText("completed");
+  await expect(page.getByTestId("reconstruction-worker-logs")).not.toContainText("0001 info");
+  await expect(page.getByTestId("reconstruction-worker-logs")).toContainText("0045 info");
+  await expect(page.getByTestId("reconstruction-worker-outputs")).toContainText("+1 outputs omitted");
+  await panel.getByRole("button", { name: "Inspect report output output-2", exact: true }).click();
+  const outputDetail = page.getByTestId("reconstruction-worker-output-detail");
+  await expect(outputDetail).toContainText("output-2 · report");
+  await expect(outputDetail).toContainText(`sha256:${String(2).padStart(64, "0")}`);
+  await expect(outputDetail.locator(".ws-kv", { hasText: "frame" })).toContainText("not declared");
+  await expect(outputDetail).toContainText("never loaded into the world");
+
+  const calls = await page.evaluate(() => (
+    window as typeof window & {
+      __reconstructionWorkerCalls: () => Array<{ action: string; input: unknown }>;
+    }
+  ).__reconstructionWorkerCalls());
+  expect(calls).toEqual([
+    { action: "start", input: { workerId: "fixture-worker", sessionId: "live-worker-session" } },
+    { action: "stop", input: { jobId: "worker-job-1" } },
+    { action: "retry", input: { jobId: "worker-job-1" } },
+    { action: "retry", input: { jobId: "worker-job-1" } },
+    { action: "retry", input: { jobId: "worker-job-1" } }
+  ]);
+  await expect(page.locator(".ws-logo-sub")).toContainText("generic_package");
+  await expect(page.locator(".ws-view-tag.metric")).toContainText("Loaded world · unchanged");
 });
 
 test("pairs an iPhone through the security bridge without mutating the loaded world", async ({ page }) => {

@@ -91,6 +91,8 @@ import type {
   EpisodeBundleAsset,
   PhysicsDiagnostics,
   PointTransform,
+  ReconstructionWorkerOutputSummary,
+  ReconstructionWorkerSnapshot,
   RendererDiagnostics,
   RenderAdapter,
   RenderMode,
@@ -208,6 +210,14 @@ const unavailableLiveSecuritySnapshot: LiveSecuritySnapshot = {
   pairingExpiresAt: null,
   pendingDevice: null,
   pairedDevices: [],
+  updatedAt: null
+};
+
+const unavailableReconstructionWorkerSnapshot: ReconstructionWorkerSnapshot = {
+  state: "unavailable",
+  capabilities: [],
+  job: null,
+  authority: "proposal_only",
   updatedAt: null
 };
 
@@ -631,6 +641,13 @@ export function App() {
   const [pairingQrDataUrl, setPairingQrDataUrl] = useState<string | null>(null);
   const [pairingQrExpanded, setPairingQrExpanded] = useState(false);
   const [liveSecurityNow, setLiveSecurityNow] = useState(() => Date.now());
+  const [reconstructionWorker, setReconstructionWorker] = useState<ReconstructionWorkerSnapshot>(
+    unavailableReconstructionWorkerSnapshot
+  );
+  const [selectedReconstructionWorkerId, setSelectedReconstructionWorkerId] = useState("");
+  const [selectedReconstructionOutputId, setSelectedReconstructionOutputId] = useState<string | null>(null);
+  const [reconstructionWorkerBusy, setReconstructionWorkerBusy] = useState(false);
+  const [reconstructionWorkerError, setReconstructionWorkerError] = useState<string | null>(null);
   const [sensorCaptures, setSensorCaptures] = useState<SensorCaptureArtifact[]>([]);
   const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
   const [stepCount, setStepCount] = useState(0);
@@ -1289,6 +1306,66 @@ export function App() {
     });
   }, []);
 
+  const acceptReconstructionWorkerSnapshot = useCallback((snapshot: ReconstructionWorkerSnapshot) => {
+    setReconstructionWorker(snapshot);
+    setSelectedReconstructionWorkerId((current) => {
+      if (snapshot.capabilities.some((entry) => entry.workerId === current)) return current;
+      return snapshot.capabilities.find((entry) => entry.available)?.workerId
+        ?? snapshot.capabilities[0]?.workerId
+        ?? "";
+    });
+    setSelectedReconstructionOutputId((current) => {
+      if (snapshot.job?.outputs.some((entry) => entry.outputId === current)) return current;
+      return snapshot.job?.outputs[0]?.outputId ?? null;
+    });
+  }, []);
+
+  const runReconstructionWorkerAction = useCallback(async (
+    action: (() => Promise<ReconstructionWorkerSnapshot>) | undefined,
+    fallbackMessage: string
+  ) => {
+    if (!action) return;
+    setReconstructionWorkerBusy(true);
+    setReconstructionWorkerError(null);
+    try {
+      acceptReconstructionWorkerSnapshot(await action());
+    } catch (error) {
+      setReconstructionWorkerError(error instanceof Error ? error.message : fallbackMessage);
+    } finally {
+      setReconstructionWorkerBusy(false);
+    }
+  }, [acceptReconstructionWorkerSnapshot]);
+
+  const startReconstructionWorker = useCallback(async () => {
+    const start = getDesktopApi()?.startReconstructionWorker;
+    const sessionId = liveSnapshot.sessionId;
+    if (!start || !sessionId || !selectedReconstructionWorkerId) return;
+    await runReconstructionWorkerAction(
+      () => start({ workerId: selectedReconstructionWorkerId, sessionId }),
+      "Failed to start reconstruction worker"
+    );
+  }, [liveSnapshot.sessionId, runReconstructionWorkerAction, selectedReconstructionWorkerId]);
+
+  const stopReconstructionWorker = useCallback(async () => {
+    const stop = getDesktopApi()?.stopReconstructionWorker;
+    const jobId = reconstructionWorker.job?.jobId;
+    if (!stop || !jobId) return;
+    await runReconstructionWorkerAction(
+      () => stop({ jobId }),
+      "Failed to stop reconstruction worker"
+    );
+  }, [reconstructionWorker.job?.jobId, runReconstructionWorkerAction]);
+
+  const retryReconstructionWorker = useCallback(async () => {
+    const retry = getDesktopApi()?.retryReconstructionWorker;
+    const jobId = reconstructionWorker.job?.jobId;
+    if (!retry || !jobId) return;
+    await runReconstructionWorkerAction(
+      () => retry({ jobId }),
+      "Failed to retry reconstruction worker"
+    );
+  }, [reconstructionWorker.job?.jobId, runReconstructionWorkerAction]);
+
   const startLiveReceiver = useCallback(async () => {
     const start = getDesktopApi()?.startLiveReceiver;
     if (!start) return;
@@ -1348,6 +1425,27 @@ export function App() {
       unsubscribe?.();
     };
   }, [acceptLiveSecuritySnapshot]);
+
+  useEffect(() => {
+    const desktop = getDesktopApi();
+    if (!desktop?.getReconstructionWorkerStatus) return;
+    let active = true;
+    const onSnapshot = (snapshot: ReconstructionWorkerSnapshot) => {
+      if (active) acceptReconstructionWorkerSnapshot(snapshot);
+    };
+    const unsubscribe = desktop.onReconstructionWorkerUpdate?.(onSnapshot);
+    void desktop.getReconstructionWorkerStatus().then(onSnapshot).catch((error: unknown) => {
+      if (active) {
+        setReconstructionWorkerError(
+          error instanceof Error ? error.message : "Failed to read reconstruction worker status"
+        );
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [acceptReconstructionWorkerSnapshot]);
 
   useEffect(() => {
     const invitationUri = liveSecurity.pairingInvitationUri;
@@ -2745,6 +2843,12 @@ export function App() {
   const hasDesktopApi = Boolean(getDesktopApi()?.openLocalPackage);
   const hasLiveReceiverApi = Boolean(getDesktopApi()?.startLiveReceiver && getDesktopApi()?.stopLiveReceiver);
   const hasLiveSecurityApi = Boolean(getDesktopApi()?.beginLivePairing && getDesktopApi()?.getLiveSecurityStatus);
+  const hasReconstructionWorkerApi = Boolean(
+    getDesktopApi()?.getReconstructionWorkerStatus
+    && getDesktopApi()?.startReconstructionWorker
+    && getDesktopApi()?.stopReconstructionWorker
+    && getDesktopApi()?.retryReconstructionWorker
+  );
   const showLiveSession = hasLiveReceiverApi || hasLiveSecurityApi || Boolean(liveSnapshot.sessionId);
   const measureStart = measurePoints[0];
   const measureEnd = measurePoints[1];
@@ -4189,6 +4293,20 @@ export function App() {
               onSelectRole={setSelectedLiveEvidenceRole}
             />
           ) : null}
+          <ReconstructionWorkerPanel
+            busy={reconstructionWorkerBusy}
+            currentSessionId={liveSnapshot.sessionId}
+            error={reconstructionWorkerError}
+            hasDesktopApi={hasReconstructionWorkerApi}
+            onRetry={() => void retryReconstructionWorker()}
+            onSelectOutput={setSelectedReconstructionOutputId}
+            onSelectWorker={setSelectedReconstructionWorkerId}
+            onStart={() => void startReconstructionWorker()}
+            onStop={() => void stopReconstructionWorker()}
+            selectedOutputId={selectedReconstructionOutputId}
+            selectedWorkerId={selectedReconstructionWorkerId}
+            snapshot={reconstructionWorker}
+          />
           <WSPanel
             title="3DGS Compare"
             meta={selectedLiveFrame ? "live source only" : simulateComparisonCapture || simulateSourceFrame ? "visual proxy" : "no episode"}
@@ -6310,6 +6428,199 @@ const liveEvidenceRoles: LiveEvidenceAssetRole[] = [
   "mask-valid",
   "mask-object"
 ];
+
+function ReconstructionWorkerPanel({
+  busy,
+  currentSessionId,
+  error,
+  hasDesktopApi,
+  onRetry,
+  onSelectOutput,
+  onSelectWorker,
+  onStart,
+  onStop,
+  selectedOutputId,
+  selectedWorkerId,
+  snapshot
+}: {
+  busy: boolean;
+  currentSessionId: string | null;
+  error: string | null;
+  hasDesktopApi: boolean;
+  onRetry: () => void;
+  onSelectOutput: (outputId: string) => void;
+  onSelectWorker: (workerId: string) => void;
+  onStart: () => void;
+  onStop: () => void;
+  selectedOutputId: string | null;
+  selectedWorkerId: string;
+  snapshot: ReconstructionWorkerSnapshot;
+}) {
+  const capability = snapshot.capabilities.find((entry) => entry.workerId === selectedWorkerId)
+    ?? snapshot.capabilities[0]
+    ?? null;
+  const job = snapshot.job;
+  const output = job?.outputs.find((entry) => entry.outputId === selectedOutputId)
+    ?? job?.outputs[0]
+    ?? null;
+  const active = snapshot.state === "queued"
+    || snapshot.state === "starting"
+    || snapshot.state === "running"
+    || snapshot.state === "stopping";
+  const retryState = snapshot.state === "failed"
+    || snapshot.state === "timed_out"
+    || snapshot.state === "cancelled"
+    || snapshot.state === "interrupted";
+  const canStart = hasDesktopApi
+    && Boolean(currentSessionId)
+    && Boolean(capability?.available)
+    && (snapshot.state === "idle" || snapshot.state === "completed")
+    && !busy;
+  const canStop = hasDesktopApi
+    && Boolean(job)
+    && (snapshot.state === "queued" || snapshot.state === "starting" || snapshot.state === "running")
+    && !busy;
+  const canRetry = hasDesktopApi
+    && Boolean(job)
+    && retryState
+    && (job?.failure?.retryable ?? true)
+    && !busy;
+  const state = hasDesktopApi ? snapshot.state : "unavailable";
+  const stateDetail = hasDesktopApi
+    ? capability?.label ?? "no worker configured"
+    : "packaged desktop only";
+  const budget = job?.budget ?? capability?.budget ?? null;
+  const logs = job?.logs.slice(-40) ?? [];
+  const outputs = job?.outputs.slice(0, 24) ?? [];
+
+  return (
+    <WSPanel
+      className="ws-reconstruction-worker-panel"
+      data-testid="reconstruction-worker-panel"
+      meta="proposal only"
+      title="Reconstruction Worker"
+    >
+      <div className="ws-live-state-row" role="status" aria-live="polite">
+        <WSDot color={active ? "var(--acc)" : "var(--ink-faint)"} pulse={active} />
+        <b data-testid="reconstruction-worker-state">{state}</b>
+        <span>{stateDetail}</span>
+      </div>
+      <label className="ws-live-interface">
+        <span>Worker runtime</span>
+        <select
+          aria-label="Reconstruction worker runtime"
+          disabled={!hasDesktopApi || busy || active || !snapshot.capabilities.length}
+          onChange={(event) => onSelectWorker(event.target.value)}
+          value={capability?.workerId ?? ""}
+        >
+          {snapshot.capabilities.length ? snapshot.capabilities.map((entry) => (
+            <option key={entry.workerId} value={entry.workerId}>
+              {entry.label}{entry.available ? "" : " · unavailable"}
+            </option>
+          )) : <option value="">No configured worker</option>}
+        </select>
+      </label>
+      <div className="ws-kv">
+        <span>input</span>
+        <b>{job ? `${job.input.sessionId} · through ${job.input.throughSequenceId}` : currentSessionId ?? "no live session"}</b>
+      </div>
+      <div className="ws-kv">
+        <span>job</span>
+        <b>{job ? `${job.jobId} · attempt ${job.attempt}` : "none"}</b>
+      </div>
+      <div className="ws-kv">
+        <span>budget</span>
+        <b>{budget
+          ? `${formatWorkerDuration(budget.maxWallTimeMs)} · ${formatBytes(budget.maxMemoryBytes)} memory advisory · ${formatBytes(budget.maxOutputBytes)} output`
+          : "not declared"}</b>
+      </div>
+      <div className="ws-kv">
+        <span>progress</span>
+        <b>{job?.progress === null || job?.progress === undefined
+          ? "not reported"
+          : `${Math.round(job.progress * 100)}%`}</b>
+      </div>
+      <div className="ws-btn-row ws-worker-actions">
+        <WSButton accent disabled={!canStart} onClick={onStart}>Start Worker</WSButton>
+        <WSButton disabled={!canStop} onClick={onStop}>Stop Worker</WSButton>
+        <WSButton disabled={!canRetry} onClick={onRetry}>Retry Same Input</WSButton>
+      </div>
+      {job?.failure ? (
+        <div className="ws-live-error" data-testid="reconstruction-worker-failure">
+          {job.failure.code} · {job.failure.message}
+        </div>
+      ) : null}
+      {error || snapshot.error ? (
+        <div className="ws-live-error">{error ?? snapshot.error}</div>
+      ) : null}
+      <div className="ws-live-evidence-section">outputs</div>
+      <div className="ws-insight-list ws-worker-output-list" data-testid="reconstruction-worker-outputs">
+        {outputs.length ? outputs.map((entry) => (
+          <button
+            aria-label={`Inspect ${workerOutputRoleLabel(entry)} output ${entry.outputId}`}
+            aria-pressed={entry.outputId === output?.outputId}
+            className={`ws-insight-row ${entry.outputId === output?.outputId ? "active" : ""}`.trim()}
+            key={entry.outputId}
+            onClick={() => onSelectOutput(entry.outputId)}
+            type="button"
+          >
+            <div className="ws-insight-head">
+              <span>{workerOutputRoleLabel(entry)}</span>
+              <b>{entry.status}</b>
+            </div>
+            <div className="ws-kv">
+              <span>artifact</span>
+              <b>{formatBytes(entry.sizeBytes)} · {entry.mediaType}</b>
+            </div>
+          </button>
+        )) : <div className="ws-live-empty">No worker outputs recorded.</div>}
+        {(job?.outputs.length ?? 0) > outputs.length ? (
+          <div className="ws-live-empty">+{job!.outputs.length - outputs.length} outputs omitted from this bounded view.</div>
+        ) : null}
+      </div>
+      {output ? (
+        <div className="ws-worker-output-detail" data-testid="reconstruction-worker-output-detail">
+          <div className="ws-kv">
+            <span>output</span>
+            <b>{output.outputId} · {workerOutputRoleLabel(output)}</b>
+          </div>
+          <div className="ws-kv ws-live-evidence-hash">
+            <span>SHA-256</span>
+            <b title={output.sha256}>{output.sha256}</b>
+          </div>
+          <div className="ws-kv">
+            <span>inspection</span>
+            <b>verified metadata only · never loaded into the world</b>
+          </div>
+          <div className="ws-kv">
+            <span>frame</span>
+            <b>{output.coordinateFrame ?? "not declared"}</b>
+          </div>
+        </div>
+      ) : null}
+      <div className="ws-live-evidence-section">log tail</div>
+      <pre className="ws-detail-preview ws-worker-log" data-testid="reconstruction-worker-logs">
+        {logs.length
+          ? logs.map((entry) => `${String(entry.sequenceId).padStart(4, "0")} ${entry.level} ${entry.code} · ${entry.message}`).join("\n")
+          : "no worker logs"}
+      </pre>
+      <div className="ws-kv ws-live-authority">
+        <span>authority</span>
+        <b>proposal only · never measurement, world, collision, navigation, semantic, or physics authority</b>
+      </div>
+    </WSPanel>
+  );
+}
+
+function workerOutputRoleLabel(output: ReconstructionWorkerOutputSummary): string {
+  return output.role.replaceAll("_", " ");
+}
+
+function formatWorkerDuration(milliseconds: number): string {
+  return milliseconds >= 60_000
+    ? `${Math.round(milliseconds / 60_000)} min`
+    : `${Math.round(milliseconds / 1_000)} s`;
+}
 
 function LiveFrameEvidenceInspector({
   coordinateUnits,

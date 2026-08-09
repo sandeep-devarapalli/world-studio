@@ -12,7 +12,7 @@ Status values:
 |---|---|---|---|
 | Replay-first Capture Splat contract | completed | Canonical session/frame/ACK schemas, strict fixtures, sender replay plan, hash/path validation, duplicate and resume tests | Authenticated LAN transport remains M1 |
 | Loopback World Studio receiver | completed | Explicit loopback listener, durable ledger, ACK/reconciliation, restart/resume, proposal-only Simulate panel, packaged handoff reopen | Device sender remains M1 |
-| Progressive source evidence | partial | Source frames, camera evidence, trajectory, package readers, ARKit mesh and Capture Splat handoff support | Bounded live RGB-D/mesh proposals and worker lifecycle |
+| Progressive source evidence | partial | Checksum-verified RGB-D, confidence, masks, camera, trajectory, quality, package readers, and proposal-only worker lifecycle | Mesh transport, a reviewed worker adapter, reconstruction-quality gates, and physical acceptance |
 | Gaussian and point inspection | partial | Spark/Three rendering, ordinary/Gaussian PLY distinction, frame cameras, Orbit/Free/Walk inspection, QA sidecars | Larger-asset LoD and renderer conformance |
 | Current simulation substrate | partial | Rapier pilot substrate, bodies, collision debug, deterministic Episodes | Preserve parity fixtures; freeze backend-specific growth |
 | Newton target runtime | planned | Target worker architecture and gated migration sequence | Solver-neutral client, worker supervisor, local/remote parity, cutover, and Rapier removal |
