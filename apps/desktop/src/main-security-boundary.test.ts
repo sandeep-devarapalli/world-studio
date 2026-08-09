@@ -30,6 +30,13 @@ describe("desktop main-process security boundary", () => {
     expect(source.match(/assertTrustedSecurityIpcSender\(event\);/g)).toHaveLength(securityChannels.length);
   });
 
+  it("restricts live evidence bytes to the trusted main renderer frame", async () => {
+    const source = await readFile(mainPath, "utf8");
+    expect(source).toContain('"world-studio:get-live-frame-preview"');
+    expect(source.match(/assertTrustedEvidenceIpcSender\(event\);/g)).toHaveLength(1);
+    expect(source).toContain('assertTrustedLiveIpcSender(event, "Live evidence IPC");');
+  });
+
   it("does not initialize optional live security before creating the base window", async () => {
     const source = await readFile(mainPath, "utf8");
     const readyStart = source.indexOf("app.whenReady().then");

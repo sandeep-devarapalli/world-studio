@@ -6,6 +6,13 @@ import { describe, expect, it } from "vitest";
 const preloadPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "preload.cts");
 
 describe("desktop preload live-session bridge", () => {
+  it("forwards an optional declared evidence role without exposing filesystem access", async () => {
+    const source = await readFile(preloadPath, "utf8");
+    expect(source).toContain("role?: LiveEvidenceAssetRole");
+    expect(source).toContain('ipcRenderer.invoke("world-studio:get-live-frame-preview", input)');
+    expect(source).not.toContain("readFile(");
+  });
+
   it("unsubscribes the exact IPC update handler registered for the renderer", async () => {
     const source = await readFile(preloadPath, "utf8");
     expect(source).toMatch(

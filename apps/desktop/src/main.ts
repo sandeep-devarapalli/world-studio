@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, powerMonitor, safeStorage } from "
 import type { IpcMainInvokeEvent } from "electron";
 import type {
   EpisodeBundleAsset,
+  LiveEvidenceAssetRole,
   LiveFramePreview,
   LiveSecuritySnapshot,
   LiveSessionSnapshot,
@@ -13,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { desktopSmokeUserDataPath } from "./desktop-smoke.js";
 import { LiveSessionReceiver } from "./live-session-receiver.js";
+import { assertLiveAssetRole } from "./live-session-contract.js";
 import { DesktopIdentityStore, type SecretProtector } from "./live-desktop-identity.js";
 import { PairingStore } from "./live-pairing-store.js";
 import { LiveSecureGateway } from "./live-secure-gateway.js";
@@ -150,21 +152,30 @@ ipcMain.handle("world-studio:get-live-session-status", async (): Promise<LiveSes
 
 ipcMain.handle(
   "world-studio:get-live-frame-preview",
-  async (_event, input: { sessionId?: string; sequenceId?: number }): Promise<LiveFramePreview | null> => {
+  async (
+    event,
+    input: { sessionId?: string; sequenceId?: number; role?: string }
+  ): Promise<LiveFramePreview | null> => {
+    assertTrustedEvidenceIpcSender(event);
     if (
       !input
       || typeof input.sessionId !== "string"
       || !Number.isSafeInteger(input.sequenceId)
       || Number(input.sequenceId) < 1
+      || (input.role !== undefined && typeof input.role !== "string")
     ) {
-      throw new Error("Live frame preview requires a session ID and positive sequence ID.");
+      throw new Error("Live frame preview requires a session ID, positive sequence ID, and optional asset role.");
     }
-    const preview = await getLiveReceiver().readFramePreview(input.sessionId, Number(input.sequenceId));
+    const role: LiveEvidenceAssetRole = input.role === undefined ? "source" : assertLiveAssetRole(input.role);
+    const preview = await getLiveReceiver().readFramePreview(input.sessionId, Number(input.sequenceId), role);
     if (!preview) return null;
     return {
       sessionId: preview.sessionId,
       sequenceId: preview.sequenceId,
+      role: preview.role,
       mediaType: preview.mediaType,
+      sha256: preview.sha256,
+      sizeBytes: preview.sizeBytes,
       dataUrl: `data:${preview.mediaType};base64,${preview.bytes.toString("base64")}`,
       width: preview.width,
       height: preview.height
@@ -281,10 +292,18 @@ function getLiveReceiver(): LiveSessionReceiver {
 }
 
 function assertTrustedSecurityIpcSender(event: IpcMainInvokeEvent): void {
+  assertTrustedLiveIpcSender(event, "Live security IPC");
+}
+
+function assertTrustedEvidenceIpcSender(event: IpcMainInvokeEvent): void {
+  assertTrustedLiveIpcSender(event, "Live evidence IPC");
+}
+
+function assertTrustedLiveIpcSender(event: IpcMainInvokeEvent, label: string): void {
   const trustedUrl = trustedRendererUrls.get(event.sender.id);
   const senderFrame = event.senderFrame;
   if (!trustedUrl || !senderFrame) {
-    throw new Error("Live security IPC is restricted to the trusted World Studio renderer.");
+    throw new Error(`${label} is restricted to the trusted World Studio renderer.`);
   }
   assertTrustedRendererInvocation({
     isMainFrame: senderFrame === event.sender.mainFrame,
@@ -363,6 +382,7 @@ function stoppedLiveSnapshot(): LiveSessionSnapshot {
     listening: null,
     sessionId: null,
     sourceManifestId: null,
+    coordinateUnits: null,
     expectedCount: null,
     finalSequenceId: null,
     receivedCount: 0,

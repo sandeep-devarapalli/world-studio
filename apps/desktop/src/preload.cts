@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  LiveEvidenceAssetRole,
   LiveFramePreview,
   LiveSecuritySnapshot,
   LiveSessionSnapshot,
@@ -27,7 +28,7 @@ contextBridge.exposeInMainWorld("worldStudioDesktop", {
     ipcRenderer.on("world-studio:live-session-update", handler);
     return () => ipcRenderer.removeListener("world-studio:live-session-update", handler);
   },
-  getLiveFramePreview: (input: { sessionId: string; sequenceId: number }) =>
+  getLiveFramePreview: (input: { sessionId: string; sequenceId: number; role?: LiveEvidenceAssetRole }) =>
     ipcRenderer.invoke("world-studio:get-live-frame-preview", input) as Promise<LiveFramePreview | null>,
   getLiveSecurityStatus: () =>
     ipcRenderer.invoke("world-studio:get-live-security-status") as Promise<LiveSecuritySnapshot>,

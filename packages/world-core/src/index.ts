@@ -75,6 +75,54 @@ export interface LiveMissingRange {
   end: number;
 }
 
+export type LiveEvidenceAssetRole =
+  | "source"
+  | "depth"
+  | "confidence"
+  | "mask-person"
+  | "mask-valid"
+  | "mask-object";
+
+export interface LiveFrameIntrinsics {
+  model: "pinhole";
+  flX: number;
+  flY: number;
+  cx: number;
+  cy: number;
+  calibrationWidth: number;
+  calibrationHeight: number;
+  appliesTo: "source_frame" | "depth" | "confidence" | "unknown";
+}
+
+export interface LiveFrameQuality {
+  accepted: boolean;
+  reason?: string;
+  score?: number;
+  blurScore?: number;
+  exposureMean?: number;
+  exposureDelta?: number;
+  clippedHighlightFraction?: number;
+  nearClippedHighlightFraction?: number;
+  clippedShadowFraction?: number;
+  featureGridCoverage?: number;
+  parallaxMeters?: number;
+  angularVelocityDegS?: number;
+  translationSpeedMS?: number;
+  colmapOverlapScore?: number;
+  validDepthRatio?: number;
+  featurePointCount?: number;
+}
+
+export interface LiveFrameAssetSummary {
+  role: LiveEvidenceAssetRole;
+  sha256: string;
+  sizeBytes: number;
+  mediaType: string;
+  width: number | null;
+  height: number | null;
+  previewAvailable: boolean;
+}
+
 export interface LiveFrameSummary {
   sequenceId: number;
   timestamp: number;
@@ -90,6 +138,10 @@ export interface LiveFrameSummary {
   ];
   coordinateFrame: string;
   previewAvailable: boolean;
+  intrinsics: LiveFrameIntrinsics;
+  tracking: { state: string };
+  quality: LiveFrameQuality;
+  assets: LiveFrameAssetSummary[];
 }
 
 export interface LiveSessionSnapshot {
@@ -97,6 +149,7 @@ export interface LiveSessionSnapshot {
   listening: { host: string; port: number } | null;
   sessionId: string | null;
   sourceManifestId: string | null;
+  coordinateUnits: "meters" | "unknown" | null;
   expectedCount: number | null;
   finalSequenceId: number | null;
   receivedCount: number;
@@ -167,10 +220,13 @@ export interface LiveSecuritySnapshot {
 export interface LiveFramePreview {
   sessionId: string;
   sequenceId: number;
+  role: LiveEvidenceAssetRole;
   mediaType: string;
+  sha256: string;
+  sizeBytes: number;
   dataUrl: string;
-  width: number;
-  height: number;
+  width: number | null;
+  height: number | null;
 }
 
 export interface CameraState {

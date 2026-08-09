@@ -864,6 +864,60 @@ body {
   padding-top: 8px;
 }
 
+.ws-live-evidence-roles {
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 9px;
+}
+
+.ws-live-evidence-roles .ws-pill {
+  font-size: 8px;
+  min-width: 0;
+  padding: 5px 4px;
+}
+
+.ws-live-evidence-roles .ws-pill:disabled {
+  cursor: default;
+  opacity: 0.34;
+}
+
+.ws-live-evidence-section {
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  margin-top: 8px;
+  padding: 8px 0 3px;
+  text-transform: uppercase;
+}
+
+.ws-live-evidence-hash b {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.ws-live-quality {
+  max-height: 144px;
+  overflow: auto;
+}
+
+.ws-live-evidence-issue {
+  align-items: flex-start;
+  color: var(--warn);
+  display: grid;
+  font-family: var(--mono);
+  font-size: 8px;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ws-live-evidence-issue .ws-btn {
+  justify-self: start;
+  padding: 5px 8px;
+}
+
 .ws-frame-row {
   appearance: none;
   background: transparent;
@@ -1342,6 +1396,54 @@ body {
   max-width: 100%;
   object-fit: contain;
   width: 100%;
+}
+
+.ws-live-scalar-preview {
+  image-rendering: pixelated;
+}
+
+.ws-live-mask-composite {
+  height: 100%;
+  position: relative;
+  width: 100%;
+}
+
+.ws-live-mask-composite .ws-sim-comparison-preview {
+  inset: 0;
+  position: absolute;
+}
+
+.ws-live-mask-preview {
+  mix-blend-mode: screen;
+  opacity: 0.48;
+}
+
+.ws-live-evidence-unavailable {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.36);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--mono);
+  gap: 7px;
+  justify-content: center;
+  min-height: 180px;
+  padding: 18px;
+  text-align: center;
+  width: 100%;
+}
+
+.ws-live-evidence-unavailable b {
+  color: var(--ink);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.ws-live-evidence-unavailable span {
+  font-size: 9px;
+  overflow-wrap: anywhere;
 }
 
 .ws-dual-right-frame {

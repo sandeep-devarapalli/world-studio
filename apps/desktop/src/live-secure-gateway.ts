@@ -692,6 +692,7 @@ export class LiveSecureGateway {
         : null,
       sessionId: null,
       sourceManifestId: null,
+      coordinateUnits: null,
       expectedCount: null,
       finalSequenceId: null,
       receivedCount: 0,

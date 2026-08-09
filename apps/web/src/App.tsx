@@ -23,7 +23,20 @@ import { accents, WSButton, WSChip, WSControlsBar, WSDot, WSIcon, WSKey, WSPanel
 import { ThreeWorldRenderer } from "@world-studio/renderer";
 import { buildCleanedPointCloudPly, cleanedPointRows } from "./edit-ply-export";
 import { FeedCanvas, TimelineCapsule, TracksPanel, type FeedMode, type FeedPose } from "./instruments";
-import { cacheLivePreview, splitLiveTrajectory } from "./live-session-view";
+import {
+  LIVE_PREVIEW_CACHE_BYTE_LIMIT,
+  cacheLiveEvidencePreview,
+  createLiveEvidencePreviewCache,
+  decodeLiveNpyPreview,
+  getCachedLiveEvidencePreview,
+  livePreviewCacheKey,
+  rasterizeLiveConfidence,
+  rasterizeLiveDepth,
+  splitLiveTrajectory,
+  type LiveConfidenceNpy,
+  type LiveDepthNpy,
+  type LiveEvidenceRaster
+} from "./live-session-view";
 import { RapierSimulation, RapierWalkSimulation, agentBodyPresets, unavailablePhysicsDiagnostics, type AgentBodyPreset, type AgentBodyPresetId, type DriveCommand } from "./simulation";
 import {
   classifySimulateDrag,
@@ -67,7 +80,9 @@ import type {
   FrameCamera,
   LocalPackageInsight,
   LocalPackageIssue,
+  LiveEvidenceAssetRole,
   LiveFramePreview,
+  LiveFrameQuality,
   LiveFrameSummary,
   LivePairedDevice,
   LiveSecuritySnapshot,
@@ -166,6 +181,7 @@ const stoppedLiveSnapshot: LiveSessionSnapshot = {
   listening: null,
   sessionId: null,
   sourceManifestId: null,
+  coordinateUnits: null,
   expectedCount: null,
   finalSequenceId: null,
   receivedCount: 0,
@@ -467,6 +483,14 @@ interface MeasurePoint {
   stage: { x: number; y: number };
 }
 
+type LiveEvidencePreviewMap = Partial<Record<LiveEvidenceAssetRole, LiveFramePreview>>;
+const emptyLiveEvidencePreviews: LiveEvidencePreviewMap = {};
+
+interface LiveDecodedNpyEvidence<T> {
+  value: T | null;
+  error: string | null;
+}
+
 const defaultProps: SimulatedPropState[] = [
   { id: "prop-crate-a", label: "crate_a", preset: "crate", contactState: "grounded", x: -0.8, y: 0.18, z: 0.4, footprintRadius: 0.3 },
   { id: "prop-tall-a", label: "tall-crate_a", preset: "tall-crate", contactState: "grounded", x: 0.9, y: 0.42, z: 0.9, footprintRadius: 0.26 }
@@ -591,10 +615,15 @@ export function App() {
   const [captureFrames, setCaptureFrames] = useState<CaptureFrame[]>([]);
   const [liveSnapshot, setLiveSnapshot] = useState<LiveSessionSnapshot>(stoppedLiveSnapshot);
   const [selectedLiveSequence, setSelectedLiveSequence] = useState<number | null>(null);
-  const [livePreview, setLivePreview] = useState<LiveFramePreview | null>(null);
+  const [selectedLiveEvidenceRole, setSelectedLiveEvidenceRole] = useState<LiveEvidenceAssetRole>("source");
+  const [liveEvidencePreviews, setLiveEvidencePreviews] = useState<LiveEvidencePreviewMap>({});
+  const [liveEvidencePreviewRequestKey, setLiveEvidencePreviewRequestKey] = useState<string | null>(null);
+  const [liveEvidenceError, setLiveEvidenceError] = useState<string | null>(null);
+  const [liveEvidenceRetryToken, setLiveEvidenceRetryToken] = useState(0);
+  const [liveImageFailures, setLiveImageFailures] = useState<Record<string, string>>({});
   const [liveReceiverBusy, setLiveReceiverBusy] = useState(false);
   const [liveReceiverError, setLiveReceiverError] = useState<string | null>(null);
-  const livePreviewCacheRef = useRef(new Map<string, LiveFramePreview>());
+  const livePreviewCacheRef = useRef(createLiveEvidencePreviewCache());
   const [liveSecurity, setLiveSecurity] = useState<LiveSecuritySnapshot>(unavailableLiveSecuritySnapshot);
   const [selectedLiveInterfaceId, setSelectedLiveInterfaceId] = useState("");
   const [liveSecurityBusy, setLiveSecurityBusy] = useState(false);
@@ -662,7 +691,96 @@ export function App() {
   const simulateCompareCaptures = captureComparison.length ? captureComparison : captureCompareCandidates;
   const selectedSourceFrame = captureFrames[selectedSourceFrameIndex] ?? captureFrames.find((frame) => frame.previewDataUrl) ?? null;
   const selectedLiveFrame = liveSnapshot.frames.find((frame) => frame.sequenceId === selectedLiveSequence) ?? null;
+  const selectedLiveAsset = selectedLiveFrame?.assets.find((asset) => asset.role === selectedLiveEvidenceRole) ?? null;
+  const requestedLiveEvidenceAssets = selectedLiveFrame
+    ? liveEvidenceAssetsForSelection(selectedLiveFrame, selectedLiveEvidenceRole)
+    : [];
+  const currentLiveEvidenceRequestKey = liveSnapshot.sessionId && selectedLiveFrame
+    ? JSON.stringify([
+        liveSnapshot.sessionId,
+        selectedLiveFrame.sequenceId,
+        selectedLiveEvidenceRole,
+        ...requestedLiveEvidenceAssets.map((asset) => [
+          asset.role,
+          asset.sha256,
+          asset.sizeBytes,
+          asset.mediaType,
+          asset.width,
+          asset.height
+        ])
+      ])
+    : null;
+  const activeLiveEvidencePreviews = liveEvidencePreviewRequestKey === currentLiveEvidenceRequestKey
+    ? liveEvidencePreviews
+    : emptyLiveEvidencePreviews;
+  const selectedLivePreview = activeLiveEvidencePreviews[selectedLiveEvidenceRole] ?? null;
+  const liveSourcePreview = activeLiveEvidencePreviews.source ?? null;
+  const selectedLiveImageKey = selectedLivePreview?.mediaType.startsWith("image/")
+    ? livePreviewImageKey(selectedLivePreview)
+    : null;
+  const liveSourceImageKey = liveSourcePreview?.mediaType.startsWith("image/")
+    ? livePreviewImageKey(liveSourcePreview)
+    : null;
+  const selectedLiveImageError = selectedLiveImageKey ? liveImageFailures[selectedLiveImageKey] ?? null : null;
+  const liveSourceImageError = liveSourceImageKey ? liveImageFailures[liveSourceImageKey] ?? null : null;
+  const liveMaskAlignmentIssue = selectedLiveEvidenceRole.startsWith("mask-") && selectedLivePreview
+    ? liveMaskOverlayIssue(selectedLivePreview, selectedLiveFrame?.assets.find((asset) => asset.role === "source") ?? null)
+    : null;
+  const canCompositeLiveMask = Boolean(
+    selectedLiveEvidenceRole.startsWith("mask-")
+    && selectedLivePreview?.mediaType.startsWith("image/")
+    && liveSourcePreview?.mediaType.startsWith("image/")
+    && !liveMaskAlignmentIssue
+    && !selectedLiveImageError
+    && !liveSourceImageError
+  );
+  const liveMaskDisplayIssue = selectedLiveEvidenceRole.startsWith("mask-") && selectedLivePreview
+    ? liveMaskAlignmentIssue
+      ?? (liveEvidenceError ? `mask only · RGB overlay unavailable · ${liveEvidenceError}` : null)
+      ?? (liveSourceImageError ? `mask only · RGB overlay unavailable · ${liveSourceImageError}` : null)
+    : null;
+  const liveDepthEvidence = useMemo(
+    () => decodeLiveDepthEvidence(activeLiveEvidencePreviews.depth ?? null),
+    [activeLiveEvidencePreviews.depth]
+  );
+  const liveConfidenceEvidence = useMemo(
+    () => decodeLiveConfidenceEvidence(activeLiveEvidencePreviews.confidence ?? null),
+    [activeLiveEvidencePreviews.confidence]
+  );
+  const selectedLiveRaster = useMemo<LiveEvidenceRaster | null>(() => {
+    if (selectedLiveEvidenceRole === "depth" && liveDepthEvidence.value) {
+      return rasterizeLiveDepth(liveDepthEvidence.value);
+    }
+    if (selectedLiveEvidenceRole === "confidence" && liveConfidenceEvidence.value) {
+      return rasterizeLiveConfidence(liveConfidenceEvidence.value);
+    }
+    return null;
+  }, [liveConfidenceEvidence.value, liveDepthEvidence.value, selectedLiveEvidenceRole]);
+  const selectedLiveDecodeError = selectedLiveEvidenceRole === "depth"
+    ? liveDepthEvidence.error
+    : selectedLiveEvidenceRole === "confidence"
+      ? liveConfidenceEvidence.error
+      : null;
+  const selectedLivePreviewError = selectedLiveImageError ?? selectedLiveDecodeError;
+  const hasLiveEvidenceVisual = Boolean(
+    selectedLiveFrame
+    && (selectedLiveRaster || (selectedLivePreview?.mediaType.startsWith("image/") && !selectedLiveImageError))
+  );
   const liveTrajectorySegments = useMemo(() => splitLiveTrajectory(liveSnapshot.frames), [liveSnapshot.frames]);
+  const recordLiveImageIntegrity = useCallback((preview: LiveFramePreview, error: string | null) => {
+    const key = livePreviewImageKey(preview);
+    setLiveImageFailures((current) => {
+      if (!error) {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      const entries = [...Object.entries(current).filter(([entryKey]) => entryKey !== key), [key, error] as const];
+      return Object.fromEntries(entries.slice(-24));
+    });
+  }, []);
+  const retryLiveEvidence = useCallback(() => setLiveEvidenceRetryToken((value) => value + 1), []);
   const orderedPairedDevices = useMemo(
     () => [...liveSecurity.pairedDevices].sort((left, right) => (
       liveDeviceRank(left, liveSecurityNow) - liveDeviceRank(right, liveSecurityNow)
@@ -1313,34 +1431,95 @@ export function App() {
   }, [runLiveSecurityAction, selectedLiveInterfaceId]);
 
   useEffect(() => {
+    if (!selectedLiveFrame) return;
+    const selectedAsset = selectedLiveFrame.assets.find((asset) => asset.role === selectedLiveEvidenceRole);
+    if (selectedAsset?.previewAvailable) return;
+    const fallback = selectedLiveFrame.assets.find((asset) => asset.role === "source" && asset.previewAvailable)
+      ?? selectedLiveFrame.assets.find((asset) => asset.previewAvailable);
+    if (fallback) setSelectedLiveEvidenceRole(fallback.role);
+  }, [currentLiveEvidenceRequestKey, selectedLiveEvidenceRole]);
+
+  useEffect(() => {
     const sessionId = liveSnapshot.sessionId;
     const sequenceId = selectedLiveFrame?.sequenceId;
     const readPreview = getDesktopApi()?.getLiveFramePreview;
-    if (!sessionId || sequenceId === undefined || !selectedLiveFrame?.previewAvailable || !readPreview) {
-      setLivePreview(null);
+    const requestKey = currentLiveEvidenceRequestKey;
+    if (!sessionId || sequenceId === undefined || !selectedLiveFrame || !readPreview || !requestKey) {
+      setLiveEvidencePreviews({});
+      setLiveEvidencePreviewRequestKey(null);
+      setLiveEvidenceError(null);
       return;
     }
-    const key = `${sessionId}:${sequenceId}`;
-    const cached = livePreviewCacheRef.current.get(key);
-    if (cached) {
-      setLivePreview(cached);
-      return;
-    }
+
     let active = true;
-    setLivePreview(null);
-    void readPreview({ sessionId, sequenceId })
-      .then((preview) => {
-        if (!active || !preview) return;
-        cacheLivePreview(livePreviewCacheRef.current, key, preview);
-        setLivePreview(preview);
-      })
-      .catch((error: unknown) => {
-        if (active) setLiveReceiverError(error instanceof Error ? error.message : "Failed to read live frame preview");
-      });
+    setLiveEvidenceError(null);
+    void (async () => {
+      const results: Array<{
+        role: LiveEvidenceAssetRole;
+        preview: LiveFramePreview | null;
+        error: string | null;
+      }> = [];
+      let reservedResidentBytes = 0;
+      for (const asset of requestedLiveEvidenceAssets) {
+        const estimatedResidentBytes = liveAssetResidentBytes(asset);
+        if (reservedResidentBytes + estimatedResidentBytes > LIVE_PREVIEW_CACHE_BYTE_LIMIT) {
+          results.push({
+            role: asset.role,
+            preview: null,
+            error: `Live ${asset.role} preview was not requested to preserve the renderer memory bound.`
+          });
+          continue;
+        }
+        const requestIdentity = { sessionId, sequenceId, role: asset.role };
+        const cacheIdentity = { ...requestIdentity, ...asset };
+        try {
+          const cached = getCachedLiveEvidencePreview(livePreviewCacheRef.current, cacheIdentity);
+          const preview = cached ?? await readPreview(requestIdentity);
+          if (!preview) {
+            results.push({
+              role: asset.role,
+              preview: null,
+              error: `Live ${asset.role} evidence is not available yet.`
+            });
+            continue;
+          }
+          assertLivePreviewMatches(asset, preview, requestIdentity);
+          const residentBytes = livePreviewResidentBytes(preview);
+          if (reservedResidentBytes + residentBytes > LIVE_PREVIEW_CACHE_BYTE_LIMIT) {
+            throw new Error(`Live ${asset.role} preview exceeds the renderer memory bound.`);
+          }
+          if (!cached && !cacheLiveEvidencePreview(
+            livePreviewCacheRef.current,
+            cacheIdentity,
+            preview,
+            residentBytes
+          )) {
+            throw new Error(`Live ${asset.role} preview exceeds the renderer memory bound.`);
+          }
+          reservedResidentBytes += residentBytes;
+          results.push({ role: asset.role, preview, error: null });
+        } catch (error) {
+          results.push({
+            role: asset.role,
+            preview: null,
+            error: error instanceof Error ? error.message : `Failed to read ${asset.role} evidence`
+          });
+        }
+      }
+      return results;
+    })().then((results) => {
+      if (!active) return;
+      const next: LiveEvidencePreviewMap = {};
+      const errors = results.flatMap((result) => result.error ? [result.error] : []);
+      for (const result of results) if (result.preview) next[result.role] = result.preview;
+      setLiveEvidencePreviews(next);
+      setLiveEvidencePreviewRequestKey(requestKey);
+      setLiveEvidenceError(errors[0] ?? null);
+    });
     return () => {
       active = false;
     };
-  }, [liveSnapshot.sessionId, selectedLiveFrame]);
+  }, [currentLiveEvidenceRequestKey, liveEvidenceRetryToken, liveSnapshot.state]);
 
   const applyLocalPackage = useCallback((payload: LocalWorldPackagePayload, options?: LoadedWorldOptions) => {
     const evidence = parseCaptureSplatEvidenceMesh(payload);
@@ -2653,13 +2832,49 @@ export function App() {
           <div className="ws-overlay">
             {mode === "simulate" ? (
               <>
-                <div className={`ws-dual-left ${livePreview?.dataUrl || simulateComparisonCapture?.previewDataUrl || simulateSourceFrame?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
-                  {livePreview?.dataUrl && selectedLiveFrame ? (
-                    <img
-                      alt="Selected live source frame evidence"
-                      className="ws-sim-comparison-preview"
-                      src={livePreview.dataUrl}
+                <div className={`ws-dual-left ${hasLiveEvidenceVisual || simulateComparisonCapture?.previewDataUrl || simulateSourceFrame?.previewDataUrl ? "has-comparison" : ""}`.trim()}>
+                  {selectedLiveFrame && selectedLiveRaster ? (
+                    <LiveEvidenceCanvas
+                      label={`Selected live ${liveEvidenceRoleLabel(selectedLiveEvidenceRole).toLowerCase()} evidence`}
+                      raster={selectedLiveRaster}
                     />
+                  ) : selectedLiveFrame && selectedLivePreview?.mediaType.startsWith("image/") && !selectedLiveImageError ? (
+                    canCompositeLiveMask ? (
+                      <div className="ws-live-mask-composite" data-testid="live-mask-composite">
+                        <LiveEvidenceImage
+                          alt="Selected live RGB evidence beneath mask"
+                          className="ws-sim-comparison-preview"
+                          onIntegrity={recordLiveImageIntegrity}
+                          preview={liveSourcePreview!}
+                        />
+                        <LiveEvidenceImage
+                          alt={`Selected live ${liveEvidenceRoleLabel(selectedLiveEvidenceRole).toLowerCase()} evidence`}
+                          className="ws-sim-comparison-preview ws-live-mask-preview"
+                          onIntegrity={recordLiveImageIntegrity}
+                          preview={selectedLivePreview}
+                        />
+                      </div>
+                    ) : (
+                      <LiveEvidenceImage
+                        alt={selectedLiveEvidenceRole === "source"
+                          ? "Selected live source frame evidence"
+                          : `Selected live ${liveEvidenceRoleLabel(selectedLiveEvidenceRole).toLowerCase()} evidence`}
+                        className="ws-sim-comparison-preview"
+                        onIntegrity={recordLiveImageIntegrity}
+                        preview={selectedLivePreview}
+                      />
+                    )
+                  ) : selectedLiveFrame && (selectedLiveImageError || liveEvidenceError || selectedLivePreviewError) ? (
+                    <div className="ws-live-evidence-unavailable" data-testid="live-evidence-error">
+                      <b>Evidence preview rejected</b>
+                      <span>{selectedLiveImageError ?? selectedLivePreviewError ?? liveEvidenceError}</span>
+                      <WSButton onClick={retryLiveEvidence}>Retry evidence</WSButton>
+                    </div>
+                  ) : selectedLiveFrame ? (
+                    <div className="ws-live-evidence-unavailable" data-testid="live-evidence-pending">
+                      <b>{selectedLiveAsset?.previewAvailable ? "Loading evidence preview" : "Preview unavailable"}</b>
+                      <span>{selectedLiveAsset ? selectedLiveAsset.mediaType : "Role not declared by this frame"}</span>
+                    </div>
                   ) : simulateComparisonCapture?.previewDataUrl ? (
                     <img
                       alt="Selected comparison capture evidence"
@@ -2676,7 +2891,7 @@ export function App() {
                     <FeedCanvas points={worldPoints} classes={session?.classes ?? []} mode="rgb" pose={simFeedPose} cw={960} ch={1080} />
                   )}
                   <div className="ws-view-tag">
-                    <span className="ws-head">{selectedLiveFrame ? "Live source evidence" : simulateComparisonCapture || simulateSourceFrame ? "Source evidence" : "Sensor feed"}</span>
+                    <span className="ws-head">{selectedLiveFrame ? `Live ${liveEvidenceRoleLabel(selectedLiveEvidenceRole)} evidence` : simulateComparisonCapture || simulateSourceFrame ? "Source evidence" : "Sensor feed"}</span>
                     <WSChip>
                       {selectedLiveFrame
                         ? `frame ${selectedLiveFrame.sequenceId}`
@@ -3961,6 +4176,18 @@ export function App() {
               </div>
               <div className="ws-live-coordinate-note">Capture coordinates are shown separately and are never overlaid on the loaded world.</div>
             </WSPanel>
+          ) : null}
+          {hasLiveReceiverApi || liveSnapshot.sessionId ? (
+            <LiveFrameEvidenceInspector
+              coordinateUnits={liveSnapshot.coordinateUnits}
+              frame={selectedLiveFrame}
+              onRetry={retryLiveEvidence}
+              preview={selectedLivePreview}
+              previewIssue={selectedLiveImageError ?? liveMaskDisplayIssue ?? liveEvidenceError ?? selectedLiveDecodeError}
+              raster={selectedLiveRaster}
+              selectedRole={selectedLiveEvidenceRole}
+              onSelectRole={setSelectedLiveEvidenceRole}
+            />
           ) : null}
           <WSPanel
             title="3DGS Compare"
@@ -5874,6 +6101,156 @@ function shortSecurityId(value: string): string {
   return value.length <= 18 ? value : `${value.slice(0, 10)}…${value.slice(-6)}`;
 }
 
+function liveEvidenceRoleLabel(role: LiveEvidenceAssetRole): string {
+  if (role === "source") return "RGB";
+  if (role === "mask-person") return "Person mask";
+  if (role === "mask-valid") return "Valid mask";
+  if (role === "mask-object") return "Object mask";
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function formatLiveEvidenceNumber(value: number): string {
+  if (!Number.isFinite(value)) return "invalid";
+  const magnitude = Math.abs(value);
+  if (magnitude >= 1000) return value.toFixed(1);
+  if (magnitude >= 10) return value.toFixed(2);
+  return value.toFixed(4);
+}
+
+function liveQualityRows(quality: LiveFrameQuality): Array<[string, string]> {
+  const rows: Array<[string, string]> = [["accepted", quality.accepted ? "yes" : "no"]];
+  if (quality.reason) rows.push(["reason", quality.reason]);
+  const metrics: Array<[string, number | undefined]> = [
+    ["score", quality.score],
+    ["blur", quality.blurScore],
+    ["exposure mean", quality.exposureMean],
+    ["exposure delta", quality.exposureDelta],
+    ["highlight clipped", quality.clippedHighlightFraction],
+    ["highlight near clip", quality.nearClippedHighlightFraction],
+    ["shadow clipped", quality.clippedShadowFraction],
+    ["feature coverage", quality.featureGridCoverage],
+    ["parallax m", quality.parallaxMeters],
+    ["angular deg/s", quality.angularVelocityDegS],
+    ["translation m/s", quality.translationSpeedMS],
+    ["COLMAP overlap", quality.colmapOverlapScore],
+    ["valid depth", quality.validDepthRatio],
+    ["feature points", quality.featurePointCount]
+  ];
+  for (const [label, value] of metrics) {
+    if (value !== undefined) rows.push([label, formatLiveEvidenceNumber(value)]);
+  }
+  return rows;
+}
+
+function decodeLiveDepthEvidence(preview: LiveFramePreview | null): LiveDecodedNpyEvidence<LiveDepthNpy> {
+  if (!preview) return { value: null, error: null };
+  if (preview.mediaType !== "application/x-npy") return { value: null, error: null };
+  try {
+    return { value: decodeLiveNpyPreview(preview, "depth"), error: null };
+  } catch (error) {
+    return { value: null, error: error instanceof Error ? error.message : "Depth preview is invalid" };
+  }
+}
+
+function decodeLiveConfidenceEvidence(preview: LiveFramePreview | null): LiveDecodedNpyEvidence<LiveConfidenceNpy> {
+  if (!preview) return { value: null, error: null };
+  if (preview.mediaType !== "application/x-npy") return { value: null, error: null };
+  try {
+    return { value: decodeLiveNpyPreview(preview, "confidence"), error: null };
+  } catch (error) {
+    return { value: null, error: error instanceof Error ? error.message : "Confidence preview is invalid" };
+  }
+}
+
+function assertLivePreviewMatches(
+  asset: LiveFrameSummary["assets"][number],
+  preview: LiveFramePreview,
+  identity: { sessionId: string; sequenceId: number; role: LiveEvidenceAssetRole }
+): void {
+  if (
+    preview.sessionId !== identity.sessionId
+    || preview.sequenceId !== identity.sequenceId
+    || preview.role !== identity.role
+    || preview.sha256 !== asset.sha256
+    || preview.sizeBytes !== asset.sizeBytes
+    || preview.mediaType !== asset.mediaType
+    || preview.width !== asset.width
+    || preview.height !== asset.height
+  ) {
+    throw new Error(`Live ${asset.role} preview does not match its received evidence ledger.`);
+  }
+}
+
+function livePreviewResidentBytes(preview: LiveFramePreview): number {
+  const encodedBytes = preview.dataUrl.length * 2;
+  const decodedPixels = preview.mediaType.startsWith("image/") && preview.width && preview.height
+    ? preview.width * preview.height * 4
+    : preview.sizeBytes;
+  const total = encodedBytes + decodedPixels;
+  return Number.isSafeInteger(total) ? total : Number.MAX_SAFE_INTEGER;
+}
+
+function liveAssetResidentBytes(asset: LiveFrameSummary["assets"][number]): number {
+  const dataUrlCharacters = `data:${asset.mediaType};base64,`.length + 4 * Math.ceil(asset.sizeBytes / 3);
+  const decodedBytes = asset.mediaType.startsWith("image/") && asset.width && asset.height
+    ? asset.width * asset.height * 4
+    : asset.sizeBytes;
+  const total = dataUrlCharacters * 2 + decodedBytes;
+  return Number.isSafeInteger(total) ? total : Number.MAX_SAFE_INTEGER;
+}
+
+function livePreviewImageKey(preview: LiveFramePreview): string {
+  return livePreviewCacheKey({
+    sessionId: preview.sessionId,
+    sequenceId: preview.sequenceId,
+    role: preview.role,
+    sha256: preview.sha256,
+    sizeBytes: preview.sizeBytes,
+    mediaType: preview.mediaType,
+    width: preview.width,
+    height: preview.height
+  });
+}
+
+function liveEvidenceDimensionsMatch(
+  left: Pick<LiveFramePreview, "width" | "height">,
+  right: Pick<LiveFramePreview, "width" | "height">
+): boolean {
+  return left.width !== null
+    && left.height !== null
+    && left.width === right.width
+    && left.height === right.height;
+}
+
+function liveMaskOverlayIssue(
+  mask: LiveFramePreview,
+  source: LiveFrameSummary["assets"][number] | null
+): string | null {
+  if (!source?.previewAvailable || !source.mediaType.startsWith("image/")) {
+    return "mask only · RGB overlay unavailable · source preview is not available";
+  }
+  if (!liveEvidenceDimensionsMatch(mask, source)) {
+    return "mask only · RGB overlay unavailable · dimensions differ and live_frame.v0.1 binds no alignment transform";
+  }
+  return null;
+}
+
+function liveEvidenceAssetsForSelection(
+  frame: LiveFrameSummary,
+  selectedRole: LiveEvidenceAssetRole
+): LiveFrameSummary["assets"] {
+  const roles: LiveEvidenceAssetRole[] = [selectedRole];
+  if (selectedRole.startsWith("mask-")) {
+    const mask = frame.assets.find((asset) => asset.role === selectedRole);
+    const source = frame.assets.find((asset) => asset.role === "source");
+    if (mask && source && liveEvidenceDimensionsMatch(mask, source)) roles.push("source");
+  }
+  return roles.flatMap((role) => {
+    const asset = frame.assets.find((candidate) => candidate.role === role && candidate.previewAvailable);
+    return asset ? [asset] : [];
+  });
+}
+
 function LiveTrajectory({
   frames,
   segments,
@@ -5922,6 +6299,201 @@ function LiveTrajectory({
       </svg>
       <span>{segments.length} segment{segments.length === 1 ? "" : "s"} · {frames.length} poses</span>
     </div>
+  );
+}
+
+const liveEvidenceRoles: LiveEvidenceAssetRole[] = [
+  "source",
+  "depth",
+  "confidence",
+  "mask-person",
+  "mask-valid",
+  "mask-object"
+];
+
+function LiveFrameEvidenceInspector({
+  coordinateUnits,
+  frame,
+  onRetry,
+  preview,
+  previewIssue,
+  raster,
+  selectedRole,
+  onSelectRole
+}: {
+  coordinateUnits: LiveSessionSnapshot["coordinateUnits"];
+  frame: LiveFrameSummary | null;
+  onRetry: () => void;
+  preview: LiveFramePreview | null;
+  previewIssue: string | null;
+  raster: LiveEvidenceRaster | null;
+  selectedRole: LiveEvidenceAssetRole;
+  onSelectRole: (role: LiveEvidenceAssetRole) => void;
+}) {
+  const asset = frame?.assets.find((entry) => entry.role === selectedRole) ?? null;
+  const qualityRows = frame ? liveQualityRows(frame.quality) : [];
+  const pointSummary = frame?.assets.some((entry) => entry.role === "depth")
+    ? "withheld · live_frame.v0.1 does not bind depth units or scale"
+    : "not declared by live frame";
+
+  return (
+    <WSPanel
+      title="Frame Evidence"
+      meta={frame ? `frame ${frame.sequenceId}` : "select a frame"}
+      className="ws-live-evidence-panel"
+      data-testid="live-frame-evidence"
+    >
+      <div className="ws-live-evidence-roles" aria-label="Live frame evidence channel">
+        {liveEvidenceRoles.map((role) => {
+          const declared = frame?.assets.find((entry) => entry.role === role);
+          return (
+            <WSPill
+              active={role === selectedRole}
+              aria-label={`Inspect ${liveEvidenceRoleLabel(role)} evidence`}
+              aria-pressed={role === selectedRole}
+              disabled={!declared?.previewAvailable}
+              key={role}
+              onClick={() => onSelectRole(role)}
+            >
+              {liveEvidenceRoleLabel(role)}
+            </WSPill>
+          );
+        })}
+      </div>
+      {frame ? (
+        <>
+          <div className="ws-kv">
+            <span>channel</span>
+            <b>{asset ? `${liveEvidenceRoleLabel(asset.role)} · ${asset.mediaType}` : "not declared"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>asset</span>
+            <b>{asset ? `${asset.width ?? "?"}×${asset.height ?? "?"} · ${formatBytes(asset.sizeBytes)}` : "none"}</b>
+          </div>
+          <div className="ws-kv ws-live-evidence-hash">
+            <span>SHA-256</span>
+            <b title={asset?.sha256}>{asset?.sha256 ?? "not declared"}</b>
+          </div>
+          <div className="ws-kv">
+            <span>read</span>
+            <b>{preview ? "checksum reverified · bounded preview" : asset?.previewAvailable ? "on demand" : "unsupported preview"}</b>
+          </div>
+          {previewIssue ? (
+            <div className="ws-live-evidence-issue" data-testid="live-evidence-support-status">
+              <span>{preview && selectedRole.startsWith("mask-") ? previewIssue : `rejected · ${previewIssue}`}</span>
+              <WSButton onClick={onRetry}>Retry evidence</WSButton>
+            </div>
+          ) : null}
+          {raster ? (
+            <div className="ws-kv">
+              <span>range</span>
+              <b>{formatLiveEvidenceNumber(raster.minimum)} … {formatLiveEvidenceNumber(raster.maximum)}</b>
+            </div>
+          ) : null}
+          <div className="ws-live-evidence-section">camera</div>
+          <div className="ws-kv">
+            <span>intrinsics</span>
+            <b>fx {formatLiveEvidenceNumber(frame.intrinsics.flX)} · fy {formatLiveEvidenceNumber(frame.intrinsics.flY)}</b>
+          </div>
+          <div className="ws-kv">
+            <span>principal</span>
+            <b>cx {formatLiveEvidenceNumber(frame.intrinsics.cx)} · cy {formatLiveEvidenceNumber(frame.intrinsics.cy)}</b>
+          </div>
+          <div className="ws-kv">
+            <span>calibration</span>
+            <b>{frame.intrinsics.calibrationWidth}×{frame.intrinsics.calibrationHeight} · {frame.intrinsics.appliesTo.replaceAll("_", " ")}</b>
+          </div>
+          <div className="ws-kv">
+            <span>pose</span>
+            <b>x {formatLiveEvidenceNumber(frame.cameraToWorld[3])} · y {formatLiveEvidenceNumber(frame.cameraToWorld[7])} · z {formatLiveEvidenceNumber(frame.cameraToWorld[11])}</b>
+          </div>
+          <div className="ws-kv">
+            <span>frame</span>
+            <b>{frame.coordinateFrame} · {coordinateUnits ?? "units unavailable"} · row-major camera_to_world</b>
+          </div>
+          <div className="ws-kv">
+            <span>timestamp</span>
+            <b>{formatLiveEvidenceNumber(frame.timestamp)} · {frame.clockDomain}</b>
+          </div>
+          <div className="ws-kv">
+            <span>tracking</span>
+            <b>{frame.tracking.state}</b>
+          </div>
+          <div className="ws-live-evidence-section">quality</div>
+          <div className="ws-live-quality" data-testid="live-quality-metrics">
+            {qualityRows.map(([label, value]) => (
+              <div className="ws-kv" key={label}>
+                <span>{label}</span>
+                <b>{value}</b>
+              </div>
+            ))}
+          </div>
+          <div className="ws-live-evidence-section">geometry proposals</div>
+          <div className="ws-kv" data-testid="live-depth-point-status">
+            <span>points</span>
+            <b>{pointSummary}</b>
+          </div>
+          <div className="ws-kv" data-testid="live-mesh-status">
+            <span>mesh</span>
+            <b>not transported by capture_splat.live_frame.v0.1</b>
+          </div>
+          <div className="ws-kv ws-live-authority">
+            <span>authority</span>
+            <b>proposal only · never measurement, world, collision, navigation, semantic, or physics authority</b>
+          </div>
+        </>
+      ) : (
+        <div className="ws-live-empty">Select a received frame to inspect its evidence ledger.</div>
+      )}
+    </WSPanel>
+  );
+}
+
+function LiveEvidenceCanvas({ label, raster }: { label: string; raster: LiveEvidenceRaster }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = raster.width;
+    canvas.height = raster.height;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const image = context.createImageData(raster.width, raster.height);
+    image.data.set(raster.rgba);
+    context.putImageData(image, 0, 0);
+  }, [raster]);
+  return <canvas aria-label={label} className="ws-sim-comparison-preview ws-live-scalar-preview" data-testid="live-scalar-preview" ref={canvasRef} role="img" />;
+}
+
+function LiveEvidenceImage({
+  alt,
+  className,
+  onIntegrity,
+  preview
+}: {
+  alt: string;
+  className: string;
+  onIntegrity: (preview: LiveFramePreview, error: string | null) => void;
+  preview: LiveFramePreview;
+}) {
+  return (
+    <img
+      alt={alt}
+      className={className}
+      onError={() => onIntegrity(preview, `Live ${preview.role} image could not be decoded.`)}
+      onLoad={(event) => {
+        const image = event.currentTarget;
+        const matches = preview.width !== null
+          && preview.height !== null
+          && image.naturalWidth === preview.width
+          && image.naturalHeight === preview.height;
+        onIntegrity(
+          preview,
+          matches ? null : `Live ${preview.role} decoded dimensions do not match its received evidence ledger.`
+        );
+      }}
+      src={preview.dataUrl}
+    />
   );
 }
 

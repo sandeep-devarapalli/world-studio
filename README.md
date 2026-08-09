@@ -67,6 +67,9 @@ access flow in this repo today.
 - An additive progressive-session path that accepts an immutable v0.2 session identity
   before `capture.json` exists, then checksum-binds the declared final manifest identity
   while sealing the same proposal-only evidence ledger.
+- A bounded Simulate inspector for checksum-verified RGB, depth, confidence, typed masks,
+  intrinsics, quality, pose, and coordinate units. Live v0.1 binds neither depth scale nor
+  point-cloud or mesh bytes, so unavailable geometry is reported instead of inferred.
 - An M1 desktop security boundary for explicit selected-interface pairing, pinned TLS,
   P-256 device identity, signed requests, credential expiry/revocation, and durable replay
   defense. It does not yet include the iPhone sender or physical-device acceptance.
@@ -123,6 +126,11 @@ not replace or modify the currently loaded world. The browser build keeps workin
 the Electron bridge. `WORLD_STUDIO_LIVE_PORT` changes the port;
 `WORLD_STUDIO_LIVE_HOST` is accepted only as `127.0.0.1` or `::1`, so environment
 configuration cannot widen the Phase 1 listener beyond loopback.
+
+Selecting a received frame exposes its declared evidence roles on demand. Preview reads are
+byte-bounded and revalidate the stored checksum; decoded NPY depth/confidence stays in a
+separate proposal-only inspector and never enters world or collision state. Point derivation
+is withheld because live v0.1 does not bind the depth encoding's units or scale.
 
 M1 does not widen that M0 listener. Its separate secure path begins only after an explicit
 pairing action and an exact local-network interface selection. The QR offer pins the Mac's

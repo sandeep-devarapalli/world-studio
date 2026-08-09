@@ -1,4 +1,5 @@
 import type {
+  LiveEvidenceAssetRole,
   LiveFramePreview,
   LiveSecuritySnapshot,
   LiveSessionSnapshot,
@@ -21,7 +22,11 @@ declare global {
       stopLiveReceiver?: () => Promise<LiveSessionSnapshot>;
       getLiveSessionStatus?: () => Promise<LiveSessionSnapshot>;
       onLiveSessionUpdate?: (listener: (snapshot: LiveSessionSnapshot) => void) => () => void;
-      getLiveFramePreview?: (input: { sessionId: string; sequenceId: number }) => Promise<LiveFramePreview | null>;
+      getLiveFramePreview?: (input: {
+        sessionId: string;
+        sequenceId: number;
+        role?: LiveEvidenceAssetRole;
+      }) => Promise<LiveFramePreview | null>;
       getLiveSecurityStatus?: () => Promise<LiveSecuritySnapshot>;
       beginLivePairing?: (input: { interfaceId: string }) => Promise<LiveSecuritySnapshot>;
       cancelLivePairing?: () => Promise<LiveSecuritySnapshot>;

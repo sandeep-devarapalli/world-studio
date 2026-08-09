@@ -13,8 +13,13 @@ import {
   rm,
   stat
 } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
-import type { LiveFrameSummary } from "@world-studio/world-core";
+import type {
+  LiveEvidenceAssetRole,
+  LiveFrameQuality,
+  LiveFrameSummary
+} from "@world-studio/world-core";
 import {
   validateLiveAuthReceipt,
   type LiveAuthReceipt
@@ -53,11 +58,15 @@ const finalizedFile = "finalized.json";
 const sourceManifestBindingFile = "source-manifest-binding.json";
 const stateFile = "state.json";
 const defaultMaxAssetBytes = 1024 * 1024 * 1024;
+const maxPreviewBytes = 16 * 1024 * 1024;
+const maxPreviewRendererResidentBytes = 24 * 1024 * 1024;
+const maxPreviewImageDimension = 16_384;
 const maxStoredSequenceId = 99_999_999;
 
 export interface LiveStoreSnapshot {
   sessionId: string;
   sourceManifestId: string | null;
+  coordinateUnits: "meters" | "unknown";
   expectedCount: number | null;
   finalSequenceId: number | null;
   receivedCount: number;
@@ -75,9 +84,12 @@ export interface LiveStoreSnapshot {
 export interface LiveFramePreviewBytes {
   sessionId: string;
   sequenceId: number;
+  role: LiveEvidenceAssetRole;
   mediaType: string;
-  width: number;
-  height: number;
+  sha256: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
   bytes: Buffer;
 }
 
@@ -451,6 +463,7 @@ export class LiveSessionStore {
     return {
       sessionId: stored.session.session_id,
       sourceManifestId: stored.sourceManifestBinding?.sha256 ?? null,
+      coordinateUnits: stored.session.coordinate_system.units,
       expectedCount: effectiveExpectedFrameCount(stored),
       finalSequenceId: stored.finalSequenceId,
       receivedCount: progress.receivedCount,
@@ -471,27 +484,36 @@ export class LiveSessionStore {
   async readFramePreview(
     sessionIdValue: string,
     sequenceId: number,
-    maxBytes = 16 * 1024 * 1024
+    role: LiveAssetRole = "source",
+    requestedMaxBytes = maxPreviewBytes
   ): Promise<LiveFramePreviewBytes | null> {
     const stored = await this.requireSession(validSessionId(sessionIdValue));
     if (!Number.isSafeInteger(sequenceId) || sequenceId < 1) throw new LiveContractError("sequence_id must be positive.");
+    if (!Number.isSafeInteger(requestedMaxBytes) || requestedMaxBytes < 1) {
+      throw new LiveContractError("Preview byte limit must be a positive integer.");
+    }
     const frame = stored.frames.get(sequenceId);
     if (!frame) return null;
-    const extension = sourceImageExtension(frame.source_frame.media_type);
-    if (!extension) return null;
+    const asset = declaredLiveAssets(frame).find((candidate) => candidate.role === role);
+    if (!asset) return null;
+    if (!assetPreviewAvailable(asset.role, asset.reference.media_type)) {
+      throw new LiveContractError(`Unsupported preview media type for ${role}: ${asset.reference.media_type}.`);
+    }
+    const byteLimit = Math.min(requestedMaxBytes, maxPreviewBytes);
     const frameRoot = this.committedFrameRoot(stored.session.session_id, sequenceId);
     await assertDirectory(frameRoot, "committed frame directory");
-    const sourcePath = path.join(frameRoot, `source${extension}`);
-    await verifyStoredAsset(sourcePath, frame.source_frame);
-    const fileInfo = await stat(sourcePath);
-    if (fileInfo.size > maxBytes) throw new LiveContractError("Source frame exceeds the preview byte limit.");
+    const assetPath = path.join(frameRoot, assetFileName(asset.role, asset.reference.media_type));
+    const bytes = await readVerifiedPreviewAsset(assetPath, asset.reference, byteLimit, role);
     return {
       sessionId: stored.session.session_id,
       sequenceId,
-      mediaType: frame.source_frame.media_type,
-      width: frame.source_frame.width,
-      height: frame.source_frame.height,
-      bytes: await readFile(sourcePath)
+      role,
+      mediaType: asset.reference.media_type,
+      sha256: asset.reference.sha256,
+      sizeBytes: asset.reference.size_bytes,
+      width: asset.reference.width ?? null,
+      height: asset.reference.height ?? null,
+      bytes
     };
   }
 
@@ -956,6 +978,15 @@ function missingRangesFromIds(ids: number[], end: number): LiveMissingRange[] {
 }
 
 function frameSummary(frame: LiveFrame): LiveFrameSummary {
+  const assets = declaredLiveAssets(frame).map(({ role, reference }) => ({
+    role,
+    sha256: reference.sha256,
+    sizeBytes: reference.size_bytes,
+    mediaType: reference.media_type,
+    width: reference.width ?? null,
+    height: reference.height ?? null,
+    previewAvailable: assetPreviewAvailable(role, reference.media_type)
+  }));
   return {
     sequenceId: frame.sequence_id,
     timestamp: frame.timestamp.value,
@@ -965,7 +996,41 @@ function frameSummary(frame: LiveFrame): LiveFrameSummary {
     sourceHeight: frame.source_frame.height,
     cameraToWorld: frame.camera_to_world,
     coordinateFrame: frame.coordinate_frame,
-    previewAvailable: sourceImageExtension(frame.source_frame.media_type) !== undefined
+    previewAvailable: assetPreviewAvailable("source", frame.source_frame.media_type),
+    intrinsics: {
+      model: frame.intrinsics.model,
+      flX: frame.intrinsics.fl_x,
+      flY: frame.intrinsics.fl_y,
+      cx: frame.intrinsics.cx,
+      cy: frame.intrinsics.cy,
+      calibrationWidth: frame.intrinsics.calibration_width,
+      calibrationHeight: frame.intrinsics.calibration_height,
+      appliesTo: frame.intrinsics.applies_to
+    },
+    tracking: { state: frame.tracking.state },
+    quality: frameQualitySummary(frame),
+    assets
+  };
+}
+
+function frameQualitySummary(frame: LiveFrame): LiveFrameQuality {
+  return {
+    accepted: frame.quality.accepted,
+    reason: frame.quality.reason,
+    score: frame.quality.score,
+    blurScore: frame.quality.blur_score,
+    exposureMean: frame.quality.exposure_mean,
+    exposureDelta: frame.quality.exposure_delta,
+    clippedHighlightFraction: frame.quality.clipped_highlight_fraction,
+    nearClippedHighlightFraction: frame.quality.near_clipped_highlight_fraction,
+    clippedShadowFraction: frame.quality.clipped_shadow_fraction,
+    featureGridCoverage: frame.quality.feature_grid_coverage,
+    parallaxMeters: frame.quality.parallax_meters,
+    angularVelocityDegS: frame.quality.angular_velocity_deg_s,
+    translationSpeedMS: frame.quality.translation_speed_m_s,
+    colmapOverlapScore: frame.quality.colmap_overlap_score,
+    validDepthRatio: frame.quality.valid_depth_ratio,
+    featurePointCount: frame.quality.feature_point_count
   };
 }
 
@@ -1005,6 +1070,296 @@ function sourceImageExtension(mediaType: string): ".jpg" | ".png" | ".webp" | un
   if (mediaType === "image/png") return ".png";
   if (mediaType === "image/webp") return ".webp";
   return undefined;
+}
+
+function assetPreviewAvailable(role: LiveAssetRole, mediaType: string): boolean {
+  if (sourceImageExtension(mediaType)) return true;
+  return mediaType === "application/x-npy" && (role === "depth" || role === "confidence");
+}
+
+async function readVerifiedPreviewAsset(
+  filePath: string,
+  reference: LiveAssetReference,
+  byteLimit: number,
+  role: LiveAssetRole
+): Promise<Buffer> {
+  let file: FileHandle;
+  try {
+    file = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (error) {
+    if (isNodeError(error, "ELOOP")) {
+      throw new LiveContractError("stored preview asset must be a regular file, not a symbolic link.", "corrupt");
+    }
+    throw error;
+  }
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) {
+      throw new LiveContractError("stored preview asset must be a regular file, not a symbolic link.", "corrupt");
+    }
+    if (info.size !== reference.size_bytes) {
+      throw new LiveContractError(`Stored asset size differs: ${path.basename(filePath)}.`, "corrupt");
+    }
+    if (info.size > byteLimit) throw new LiveContractError(`${role} exceeds the preview byte limit.`);
+    const bytes = await file.readFile();
+    if (bytes.byteLength !== reference.size_bytes) {
+      throw new LiveContractError(`Stored asset size differs: ${path.basename(filePath)}.`, "corrupt");
+    }
+    const actualSha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    if (actualSha256 !== reference.sha256) {
+      throw new LiveContractError(`Stored asset checksum differs: ${path.basename(filePath)}.`, "corrupt");
+    }
+    verifyPreviewImage(bytes, reference);
+    verifyRendererPreviewResidentBytes(bytes, reference);
+    return bytes;
+  } finally {
+    await file.close();
+  }
+}
+
+function verifyPreviewImage(bytes: Buffer, reference: LiveAssetReference): void {
+  const dimensions = previewImageDimensions(bytes, reference.media_type);
+  if (!dimensions) return;
+  if (reference.width === undefined || reference.height === undefined) {
+    throw new LiveContractError("Preview images require declared width and height.", "corrupt");
+  }
+  if (dimensions.width !== reference.width || dimensions.height !== reference.height) {
+    throw new LiveContractError("Stored preview image dimensions differ from the declaration.", "corrupt");
+  }
+  if (dimensions.width > maxPreviewImageDimension || dimensions.height > maxPreviewImageDimension) {
+    throw new LiveContractError("Stored preview image dimensions exceed the renderer bound.", "corrupt");
+  }
+}
+
+function verifyRendererPreviewResidentBytes(bytes: Buffer, reference: LiveAssetReference): void {
+  const dataUrlCharacters = `data:${reference.media_type};base64,`.length + 4 * Math.ceil(bytes.byteLength / 3);
+  const decodedBytes = reference.media_type.startsWith("image/")
+    ? (reference.width ?? 0) * (reference.height ?? 0) * 4
+    : bytes.byteLength;
+  const residentBytes = dataUrlCharacters * 2 + decodedBytes;
+  if (!Number.isSafeInteger(residentBytes) || residentBytes > maxPreviewRendererResidentBytes) {
+    throw new LiveContractError("Stored preview exceeds the renderer memory bound.", "corrupt");
+  }
+}
+
+function previewImageDimensions(bytes: Buffer, mediaType: string): { width: number; height: number } | null {
+  if (mediaType === "image/png") return pngDimensions(bytes);
+  if (mediaType === "image/jpeg") return jpegDimensions(bytes);
+  if (mediaType === "image/webp") return webpDimensions(bytes);
+  return null;
+}
+
+function pngDimensions(bytes: Buffer): { width: number; height: number } {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (
+    bytes.byteLength < 33
+    || !bytes.subarray(0, signature.byteLength).equals(signature)
+    || bytes.readUInt32BE(8) !== 13
+    || bytes.toString("ascii", 12, 16) !== "IHDR"
+  ) {
+    throw new LiveContractError("Stored PNG preview header is malformed.", "corrupt");
+  }
+  const dimensions = positiveImageDimensions(bytes.readUInt32BE(16), bytes.readUInt32BE(20), "PNG");
+  let offset = 8;
+  let complete = false;
+  while (offset + 12 <= bytes.byteLength) {
+    const chunkBytes = bytes.readUInt32BE(offset);
+    const dataEnd = offset + 12 + chunkBytes;
+    if (!Number.isSafeInteger(dataEnd) || dataEnd > bytes.byteLength) {
+      throw new LiveContractError("Stored PNG preview chunk is malformed.", "corrupt");
+    }
+    const chunkType = bytes.toString("ascii", offset + 4, offset + 8);
+    if (chunkType === "acTL") {
+      throw new LiveContractError("Animated PNG previews are unsupported.", "corrupt");
+    }
+    if (chunkType === "IEND") {
+      complete = true;
+      break;
+    }
+    offset = dataEnd;
+  }
+  if (!complete) throw new LiveContractError("Stored PNG preview is truncated.", "corrupt");
+  return dimensions;
+}
+
+function jpegDimensions(bytes: Buffer): { width: number; height: number } {
+  if (bytes.byteLength < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    throw new LiveContractError("Stored JPEG preview header is malformed.", "corrupt");
+  }
+  let offset = 2;
+  let dimensions: { width: number; height: number } | null = null;
+  let sawScan = false;
+  let sawEnd = false;
+  while (offset < bytes.byteLength) {
+    if (bytes[offset] !== 0xff) {
+      throw new LiveContractError("Stored JPEG preview marker stream is malformed.", "corrupt");
+    }
+    while (offset < bytes.byteLength && bytes[offset] === 0xff) offset += 1;
+    if (offset >= bytes.byteLength) break;
+    const marker = bytes[offset];
+    offset += 1;
+    if (marker === 0x00) {
+      throw new LiveContractError("Stored JPEG preview marker stream is malformed.", "corrupt");
+    }
+    if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      if (marker === 0xd9) {
+        sawEnd = true;
+        break;
+      }
+      continue;
+    }
+    if (offset + 2 > bytes.byteLength) break;
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.byteLength) {
+      throw new LiveContractError("Stored JPEG preview segment is malformed.", "corrupt");
+    }
+    if (isJpegStartOfFrame(marker)) {
+      if (segmentLength < 7) {
+        throw new LiveContractError("Stored JPEG preview frame header is malformed.", "corrupt");
+      }
+      if (dimensions) {
+        throw new LiveContractError("Stored JPEG preview contains multiple frame dimension headers.", "corrupt");
+      }
+      dimensions = positiveImageDimensions(
+        bytes.readUInt16BE(offset + 5),
+        bytes.readUInt16BE(offset + 3),
+        "JPEG"
+      );
+    }
+    if (marker === 0xda) {
+      sawScan = true;
+      offset += segmentLength;
+      while (offset < bytes.byteLength) {
+        if (bytes[offset] !== 0xff) {
+          offset += 1;
+          continue;
+        }
+        const markerStart = offset;
+        while (offset < bytes.byteLength && bytes[offset] === 0xff) offset += 1;
+        if (offset >= bytes.byteLength) break;
+        const scanMarker = bytes[offset];
+        if (scanMarker === 0x00 || (scanMarker >= 0xd0 && scanMarker <= 0xd7)) {
+          offset += 1;
+          continue;
+        }
+        offset = markerStart;
+        break;
+      }
+      continue;
+    }
+    offset += segmentLength;
+  }
+  if (!dimensions || !sawScan || !sawEnd || offset !== bytes.byteLength) {
+    throw new LiveContractError("Stored JPEG preview is incomplete or has no supported frame dimensions.", "corrupt");
+  }
+  return dimensions;
+}
+
+function isJpegStartOfFrame(marker: number): boolean {
+  return (
+    marker >= 0xc0
+    && marker <= 0xcf
+    && ![0xc4, 0xc8, 0xcc].includes(marker)
+  );
+}
+
+function webpDimensions(bytes: Buffer): { width: number; height: number } {
+  if (
+    bytes.byteLength < 20
+    || bytes.toString("ascii", 0, 4) !== "RIFF"
+    || bytes.toString("ascii", 8, 12) !== "WEBP"
+    || bytes.readUInt32LE(4) + 8 !== bytes.byteLength
+  ) {
+    throw new LiveContractError("Stored WebP preview header is malformed.", "corrupt");
+  }
+  let offset = 12;
+  let extendedDimensions: { width: number; height: number } | null = null;
+  let payloadDimensions: { width: number; height: number } | null = null;
+  let payloadChunk: "VP8 " | "VP8L" | null = null;
+  while (offset + 8 <= bytes.byteLength) {
+    const chunkType = bytes.toString("ascii", offset, offset + 4);
+    const chunkBytes = bytes.readUInt32LE(offset + 4);
+    const dataOffset = offset + 8;
+    const dataEnd = dataOffset + chunkBytes;
+    if (dataEnd > bytes.byteLength) {
+      throw new LiveContractError("Stored WebP preview chunk is malformed.", "corrupt");
+    }
+    if (chunkType === "VP8X") {
+      if (chunkBytes < 10) throw new LiveContractError("Stored WebP VP8X header is malformed.", "corrupt");
+      if (extendedDimensions) {
+        throw new LiveContractError("Stored WebP preview contains multiple VP8X headers.", "corrupt");
+      }
+      if ((bytes[dataOffset] & 0x02) !== 0) {
+        throw new LiveContractError("Animated WebP previews are unsupported.", "corrupt");
+      }
+      extendedDimensions = positiveImageDimensions(
+        1 + readUInt24LE(bytes, dataOffset + 4),
+        1 + readUInt24LE(bytes, dataOffset + 7),
+        "WebP"
+      );
+    } else if (chunkType === "ANIM" || chunkType === "ANMF") {
+      throw new LiveContractError("Animated WebP previews are unsupported.", "corrupt");
+    } else if (chunkType === "VP8 ") {
+      if (payloadChunk) {
+        throw new LiveContractError("Stored WebP preview contains multiple image payloads.", "corrupt");
+      }
+      if (
+        chunkBytes < 10
+        || bytes[dataOffset + 3] !== 0x9d
+        || bytes[dataOffset + 4] !== 0x01
+        || bytes[dataOffset + 5] !== 0x2a
+      ) {
+        throw new LiveContractError("Stored WebP VP8 header is malformed.", "corrupt");
+      }
+      const frameDimensions = positiveImageDimensions(
+        bytes.readUInt16LE(dataOffset + 6) & 0x3fff,
+        bytes.readUInt16LE(dataOffset + 8) & 0x3fff,
+        "WebP"
+      );
+      payloadChunk = "VP8 ";
+      payloadDimensions = frameDimensions;
+    } else if (chunkType === "VP8L") {
+      if (payloadChunk) {
+        throw new LiveContractError("Stored WebP preview contains multiple image payloads.", "corrupt");
+      }
+      if (chunkBytes < 5 || bytes[dataOffset] !== 0x2f) {
+        throw new LiveContractError("Stored WebP VP8L header is malformed.", "corrupt");
+      }
+      const packed = bytes.readUInt32LE(dataOffset + 1);
+      const frameDimensions = positiveImageDimensions(
+        1 + (packed & 0x3fff),
+        1 + ((packed >>> 14) & 0x3fff),
+        "WebP"
+      );
+      payloadChunk = "VP8L";
+      payloadDimensions = frameDimensions;
+    }
+    offset = dataEnd + (chunkBytes % 2);
+  }
+  if (!payloadDimensions || offset !== bytes.byteLength) {
+    throw new LiveContractError("Stored WebP preview is malformed or has no supported frame dimensions.", "corrupt");
+  }
+  if (
+    extendedDimensions
+    && (
+      extendedDimensions.width !== payloadDimensions.width
+      || extendedDimensions.height !== payloadDimensions.height
+    )
+  ) {
+    throw new LiveContractError("Stored WebP preview dimension headers conflict.", "corrupt");
+  }
+  return payloadDimensions;
+}
+
+function readUInt24LE(bytes: Buffer, offset: number): number {
+  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
+}
+
+function positiveImageDimensions(width: number, height: number, label: string): { width: number; height: number } {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
+    throw new LiveContractError(`Stored ${label} preview dimensions are invalid.`, "corrupt");
+  }
+  return { width, height };
 }
 
 function safeAssetExtension(mediaType: string): string {

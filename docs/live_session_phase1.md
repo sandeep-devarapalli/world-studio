@@ -57,3 +57,20 @@ The binding records path, schema, size, and SHA-256 metadata. It is not proof th
 Studio received or rehashed the `capture.json` bytes. The finalized handoff records this as
 `source_manifest_verification = "declared_checksum_reference_only"`. This checkpoint does
 not connect the sender to the iPhone capture loop or close physical-device acceptance.
+
+## Progressive Evidence Inspector
+
+Simulate can inspect each checksum-verified live-frame role without loading or mutating the
+current world. RGB, depth, confidence, and typed masks are fetched on demand through a
+bounded renderer cache. The selected frame also exposes its original calibration dimensions,
+intrinsics target, tracking state, complete quality record, pose, coordinate frame, asset
+sizes, and SHA-256 identities. Depth and confidence NPY previews are parsed with strict shape,
+type, length, element-count, and finite-value bounds.
+
+The inspector does not derive 3D points from the NPY values. Session units describe the pose
+coordinate system, but live v0.1 does not bind the depth encoding's unit, scale, or optical
+semantics. Applying those values to `camera_to_world` would therefore create unsupported
+geometry. The live v0.1 frame contract also has no point-cloud or mesh asset role, so both
+statuses are reported instead of inferred or silently loaded. A future proposal-artifact or
+depth-metadata contract must add checksum-bound units/scale and explicit user selection before
+geometry can be treated as received evidence. All inspector output remains `proposal_only`.
