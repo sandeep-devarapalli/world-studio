@@ -30,6 +30,9 @@ outcomes and acceptance gates.
 - The additive progressive-session contract now creates an immutable derived session
   identity before `capture.json` exists and binds the declared final manifest identity only
   during fail-closed sealing. M0 replay remains compatible.
+- Simulate now inspects checksum-verified RGB-D, confidence, masks, camera, trajectory, and
+  quality evidence through bounded on-demand previews. Point derivation is withheld because
+  live v0.1 binds no depth units/scale, and it does not transport point-cloud or mesh bytes.
 - Capture Splat's bounded sender foundation remains dormant until QR/Bonjour application
   wiring and a nonblocking post-write integration land. Networking cannot change keyframe
   acceptance.
