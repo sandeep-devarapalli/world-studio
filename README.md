@@ -82,6 +82,11 @@ access flow in this repo today.
   drilldowns.
 - Typed contracts for render modes, provenance, Budo media manifests, article figure views,
   verified semantic exports, sensors, episodes, and simulation state.
+- A strict M2 canonical-graph contract foundation for immutable World v0.2 and Asset v0.1
+  revisions plus reversible Delta v0.1 records. Snapshot-backed transition checks preserve
+  capture evidence and reject authority elevation; unsupported intents fail closed. It is
+  separate from the mutable UI `WorldSession` and does not yet change package loading,
+  editing, or persistence.
 - Artifact parsing for ordinary PLY, Gaussian PLY detection, OBJ mesh groups, Budo media
   manifests, article sidecars, and verified semantic export manifests.
 - A typed renderer adapter contract with canvas fallback for degraded paths and tests.

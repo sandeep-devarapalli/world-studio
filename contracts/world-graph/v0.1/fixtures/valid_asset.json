@@ -1,0 +1,158 @@
+{
+  "schema": "world_studio.asset.v0.1",
+  "asset_id": "chair_demo",
+  "version_id": "chair_demo_v1",
+  "version": 1,
+  "parent": null,
+  "created_at": "2026-08-09T12:00:00.000Z",
+  "units": {
+    "length": "m",
+    "mass": "kg",
+    "time": "s",
+    "angle": "rad",
+    "force": "N",
+    "torque": "N*m"
+  },
+  "root_frame": {
+    "frame_id": "chair_local",
+    "handedness": "right",
+    "up_axis": "+Y",
+    "forward_axis": "-Z"
+  },
+  "artifacts": [
+    {
+      "artifact_id": "chair_visual_mesh_001",
+      "role": "visual_mesh",
+      "content": {
+        "path": "assets/chair/visual/chair.glb",
+        "sha256": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size_bytes": 2048,
+        "media_type": "model/gltf-binary"
+      },
+      "frame_id": "chair_local",
+      "transform_id": null,
+      "authority": {
+        "domain": "visual",
+        "status": "proposal",
+        "approved_for": [
+          "human_visual_review"
+        ],
+        "not_approved_for": [
+          "measurement",
+          "collision",
+          "navigation",
+          "physics"
+        ],
+        "limitations": [
+          "The mesh is an appearance proposal only."
+        ],
+        "evidence_artifact_ids": []
+      },
+      "uncertainty": {
+        "status": "unknown",
+        "reason": "No metric asset validation has been attached."
+      },
+      "provenance": {
+        "producer": "world-studio-fixture",
+        "producer_version": "0.1.0",
+        "created_at": "2026-08-09T11:59:00.000Z",
+        "run_id": "asset_fixture_run_001",
+        "input_artifact_ids": [],
+        "input_versions": []
+      }
+    }
+  ],
+  "applied_delta": null,
+  "authorities": [
+    {
+      "domain": "visual",
+      "status": "proposal",
+      "approved_for": [
+        "human_visual_review"
+      ],
+      "not_approved_for": [
+        "measurement",
+        "collision",
+        "navigation",
+        "physics",
+        "deployment"
+      ],
+      "limitations": [
+        "Asset layers require independent promotion evidence."
+      ],
+      "evidence_artifact_ids": [
+        "chair_visual_mesh_001"
+      ]
+    }
+  ],
+  "readiness": {
+    "visual": {
+      "status": "proposal",
+      "evidence_artifact_ids": [
+        "chair_visual_mesh_001"
+      ],
+      "report": null,
+      "limitations": [
+        "Visual QA is not attached."
+      ]
+    },
+    "metric": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Metric dimensions are unavailable."
+      ]
+    },
+    "collision": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "No collision layer is present."
+      ]
+    },
+    "navigation": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Navigation use is not validated."
+      ]
+    },
+    "semantic": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Semantic review is unavailable."
+      ]
+    },
+    "articulation": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Articulation is not modeled."
+      ]
+    },
+    "physics": {
+      "status": "unavailable",
+      "evidence_artifact_ids": [],
+      "report": null,
+      "limitations": [
+        "Physical parameters are unavailable."
+      ]
+    }
+  },
+  "provenance": {
+    "producer": "world-studio-fixture",
+    "producer_version": "0.1.0",
+    "created_at": "2026-08-09T12:00:00.000Z",
+    "run_id": "asset_manifest_run_001",
+    "input_artifact_ids": [
+      "chair_visual_mesh_001"
+    ],
+    "input_versions": []
+  }
+}

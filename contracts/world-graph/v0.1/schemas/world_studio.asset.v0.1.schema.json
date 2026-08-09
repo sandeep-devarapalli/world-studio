@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:schema:world_studio.asset.v0.1",
+  "title": "World Studio Canonical Asset Manifest v0.1",
+  "description": "Active immutable Asset version contract with content-addressed representation layers and authority that remains separate by domain.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "asset_id",
+    "version_id",
+    "version",
+    "parent",
+    "created_at",
+    "units",
+    "root_frame",
+    "artifacts",
+    "applied_delta",
+    "authorities",
+    "readiness",
+    "provenance"
+  ],
+  "properties": {
+    "schema": {
+      "const": "world_studio.asset.v0.1"
+    },
+    "asset_id": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/identifier"
+    },
+    "version_id": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/identifier"
+    },
+    "version": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/positiveVersion"
+    },
+    "parent": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/revisionReference"
+        }
+      ]
+    },
+    "created_at": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/timestamp"
+    },
+    "units": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/units"
+    },
+    "root_frame": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/frameNode"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 65536,
+      "items": {
+        "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/artifactBinding"
+      }
+    },
+    "applied_delta": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/deltaReference"
+        }
+      ]
+    },
+    "authorities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/authority"
+      }
+    },
+    "readiness": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/readiness"
+    },
+    "provenance": {
+      "$ref": "urn:world-studio:schema:world_studio.world_graph_defs.v0.1#/$defs/provenance"
+    }
+  }
+}

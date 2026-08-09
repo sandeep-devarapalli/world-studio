@@ -9,7 +9,7 @@ outcomes and acceptance gates.
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
 | M1 Authenticated LAN And Progressive World | Paired TLS sender, bounded queues, live RGB-D/mesh proposals, isolated worker lifecycle | partial |
-| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas | partial/planned |
+| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas | partial |
 | M3 Indoor Navigation And First Deployment Twin - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
 | M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal | planned |
@@ -48,6 +48,10 @@ outcomes and acceptance gates.
 ### World And Editor
 
 - Keep View, Edit, Simulate, Pilot, Sensors, and Episode as the six product modes.
+- The first active M2 contract slice keeps canonical World, Asset, and Delta records
+  separate from `WorldSession`, binds parent manifests and referenced content by SHA-256,
+  and records transforms, uncertainty, provenance, authority, and reversible before/after
+  edit effects without executing them.
 - Evolve current packages, reversible tools, and Episodes into the M2 immutable World
   Package and edit graph.
 - Preserve ordinary PLY, Gaussian PLY, mesh, collision, navigation, semantic, and physics

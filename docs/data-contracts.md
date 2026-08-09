@@ -25,6 +25,45 @@ state/contact/sensor records, and Episode v0.2 proposals. None is an active runt
 until strict schemas, examples, migrations, corruption/path tests, and round-trip fixtures
 land.
 
+## Canonical World, Asset And Delta Graph
+
+The first active M2 contract slice lives under `contracts/world-graph/v0.1`:
+
+```text
+world_studio.world.v0.2
+world_studio.asset.v0.1
+world_studio.delta.v0.1
+```
+
+`world_studio.world.v0.2` intentionally does not reuse the v0.1 identifier. The preserved
+source bundle and the curated blueprint contain incompatible proposal-only v0.1 shapes;
+both remain historical inputs that require an explicit future migration.
+
+The active records are closed, bounded JSON contracts. They bind content with lowercase
+SHA-256, byte size, media type, and safe POSIX-relative paths; identify exact parent
+manifests; use canonical SI units; define a connected, acyclic row-major transform graph;
+and keep authority and uncertainty explicit for every representation. World and Asset
+revisions link immutable content rather than embedding or rewriting prior versions.
+
+AJV schema validation is necessary but not sufficient for acceptance. Readers must also
+use the exported World Core semantic validator, which rejects duplicate JSON members,
+non-finite values, unsafe paths, invalid graph topology and transforms, and strings beyond
+their UTF-8 byte limits. JSON Schema counts Unicode characters rather than encoded bytes,
+so the byte bound is intentionally enforced by the semantic layer.
+
+Delta v0.1 records reversible `crop`, `transform`, `filter`, `merge`, `hide`, `replace`,
+`objectize`, and `annotate` intents as typed before/after effects. A delta cannot promote
+authority or mutate capture evidence. The standalone grammar covers all eight intents, but
+the v0.1 transition validator commits only effects that the current immutable snapshots can
+materialize: World or Asset artifact edits, World asset membership, and World `manual_edit`
+transform edges. It fails closed for `hide`, `annotate`, evidence-owned transform edges, and
+unsupported scope/intent combinations until schema-backed state carriers exist. Site
+revisions and Site deltas also remain a later contract.
+
+Storing packages, migrating current local packages, executing editor tools, and rehashing
+referenced filesystem bytes are later M2 checkpoints; this contract slice does not alter the
+current editor, renderer, simulation, or loader.
+
 ## Capture Splat Live Session
 
 World Studio mirrors the Capture Splat-owned schemas and fixtures byte-for-byte:

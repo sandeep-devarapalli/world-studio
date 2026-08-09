@@ -47,10 +47,14 @@ implemented contract. It remains only in
 [`source/contracts/`](source/contracts/) as provenance and must not be imported by runtime
 code.
 
-`world_studio.world.v0.1`, `isaac_job.v0.1`, and the Physical Asset Calibration contracts
-remain under [`proposals/contracts/`](proposals/contracts/) until runtime adoption,
-migration, and round-trip tests exist. Isaac runtime versions belong in job capability
-data, not schema enums.
+The two historical `world_studio.world.v0.1` drafts remain proposal/provenance material.
+The first active canonical graph uses `world_studio.world.v0.2` together with Asset v0.1
+and Delta v0.1 under [`/contracts/world-graph/v0.1`](../../../contracts/world-graph/v0.1).
+It does not yet provide package migration, storage, or edit execution. `isaac_job.v0.1`
+and the Physical Asset Calibration contracts remain under
+[`proposals/contracts/`](proposals/contracts/) until runtime adoption, migration, and
+round-trip tests exist. Isaac runtime versions belong in job capability data, not schema
+enums.
 
 ## Runtime Boundary
 

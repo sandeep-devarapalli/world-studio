@@ -1,5 +1,7 @@
 export type StudioMode = "view" | "edit" | "simulate" | "pilot" | "sensors" | "episode";
 
+export * from "./world-graph-contract.js";
+
 export type RenderMode = "splat" | "points" | "mesh" | "semantic" | "depth";
 
 export type AssetKind =

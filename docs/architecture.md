@@ -113,8 +113,17 @@ ownership model:
 - Isaac Lab Newton, Isaac RTX, Isaac Sim, ROS 2, reconstruction, and other adapters run
   through external, capability-reporting workers.
 
-The canonical World Package is still a proposal. Existing local package and Episode
-contracts remain active until a runtime migration and round-trip path is implemented.
+The first canonical-graph contract slice is active under `contracts/world-graph/v0.1`.
+It defines immutable World v0.2 and Asset v0.1 revisions plus reversible Delta v0.1
+records with content hashes, transforms, units, uncertainty, provenance, and separate
+authority lanes. These records are deliberately separate from the mutable `WorldSession`.
+Existing local package and Episode contracts remain the active loading paths until a
+confined store, migration, and referenced-byte round-trip path is implemented.
+
+Delta v0.1 is a forward grammar, not an editor executor. Commit-time transition validation
+currently materializes artifact edits, World asset membership, and World `manual_edit`
+transforms only. Intents without a snapshot-backed state carrier, evidence-owned transforms,
+unsupported scope/intent combinations, and future Site revisions fail closed.
 
 The target R2S2R and runtime boundaries are documented in the
 [R2S2R and Newton adoption note](blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md).
