@@ -66,11 +66,32 @@ try {
   const snapshot = await receiver.status();
   assert(snapshot.state === "finalized", "receiver did not retain finalized state");
   assert(snapshot.receivedCount === 2 && snapshot.missingCount === 0, "receiver finalized with incorrect counts");
+  assert(snapshot.coordinateUnits === "meters", "receiver snapshot lost session coordinate units");
+  const firstFrame = snapshot.frames[0];
+  assert(firstFrame?.intrinsics?.calibrationWidth === 1, "live summary lost original calibration dimensions");
+  assert(firstFrame?.quality?.reason === "live_e2e_fixture", "live summary lost capture quality");
+  assert(firstFrame?.tracking?.state === "unknown", "live summary lost tracking state");
+  const expectedRoles = ["source", "depth", "confidence", "mask-person", "mask-valid", "mask-object"];
+  assert(
+    JSON.stringify(firstFrame?.assets.map((asset) => asset.role)) === JSON.stringify(expectedRoles),
+    "live summary lost a declared evidence role"
+  );
+  for (const role of expectedRoles) {
+    const preview = await receiver.readFramePreview(sessionId, 1, role);
+    assert(preview?.role === role, `receiver did not reopen ${role} evidence`);
+    assert(preview?.sha256 === firstFrame.assets.find((asset) => asset.role === role)?.sha256, `${role} preview identity differs`);
+  }
 
   const sessionRoot = receiver.store.sessionDirectory(sessionId);
   const handoff = JSON.parse(await readFile(path.join(sessionRoot, "capture-splat.world-studio.json"), "utf8"));
   assert(handoff.authority === "proposal_only", "handoff authority changed");
   assert(handoff.source_frames?.length === 2, "handoff does not contain both source frames");
+  const handoffAssets = handoff.source_frames[0]?.assets;
+  assert(handoffAssets?.depth && handoffAssets?.confidence, "handoff lost RGB-D evidence");
+  assert(
+    handoffAssets?.mask_person && handoffAssets?.mask_valid && handoffAssets?.mask_object,
+    "handoff lost typed mask evidence"
+  );
 
   const reopened = await readLocalPackage(sessionRoot);
   assert(reopened.packageKind === "capture-splat-local-folder", "finalized handoff did not reopen as Capture Splat");
@@ -169,6 +190,8 @@ try {
     duplicate_sends: summary.duplicate_sends,
     reopened_package_kind: reopened.packageKind,
     reopened_frame_count: mediaFrames.frames.length,
+    inspected_roles: expectedRoles,
+    coordinate_units: snapshot.coordinateUnits,
     authority: handoff.authority,
     progressive_session_id: progressiveSessionId,
     progressive_resumed: true,
@@ -182,13 +205,33 @@ try {
 
 async function writeCapture(root) {
   const rgbRoot = path.join(root, "rgb");
-  await mkdir(rgbRoot, { recursive: true });
+  const depthRoot = path.join(root, "depth");
+  const confidenceRoot = path.join(root, "confidence");
+  const personMaskRoot = path.join(root, "masks", "person");
+  const validMaskRoot = path.join(root, "masks", "valid");
+  const objectMaskRoot = path.join(root, "masks", "object");
+  await Promise.all([
+    mkdir(rgbRoot, { recursive: true }),
+    mkdir(depthRoot, { recursive: true }),
+    mkdir(confidenceRoot, { recursive: true }),
+    mkdir(personMaskRoot, { recursive: true }),
+    mkdir(validMaskRoot, { recursive: true }),
+    mkdir(objectMaskRoot, { recursive: true })
+  ]);
   const pixel = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==",
     "base64"
   );
-  await writeFile(path.join(rgbRoot, "frame-1.png"), pixel);
-  await writeFile(path.join(rgbRoot, "frame-2.png"), pixel);
+  const depth = npyV1("<f4", [2, 2], Buffer.from(new Float32Array([0.75, 1, 1.25, 1.5]).buffer));
+  const confidence = npyV1("|u1", [2, 2], Buffer.from([2, 2, 1, 2]));
+  await Promise.all([1, 2].flatMap((sequenceId) => [
+    writeFile(path.join(rgbRoot, `frame-${sequenceId}.png`), pixel),
+    writeFile(path.join(depthRoot, `frame-${sequenceId}.npy`), depth),
+    writeFile(path.join(confidenceRoot, `frame-${sequenceId}.npy`), confidence),
+    writeFile(path.join(personMaskRoot, `frame-${sequenceId}.png`), pixel),
+    writeFile(path.join(validMaskRoot, `frame-${sequenceId}.png`), pixel),
+    writeFile(path.join(objectMaskRoot, `frame-${sequenceId}.png`), pixel)
+  ]));
   await writeFile(path.join(root, "capture.json"), `${JSON.stringify({
     schema: "capture_splat.v0.3",
     session_config: {
@@ -205,6 +248,11 @@ async function writeCapture(root) {
     },
     frames: [1, 2].map((sequenceId) => ({
       rgb: `rgb/frame-${sequenceId}.png`,
+      depth: `depth/frame-${sequenceId}.npy`,
+      confidence: `confidence/frame-${sequenceId}.npy`,
+      person_mask: `masks/person/frame-${sequenceId}.png`,
+      valid_mask: `masks/valid/frame-${sequenceId}.png`,
+      object_mask: `masks/object/frame-${sequenceId}.png`,
       timestamp: sequenceId * 0.1,
       transform_matrix: [
         [1, 0, 0, sequenceId * 0.25],
@@ -219,6 +267,16 @@ async function writeCapture(root) {
       }
     }))
   }, null, 2)}\n`);
+}
+
+function npyV1(descr, shape, payload) {
+  const prefix = Buffer.from("\x93NUMPY\x01\x00", "binary");
+  const dictionary = `{'descr': '${descr}', 'fortran_order': False, 'shape': (${shape.join(", ")},), }`;
+  const padding = " ".repeat((16 - ((prefix.length + 2 + dictionary.length + 1) % 16)) % 16);
+  const header = Buffer.from(`${dictionary}${padding}\n`, "ascii");
+  const headerLength = Buffer.alloc(2);
+  headerLength.writeUInt16LE(header.length);
+  return Buffer.concat([prefix, headerLength, header, payload]);
 }
 
 async function putProgressiveFrame(base, root, sessionId, sequenceId) {

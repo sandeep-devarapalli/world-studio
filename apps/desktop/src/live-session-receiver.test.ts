@@ -16,6 +16,10 @@ import {
 import { LiveSessionReceiver } from "./live-session-receiver.js";
 
 const roots: string[] = [];
+const onePixelPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==",
+  "base64"
+);
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -49,14 +53,22 @@ describe("LiveSessionReceiver", () => {
     expect(sessionResponse.status).toBe(200);
     expect(await sessionResponse.json()).toMatchObject({ operation: "session", status: "accepted" });
 
-    const bytes = Buffer.from("receiver-frame");
-    const frameResponse = await jsonRequest(`${base}/sessions/test-session/frames/1`, "PUT", frame(bytes));
+    const bytes = onePixelPng;
+    const metadata = frame(bytes);
+    metadata.source_frame = {
+      ...metadata.source_frame,
+      path: "rgb/source.png",
+      media_type: "image/png",
+      width: 1,
+      height: 1
+    };
+    const frameResponse = await jsonRequest(`${base}/sessions/test-session/frames/1`, "PUT", metadata);
     expect(frameResponse.status).toBe(202);
     expect(await frameResponse.json()).toMatchObject({ operation: "frame", status: "incomplete" });
 
     const assetResponse = await fetch(`${base}/sessions/test-session/frames/1/assets/source`, {
       method: "PUT",
-      headers: { "content-type": "image/jpeg", "content-length": String(bytes.byteLength) },
+      headers: { "content-type": "image/png", "content-length": String(bytes.byteLength) },
       body: bytes
     });
     expect(assetResponse.status).toBe(200);
@@ -85,7 +97,14 @@ describe("LiveSessionReceiver", () => {
 
     const preview = await receiver.readFramePreview("test-session", 1);
     expect(preview?.bytes).toEqual(bytes);
-    expect(preview).toMatchObject({ mediaType: "image/jpeg", width: 20, height: 10 });
+    expect(preview).toMatchObject({
+      role: "source",
+      mediaType: "image/png",
+      sha256: sha(bytes),
+      sizeBytes: bytes.byteLength,
+      width: 1,
+      height: 1
+    });
     expect(updates).toContain("receiving");
     expect(updates).toContain("finalized");
 
@@ -117,6 +136,7 @@ describe("LiveSessionReceiver", () => {
     expect(await first.status()).toMatchObject({
       sessionId,
       sourceManifestId: null,
+      coordinateUnits: "meters",
       expectedCount: null
     });
 

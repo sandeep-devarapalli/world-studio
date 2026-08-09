@@ -10,7 +10,8 @@ import {
   validateLiveFinalize,
   validateLiveFrame,
   validateLiveSessionDeclaration,
-  type LiveAck
+  type LiveAck,
+  type LiveAssetRole
 } from "./live-session-contract.js";
 import {
   LiveSessionStore,
@@ -149,9 +150,10 @@ export class LiveSessionReceiver {
   async readFramePreview(
     sessionId: string,
     sequenceId: number,
+    role: LiveAssetRole = "source",
     maxBytes?: number
   ): Promise<LiveFramePreviewBytes | null> {
-    return this.store.readFramePreview(sessionId, sequenceId, maxBytes);
+    return this.store.readFramePreview(sessionId, sequenceId, role, maxBytes);
   }
 
   async dispatch(
@@ -358,6 +360,7 @@ function snapshotFromStore(
     listening,
     sessionId: stored.sessionId,
     sourceManifestId: stored.sourceManifestId,
+    coordinateUnits: stored.coordinateUnits,
     expectedCount: stored.expectedCount,
     finalSequenceId: stored.finalSequenceId,
     receivedCount: stored.receivedCount,
@@ -383,6 +386,7 @@ function emptySnapshot(
     listening,
     sessionId: null,
     sourceManifestId: null,
+    coordinateUnits: null,
     expectedCount: null,
     finalSequenceId: null,
     receivedCount: 0,

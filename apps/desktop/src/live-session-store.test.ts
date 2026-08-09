@@ -30,6 +30,15 @@ import {
 import { LiveSessionStore } from "./live-session-store.js";
 
 const roots: string[] = [];
+const onePixelPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==",
+  "base64"
+);
+const onePixelJpeg = Buffer.from(
+  "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9sAQwACAgICAgIDAgIDBQMDAwUGBQUFBQYIBgYGBgYICggICAgICAoKCgoKCgoKDAwMDAwMDg4ODg4PDw8PDw8PDw8P/9sAQwECAgIEBAQHBAQHEAsJCxAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ/90ABAAB/9oADAMBAAIRAxEAPwD8S6KKK0A//9k=",
+  "base64"
+);
+const onePixelWebp = Buffer.from("UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAgA0JaQAA3AA/vp3QAA=", "base64");
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -191,6 +200,7 @@ describe("LiveSessionStore", () => {
     await store.putFrame(frame2);
     expect((await store.putAsset("test-session", 2, "source", chunks(bytes2))).status).toBe("accepted");
     expect(await store.snapshot("test-session")).toMatchObject({
+      coordinateUnits: "meters",
       receivedCount: 1,
       contiguousCount: 0,
       pendingCount: 1,
@@ -411,7 +421,221 @@ describe("LiveSessionStore", () => {
     const storedSource = path.join(symlinkRoot, "test-session", "frames", "00000001", "source.jpg");
     await rm(storedSource);
     await symlink(external, storedSource);
+    await expect(symlinkStore.readFramePreview("test-session", 1)).rejects.toThrow(/symbolic link/);
     await expect(symlinkStore.finalize(finalize(1))).rejects.toThrow(/symbolic link/);
+  });
+
+  it("exposes complete role-aware evidence without sender paths and revalidates every preview", async () => {
+    const root = await tempRoot("role-evidence");
+    const store = new LiveSessionStore(root);
+    await store.putSession(session(1));
+    const evidence = {
+      source: onePixelPng,
+      depth: Buffer.from("depth-npy"),
+      confidence: Buffer.from("confidence-npy"),
+      "mask-person": onePixelPng,
+      "mask-valid": onePixelPng,
+      "mask-object": onePixelPng
+    } as const;
+    const metadata = frame(1, evidence.source);
+    metadata.source_frame = evidenceReference(
+      "private/source/frame-1.png",
+      evidence.source,
+      "image/png",
+      1,
+      1
+    );
+    metadata.tracking.state = "limited_motion";
+    metadata.quality = {
+      accepted: true,
+      reason: "accepted_keyframe",
+      score: 0.91,
+      blur_score: 0.12,
+      exposure_mean: 0.5,
+      exposure_delta: 0.03,
+      clipped_highlight_fraction: 0.01,
+      near_clipped_highlight_fraction: 0.02,
+      clipped_shadow_fraction: 0.04,
+      feature_grid_coverage: 0.72,
+      parallax_meters: 0.18,
+      angular_velocity_deg_s: 4.5,
+      translation_speed_m_s: 0.2,
+      colmap_overlap_score: 0.83,
+      valid_depth_ratio: 0.88,
+      feature_point_count: 321
+    };
+    metadata.assets = {
+      depth: evidenceReference("private/depth/frame-1.npy", evidence.depth, "application/x-npy", 10, 5),
+      confidence: evidenceReference(
+        "private/confidence/frame-1.npy",
+        evidence.confidence,
+        "application/x-npy",
+        10,
+        5
+      ),
+      masks: [
+        { ...evidenceReference("private/masks/person.png", evidence["mask-person"], "image/png", 1, 1), kind: "person" },
+        { ...evidenceReference("private/masks/valid.png", evidence["mask-valid"], "image/png", 1, 1), kind: "valid" },
+        { ...evidenceReference("private/masks/object.png", evidence["mask-object"], "image/png", 1, 1), kind: "object" }
+      ]
+    };
+    await store.putFrame(metadata);
+    for (const [role, bytes] of Object.entries(evidence)) {
+      await store.putAsset("test-session", 1, role as keyof typeof evidence, chunks(bytes));
+    }
+
+    const summary = (await store.snapshot("test-session")).frames[0];
+    expect(summary).toMatchObject({
+      intrinsics: {
+        model: "pinhole",
+        flX: 5,
+        flY: 6,
+        cx: 5,
+        cy: 2,
+        calibrationWidth: 10,
+        calibrationHeight: 5,
+        appliesTo: "depth"
+      },
+      tracking: { state: "limited_motion" },
+      quality: {
+        accepted: true,
+        reason: "accepted_keyframe",
+        score: 0.91,
+        blurScore: 0.12,
+        exposureMean: 0.5,
+        exposureDelta: 0.03,
+        clippedHighlightFraction: 0.01,
+        nearClippedHighlightFraction: 0.02,
+        clippedShadowFraction: 0.04,
+        featureGridCoverage: 0.72,
+        parallaxMeters: 0.18,
+        angularVelocityDegS: 4.5,
+        translationSpeedMS: 0.2,
+        colmapOverlapScore: 0.83,
+        validDepthRatio: 0.88,
+        featurePointCount: 321
+      }
+    });
+    expect(summary?.assets).toEqual([
+      evidenceSummary("source", evidence.source, "image/png", 1, 1),
+      evidenceSummary("depth", evidence.depth, "application/x-npy", 10, 5),
+      evidenceSummary("confidence", evidence.confidence, "application/x-npy", 10, 5),
+      evidenceSummary("mask-person", evidence["mask-person"], "image/png", 1, 1),
+      evidenceSummary("mask-valid", evidence["mask-valid"], "image/png", 1, 1),
+      evidenceSummary("mask-object", evidence["mask-object"], "image/png", 1, 1)
+    ]);
+    expect(JSON.stringify(summary)).not.toContain("private/");
+    expect(JSON.stringify(summary)).not.toContain("sender/path/");
+
+    for (const [role, bytes] of Object.entries(evidence)) {
+      const preview = await store.readFramePreview("test-session", 1, role as keyof typeof evidence);
+      expect(preview?.bytes).toEqual(bytes);
+      expect(preview).toMatchObject({
+        role,
+        sha256: hash(bytes),
+        sizeBytes: bytes.byteLength
+      });
+    }
+    expect(await store.readFramePreview("test-session", 2, "depth")).toBeNull();
+
+    const depthPath = path.join(root, "test-session", "frames", "00000001", "depth.npy");
+    await writeFile(depthPath, Buffer.from("corrupt!!"));
+    await expect(store.readFramePreview("test-session", 1, "depth")).rejects.toThrow(/checksum differs/);
+  });
+
+  it("verifies image headers, declared dimensions, and decoded preview bounds", async () => {
+    for (const [label, bytes, mediaType] of [
+      ["png", onePixelPng, "image/png"],
+      ["jpeg", onePixelJpeg, "image/jpeg"],
+      ["webp", onePixelWebp, "image/webp"]
+    ] as const) {
+      const valid = await storeWithPreviewImage(`valid-${label}`, bytes, mediaType, 1, 1);
+      expect((await valid.readFramePreview("test-session", 1))?.bytes).toEqual(bytes);
+    }
+
+    const lying = await storeWithPreviewImage("lying-png", onePixelPng, "image/png", 2, 1);
+    await expect(lying.readFramePreview("test-session", 1)).rejects.toThrow(/dimensions differ/);
+
+    for (const mediaType of ["image/png", "image/jpeg", "image/webp"] as const) {
+      const malformed = Buffer.from(`not-${mediaType}`);
+      const store = await storeWithPreviewImage(`malformed-${mediaType.split("/")[1]}`, malformed, mediaType, 1, 1);
+      await expect(store.readFramePreview("test-session", 1)).rejects.toThrow(/malformed/);
+    }
+
+    const animatedPng = Buffer.from(onePixelPng);
+    animatedPng.write("acTL", animatedPng.indexOf(Buffer.from("IDAT")), "ascii");
+    const animatedPngStore = await storeWithPreviewImage("animated-png", animatedPng, "image/png", 1, 1);
+    await expect(animatedPngStore.readFramePreview("test-session", 1)).rejects.toThrow(/Animated PNG/);
+
+    const animatedWebp = animatedWebpHeader();
+    const animatedWebpStore = await storeWithPreviewImage("animated-webp", animatedWebp, "image/webp", 1, 1);
+    await expect(animatedWebpStore.readFramePreview("test-session", 1)).rejects.toThrow(/Animated WebP/);
+
+    const sofOffset = onePixelJpeg.indexOf(Buffer.from([0xff, 0xc0]));
+    const truncatedJpeg = onePixelJpeg.subarray(0, sofOffset + 2 + onePixelJpeg.readUInt16BE(sofOffset + 2));
+    const truncatedJpegStore = await storeWithPreviewImage("truncated-jpeg", truncatedJpeg, "image/jpeg", 1, 1);
+    await expect(truncatedJpegStore.readFramePreview("test-session", 1)).rejects.toThrow(/incomplete/);
+
+    const hiddenLargeJpeg = jpegWithHiddenLargeFrame();
+    const hiddenLargeJpegStore = await storeWithPreviewImage("hidden-large-jpeg", hiddenLargeJpeg, "image/jpeg", 1, 1);
+    await expect(hiddenLargeJpegStore.readFramePreview("test-session", 1)).rejects.toThrow(/multiple frame dimension headers/);
+
+    const conflictingWebp = webpWithConflictingDimensions();
+    const conflictingWebpStore = await storeWithPreviewImage("conflicting-webp", conflictingWebp, "image/webp", 1, 1);
+    await expect(conflictingWebpStore.readFramePreview("test-session", 1)).rejects.toThrow(/dimension headers conflict/);
+
+    const malformedWebpTail = Buffer.concat([onePixelWebp, Buffer.from([1, 2, 3, 4, 5])]);
+    malformedWebpTail.writeUInt32LE(malformedWebpTail.byteLength - 8, 4);
+    const malformedWebpTailStore = await storeWithPreviewImage("malformed-webp-tail", malformedWebpTail, "image/webp", 1, 1);
+    await expect(malformedWebpTailStore.readFramePreview("test-session", 1)).rejects.toThrow(/malformed/);
+
+    const oversizedPixels = pngWithDimensions(5_000, 5_000);
+    const oversized = await storeWithPreviewImage(
+      "oversized-decoded-png",
+      oversizedPixels,
+      "image/png",
+      5_000,
+      5_000
+    );
+    await expect(oversized.readFramePreview("test-session", 1)).rejects.toThrow(/renderer memory bound/);
+
+    const oversizedAxisBytes = pngWithDimensions(20_000, 1);
+    const oversizedAxis = await storeWithPreviewImage(
+      "oversized-axis-png",
+      oversizedAxisBytes,
+      "image/png",
+      20_000,
+      1
+    );
+    await expect(oversizedAxis.readFramePreview("test-session", 1)).rejects.toThrow(/dimensions exceed/);
+  });
+
+  it("rejects unsupported role media and never raises the 16 MiB preview cap", async () => {
+    const unsupportedRoot = await tempRoot("unsupported-evidence");
+    const unsupportedStore = new LiveSessionStore(unsupportedRoot);
+    await unsupportedStore.putSession(session(1));
+    const source = Buffer.from("source");
+    const mask = Buffer.from("mask-npy");
+    const unsupported = frame(1, source);
+    unsupported.assets = {
+      masks: [{ ...evidenceReference("masks/person.npy", mask, "application/x-npy", 2, 2), kind: "person" }]
+    };
+    await unsupportedStore.putFrame(unsupported);
+    await unsupportedStore.putAsset("test-session", 1, "source", chunks(source));
+    await unsupportedStore.putAsset("test-session", 1, "mask-person", chunks(mask));
+    expect((await unsupportedStore.snapshot("test-session")).frames[0]?.assets[1]?.previewAvailable).toBe(false);
+    expect(await unsupportedStore.readFramePreview("test-session", 1, "depth")).toBeNull();
+    await expect(unsupportedStore.readFramePreview("test-session", 1, "mask-person"))
+      .rejects.toThrow(/Unsupported preview media type/);
+
+    const cappedRoot = await tempRoot("preview-cap");
+    const cappedStore = new LiveSessionStore(cappedRoot);
+    await cappedStore.putSession(session(1));
+    const oversized = Buffer.alloc(16 * 1024 * 1024 + 1, 7);
+    await cappedStore.putFrame(frame(1, oversized));
+    await cappedStore.putAsset("test-session", 1, "source", chunks(oversized));
+    await expect(cappedStore.readFramePreview("test-session", 1, "source", 32 * 1024 * 1024))
+      .rejects.toThrow(/preview byte limit/);
   });
 
   it("discards partial incoming uploads on restart and accepts replay", async () => {
@@ -558,7 +782,7 @@ describe("LiveSessionStore", () => {
     await store.putFrame(metadata);
     expect((await store.putAsset("test-session", 1, "source", chunks(bytes))).status).toBe("accepted");
     expect((await store.snapshot("test-session")).frames[0]?.previewAvailable).toBe(false);
-    expect(await store.readFramePreview("test-session", 1)).toBeNull();
+    await expect(store.readFramePreview("test-session", 1)).rejects.toThrow(/Unsupported preview media type/);
     expect(await readFile(path.join(root, "test-session", "frames", "00000001", "source.bin"))).toEqual(bytes);
   });
 
@@ -756,6 +980,114 @@ function finalizeV2(finalSequenceId: number) {
       schema: "capture_splat.v0.3"
     }
   } as const;
+}
+
+function evidenceReference(
+  relativePath: string,
+  bytes: Buffer,
+  mediaType: string,
+  width: number,
+  height: number
+) {
+  return {
+    path: relativePath,
+    sha256: hash(bytes),
+    size_bytes: bytes.byteLength,
+    media_type: mediaType,
+    width,
+    height
+  };
+}
+
+function evidenceSummary(
+  role: string,
+  bytes: Buffer,
+  mediaType: string,
+  width: number,
+  height: number
+) {
+  return {
+    role,
+    sha256: hash(bytes),
+    sizeBytes: bytes.byteLength,
+    mediaType,
+    width,
+    height,
+    previewAvailable: true
+  };
+}
+
+async function storeWithPreviewImage(
+  name: string,
+  bytes: Buffer,
+  mediaType: "image/png" | "image/jpeg" | "image/webp",
+  width: number,
+  height: number
+): Promise<LiveSessionStore> {
+  const root = await tempRoot(name);
+  const store = new LiveSessionStore(root);
+  await store.putSession(session(1));
+  const metadata = frame(1, bytes);
+  metadata.source_frame = evidenceReference(
+    `sender/source.${mediaType === "image/jpeg" ? "jpg" : mediaType.slice("image/".length)}`,
+    bytes,
+    mediaType,
+    width,
+    height
+  );
+  await store.putFrame(metadata);
+  await store.putAsset("test-session", 1, "source", chunks(bytes));
+  return store;
+}
+
+function pngWithDimensions(width: number, height: number): Buffer {
+  const bytes = Buffer.from(onePixelPng);
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}
+
+function animatedWebpHeader(): Buffer {
+  const bytes = Buffer.alloc(30);
+  bytes.write("RIFF", 0, "ascii");
+  bytes.writeUInt32LE(22, 4);
+  bytes.write("WEBP", 8, "ascii");
+  bytes.write("VP8X", 12, "ascii");
+  bytes.writeUInt32LE(10, 16);
+  bytes[20] = 0x02;
+  return bytes;
+}
+
+function jpegWithHiddenLargeFrame(): Buffer {
+  const sofOffset = onePixelJpeg.indexOf(Buffer.from([0xff, 0xc0]));
+  const segmentBytes = 2 + onePixelJpeg.readUInt16BE(sofOffset + 2);
+  const hiddenFrame = Buffer.from(onePixelJpeg.subarray(sofOffset, sofOffset + segmentBytes));
+  hiddenFrame.writeUInt16BE(5_000, 5);
+  hiddenFrame.writeUInt16BE(5_000, 7);
+  return Buffer.concat([
+    onePixelJpeg.subarray(0, sofOffset),
+    hiddenFrame,
+    onePixelJpeg.subarray(sofOffset)
+  ]);
+}
+
+function webpWithConflictingDimensions(): Buffer {
+  const extended = Buffer.alloc(18);
+  extended.write("VP8X", 0, "ascii");
+  extended.writeUInt32LE(10, 4);
+
+  const lossless = Buffer.alloc(14);
+  lossless.write("VP8L", 0, "ascii");
+  lossless.writeUInt32LE(5, 4);
+  lossless[8] = 0x2f;
+  const largeDimension = 5_000 - 1;
+  lossless.writeUInt32LE(largeDimension | (largeDimension << 14), 9);
+
+  const bytes = Buffer.concat([Buffer.alloc(12), extended, lossless]);
+  bytes.write("RIFF", 0, "ascii");
+  bytes.writeUInt32LE(bytes.byteLength - 8, 4);
+  bytes.write("WEBP", 8, "ascii");
+  return bytes;
 }
 
 function hash(bytes: Buffer): string {
