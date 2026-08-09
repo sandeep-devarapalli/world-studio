@@ -108,9 +108,9 @@ async function writeResult(mode) {
   } else if (mode === "incoming-parent-symlink") {
     const incomingRoot = path.dirname(options.outputRoot);
     const target = path.join(process.cwd(), `fixture-incoming-root-${options.attempt}`);
-    await rm(incomingRoot, { recursive: true, force: true });
     await mkdir(target, { recursive: true });
     await writeFile(path.join(target, "sentinel.txt"), "preserve");
+    await rm(incomingRoot, { recursive: true, force: true });
     await symlink(target, incomingRoot, "dir");
   }
   await mkdir(options.outputRoot, { recursive: true });
