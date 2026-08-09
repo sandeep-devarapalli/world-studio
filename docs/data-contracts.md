@@ -60,9 +60,29 @@ transform edges. It fails closed for `hide`, `annotate`, evidence-owned transfor
 unsupported scope/intent combinations until schema-backed state carriers exist. Site
 revisions and Site deltas also remain a later contract.
 
-Storing packages, migrating current local packages, executing editor tools, and rehashing
-referenced filesystem bytes are later M2 checkpoints; this contract slice does not alter the
-current editor, renderer, simulation, or loader.
+The pure Node canonical package store is the first consumer that persists these records.
+It keeps exact manifest bytes in immutable revision directories, uses an atomic
+whole-directory rename as the publication commit point, and distinguishes an identical
+retry from a same-identity conflict. Recovery and explicit reopen rehash the manifest,
+applied Delta, all directly referenced content, and the complete closure of every
+referenced Asset before returning a revision. World publication therefore requires each
+exact Asset revision to already exist in the same store.
+
+JSON manifests and Delta records require strict, fatal UTF-8 parsing and their declared
+`application/json` media type. Opaque media are not decoded or semantically certified: the
+store establishes only their declared byte size and SHA-256 unless a format-specific
+structural check is explicitly implemented. Passing persistence does not grant metric,
+semantic, collision, navigation, physics, or safety authority.
+
+The store root is injected and intended to become
+`app.getPath("userData")/world-packages` when Electron integration lands. The current
+package reader, renderer, editor, UI, preload/IPC bridge, and startup behavior do not use it.
+One Electron main process is the supported writer; foreign live staging fails closed rather
+than being reclaimed. Materialized reads are hard-capped at 16 MiB, while streamed
+verification and recovery enforce lower-only ceilings of 100,000 stored versions, 1,000,000
+aggregate references, and 262,144 content directories.
+Historical v0.1 migration, `hide` and `annotate` state carriers, Site revisions, edit
+execution, and authority promotion remain later M2 checkpoints.
 
 ## Capture Splat Live Session
 

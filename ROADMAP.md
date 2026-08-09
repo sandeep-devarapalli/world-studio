@@ -52,6 +52,11 @@ outcomes and acceptance gates.
   separate from `WorldSession`, binds parent manifests and referenced content by SHA-256,
   and records transforms, uncertainty, provenance, authority, and reversible before/after
   edit effects without executing them.
+- The pure Node canonical package store publishes immutable World and Asset revision
+  directories atomically, preserves exact manifest bytes, rejects conflicting duplicates,
+  and rehashes every direct and transitive Asset reference during recovery and reopen. Its
+  root is injectable for tests and reserved for desktop `userData` integration; no current
+  package reader, UI, IPC, or editor path uses it yet.
 - Evolve current packages, reversible tools, and Episodes into the M2 immutable World
   Package and edit graph.
 - Preserve ordinary PLY, Gaussian PLY, mesh, collision, navigation, semantic, and physics
