@@ -259,15 +259,17 @@ async function waitForCdp(port) {
 }
 
 async function findOpenPort() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  await new Promise((resolve) => server.close(resolve));
-  if (!address || typeof address === "string") throw new Error("failed to allocate a local CDP port");
-  return address.port;
+  for (;;) {
+    const server = net.createServer();
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    await new Promise((resolve) => server.close(resolve));
+    if (!address || typeof address === "string") throw new Error("failed to allocate a local CDP port");
+    if (address.port < 65_535) return address.port;
+  }
 }
 
 async function stopAppProcess(child) {
