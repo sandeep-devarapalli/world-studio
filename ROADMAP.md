@@ -38,6 +38,10 @@ outcomes and acceptance gates.
   acceptance.
 - Live reconstruction workers remain isolated proposals and cannot mutate Capture Splat
   evidence or a loaded World.
+- The M1 software worker boundary now defines strict capabilities, immutable checksum-bound
+  inputs, requested budgets, explicit start/stop/retry, bounded logs, durable restart
+  reconciliation, and verified proposal outputs. No reconstruction runtime is bundled, and
+  these jobs do not implement or claim the M5 Newton physics runtime.
 - Physical Bonjour, firewall, Wi-Fi interruption, receiver-restart, and two-cycle iPhone
   evidence remain acceptance gates; software-only tests do not close them.
 

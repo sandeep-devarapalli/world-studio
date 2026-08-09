@@ -141,6 +141,31 @@ The iPhone sender and its durable queue/resume records are not implemented in th
 checkpoint. Physical Bonjour, firewall, local-network permission, and device-cycle evidence
 are also not contract acceptance proof.
 
+## Reconstruction Worker
+
+World Studio owns four active software-worker contracts under
+`contracts/reconstruction-worker/v0.1`:
+
+```text
+world_studio.reconstruction_worker_capability.v0.1
+world_studio.reconstruction_job.v0.1
+world_studio.reconstruction_event.v0.1
+world_studio.reconstruction_result.v0.1
+```
+
+They are closed contracts with finite numeric bounds, safe POSIX-relative paths, lowercase
+SHA-256 identities, immutable job/attempt binding, explicit requested resource budgets, and
+permanent `proposal_only` authority. Runtime validators additionally enforce canonical IDs,
+ordered event sequences, exact job/attempt identity, bounded logs/files/bytes, and file-system
+properties that JSON Schema cannot prove.
+
+The result contract describes output proposals; it is not a World Package promotion record.
+An output hash proves only the bytes accepted from the configured worker attempt. It grants no
+measurement, collision, semantic, navigation, reconstruction-quality, physics, or safety
+authority. The production registry is empty in this checkpoint, and the deterministic Node
+worker is a test fixture only. This contract does not adopt the blueprint's proposed
+`isaac_job.v0.1`, implement Newton, or define physics authority.
+
 ## Render Modes
 
 ```ts

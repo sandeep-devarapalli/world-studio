@@ -62,11 +62,42 @@ M1 security state is also separate from `WorldSession` and `LiveSessionSnapshot`
 receiving evidence cannot replace a loaded world. All streamed evidence remains
 `proposal_only`.
 
-This checkpoint does not modify the Capture Splat iPhone capture loop, implement the bounded
-iPhone store-and-forward sender, or run live 3D Gaussian Splatting. Reconstruction workers
-remain optional external processes. Physical Bonjour discovery, macOS firewall/local-network
-permission, Wi-Fi interruption, receiver restart, and two complete iPhone capture cycles are
-deferred acceptance gates.
+This checkpoint does not modify the Capture Splat iPhone capture loop or run live 3D Gaussian
+Splatting. Physical Bonjour discovery, macOS firewall/local-network permission, Wi-Fi
+interruption, receiver restart, and two complete iPhone capture cycles remain deferred
+acceptance gates.
+
+## Reconstruction Worker Boundary
+
+Electron main owns the optional reconstruction-worker supervisor. Its production registry is
+empty by default; the renderer can select only a registered worker ID and live-session ID and
+can never supply an executable, path, argument, environment variable, URL, or working
+directory. Browser builds report the boundary as unavailable without calling an absent bridge.
+
+Each attempt snapshots committed live evidence into a private directory under:
+
+```text
+app.getPath("userData")/reconstruction-jobs/<job-id>/attempts/<attempt>
+```
+
+Input bytes are copied, bounded, and SHA-256 verified before a strict immutable job is
+published. A reviewed external process runs with `shell: false`, a fixed job directory, a
+minimal environment, bounded wall time/logs/outputs, and a requested memory budget. Memory is
+recorded but is not yet OS-enforced; wall time, log bytes, output bytes, and output count are
+enforced by the supervisor. Child-process isolation is not a hostile-code sandbox.
+
+Output files remain in the attempt's private incoming area until the process exits and the
+strict result, safe relative paths, regular-file identity, sizes, and hashes all validate.
+Only then are proposal outputs committed atomically. On desktop restart, an unfinished
+attempt becomes `interrupted`; World Studio never reattaches to a persisted PID. Retry creates
+a new attempt over the same immutable input digest. Stop and timeout terminate the isolated
+worker process group, escalating from SIGTERM to SIGKILL without affecting the receiver or
+source evidence.
+
+Worker state uses a separate `ReconstructionWorkerSnapshot`. It cannot replace
+`LiveSessionSnapshot` or `WorldSession`, and worker output never enters Spark, Three.js,
+Rapier, collision, navigation, semantics, measurement, or physics automatically. See
+[Reconstruction Worker M1](reconstruction_worker_m1.md).
 
 ## World Compiler Boundary
 

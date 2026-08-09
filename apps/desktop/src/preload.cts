@@ -5,6 +5,7 @@ import type {
   LiveSecuritySnapshot,
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
+  ReconstructionWorkerSnapshot,
   SaveEpisodeBundleInput
 } from "@world-studio/world-core";
 
@@ -50,5 +51,18 @@ contextBridge.exposeInMainWorld("worldStudioDesktop", {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: LiveSecuritySnapshot) => listener(snapshot);
     ipcRenderer.on("world-studio:live-security-update", handler);
     return () => ipcRenderer.removeListener("world-studio:live-security-update", handler);
+  },
+  getReconstructionWorkerStatus: () =>
+    ipcRenderer.invoke("world-studio:get-reconstruction-worker-status") as Promise<ReconstructionWorkerSnapshot>,
+  startReconstructionWorker: (input: { workerId: string; sessionId: string }) =>
+    ipcRenderer.invoke("world-studio:start-reconstruction-worker", input) as Promise<ReconstructionWorkerSnapshot>,
+  stopReconstructionWorker: (input: { jobId: string }) =>
+    ipcRenderer.invoke("world-studio:stop-reconstruction-worker", input) as Promise<ReconstructionWorkerSnapshot>,
+  retryReconstructionWorker: (input: { jobId: string }) =>
+    ipcRenderer.invoke("world-studio:retry-reconstruction-worker", input) as Promise<ReconstructionWorkerSnapshot>,
+  onReconstructionWorkerUpdate: (listener: (snapshot: ReconstructionWorkerSnapshot) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: ReconstructionWorkerSnapshot) => listener(snapshot);
+    ipcRenderer.on("world-studio:reconstruction-worker-update", handler);
+    return () => ipcRenderer.removeListener("world-studio:reconstruction-worker-update", handler);
   }
 });

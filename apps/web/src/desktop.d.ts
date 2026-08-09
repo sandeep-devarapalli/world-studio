@@ -4,6 +4,7 @@ import type {
   LiveSecuritySnapshot,
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
+  ReconstructionWorkerSnapshot,
   SaveEpisodeBundleInput
 } from "@world-studio/world-core";
 
@@ -36,6 +37,16 @@ declare global {
       stopPairedLiveReceiver?: () => Promise<LiveSecuritySnapshot>;
       revokeLiveDevice?: (input: { grantId: string }) => Promise<LiveSecuritySnapshot>;
       onLiveSecurityUpdate?: (listener: (snapshot: LiveSecuritySnapshot) => void) => () => void;
+      getReconstructionWorkerStatus?: () => Promise<ReconstructionWorkerSnapshot>;
+      startReconstructionWorker?: (input: {
+        workerId: string;
+        sessionId: string;
+      }) => Promise<ReconstructionWorkerSnapshot>;
+      stopReconstructionWorker?: (input: { jobId: string }) => Promise<ReconstructionWorkerSnapshot>;
+      retryReconstructionWorker?: (input: { jobId: string }) => Promise<ReconstructionWorkerSnapshot>;
+      onReconstructionWorkerUpdate?: (
+        listener: (snapshot: ReconstructionWorkerSnapshot) => void
+      ) => () => void;
     };
   }
 }

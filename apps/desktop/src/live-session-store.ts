@@ -93,6 +93,26 @@ export interface LiveFramePreviewBytes {
   bytes: Buffer;
 }
 
+export interface LiveReconstructionInputSnapshot {
+  session: LiveSessionDeclaration;
+  authReceipt: LiveAuthReceipt | null;
+  authReceiptSha256: string | null;
+  frames: LiveFrame[];
+  finalSequenceId: number | null;
+  finalizedEvidence: LiveReconstructionFinalizedEvidence | null;
+  updatedAt: string;
+}
+
+export interface LiveReconstructionFinalizedEvidence {
+  sourceManifestBinding: LiveSourceManifestReference;
+  finalization: LiveFinalizeRequest;
+  marker: unknown;
+  markerSha256: string;
+  bindingSha256: string | null;
+  handoff: unknown;
+  handoffSha256: string;
+}
+
 interface StoredSession {
   session: LiveSessionDeclaration;
   sourceManifestBinding: LiveSourceManifestReference | null;
@@ -479,6 +499,65 @@ export class LiveSessionStore {
       authority: "proposal_only",
       updatedAt: stored.updatedAt
     };
+  }
+
+  async reconstructionInputSnapshot(
+    sessionIdValue: string
+  ): Promise<LiveReconstructionInputSnapshot> {
+    const sessionId = validSessionId(sessionIdValue);
+    return this.withLock(sessionId, async () => {
+      const stored = await this.requireSession(sessionId);
+      let finalizedEvidence: LiveReconstructionFinalizedEvidence | null = null;
+      if (stored.finalSequenceId !== null) {
+        if (!stored.sourceManifestBinding) {
+          throw new LiveContractError("Finalized source manifest binding is missing.", "corrupt");
+        }
+        const finalization: LiveFinalizeRequest = stored.session.schema === LIVE_SESSION_SCHEMA
+          ? {
+              schema: LIVE_FINALIZE_SCHEMA,
+              session_id: sessionId,
+              final_sequence_id: stored.finalSequenceId
+            }
+          : {
+              schema: LIVE_FINALIZE_V2_SCHEMA,
+              session_id: sessionId,
+              final_sequence_id: stored.finalSequenceId,
+              source_manifest: stored.sourceManifestBinding
+            };
+        await this.verifyFinalSequence(stored, finalization);
+        await this.verifyFinalizedPublication(stored, finalization);
+        const sessionRoot = this.sessionRoot(sessionId);
+        const marker = validateFinalizedMarker(
+          await readRequiredJson(path.join(sessionRoot, finalizedFile), "Finalized marker is missing."),
+          sessionId
+        );
+        const expectedHandoff = buildHandoff(stored, finalization, stored.sourceManifestBinding);
+        finalizedEvidence = {
+          sourceManifestBinding: parseLiveJson(stableLiveJson(stored.sourceManifestBinding)) as LiveSourceManifestReference,
+          finalization: validateLiveFinalize(parseLiveJson(stableLiveJson(finalization))),
+          marker: parseLiveJson(stableLiveJson(marker)),
+          markerSha256: await hashFile(path.join(sessionRoot, finalizedFile)),
+          bindingSha256: finalization.schema === LIVE_FINALIZE_V2_SCHEMA
+            ? await hashFile(path.join(sessionRoot, sourceManifestBindingFile))
+            : null,
+          handoff: parseLiveJson(stableLiveJson(expectedHandoff)),
+          handoffSha256: await hashFile(path.join(sessionRoot, handoffFile))
+        };
+      }
+      return {
+        session: validateLiveSessionDeclaration(parseLiveJson(stableLiveJson(stored.session))),
+        authReceipt: stored.authReceipt
+          ? validateLiveAuthReceipt(parseLiveJson(stableLiveJson(stored.authReceipt)))
+          : null,
+        authReceiptSha256: stored.authReceiptSha256,
+        frames: [...stored.frames.values()]
+          .sort((left, right) => left.sequence_id - right.sequence_id)
+          .map((frame) => validateLiveFrame(parseLiveJson(stableLiveJson(frame)))),
+        finalSequenceId: stored.finalSequenceId,
+        finalizedEvidence,
+        updatedAt: stored.updatedAt
+      };
+    });
   }
 
   async readFramePreview(
@@ -1063,6 +1142,10 @@ function assetFileName(role: LiveAssetRole, mediaType: string): string {
   }
   const extension = safeAssetExtension(mediaType);
   return `${role}${extension}`;
+}
+
+export function receiverOwnedLiveAssetFileName(role: LiveAssetRole, mediaType: string): string {
+  return assetFileName(role, mediaType);
 }
 
 function sourceImageExtension(mediaType: string): ".jpg" | ".png" | ".webp" | undefined {

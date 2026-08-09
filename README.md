@@ -70,6 +70,10 @@ access flow in this repo today.
 - A bounded Simulate inspector for checksum-verified RGB, depth, confidence, typed masks,
   intrinsics, quality, pose, and coordinate units. Live v0.1 binds neither depth scale nor
   point-cloud or mesh bytes, so unavailable geometry is reported instead of inferred.
+- A software-only reconstruction-worker boundary with strict capabilities, immutable
+  checksum-bound jobs, bounded resources and logs, explicit start/stop/retry, durable
+  failure evidence, and proposal-only output inspection. No production worker runtime is
+  bundled or selected by default.
 - An M1 desktop security boundary for explicit selected-interface pairing, pinned TLS,
   P-256 device identity, signed requests, credential expiry/revocation, and durable replay
   defense. It does not yet include the iPhone sender or physical-device acceptance.
@@ -139,9 +143,11 @@ metadata. Expired or revoked grants fail closed, and durable request counters re
 after restart. Bonjour advertises only the allowlisted `_capturesplat._tcp` service metadata
 and never an invitation secret. See [Live Security M1](docs/live_security_m1.md).
 
-This checkpoint does not modify Capture Splat's iPhone capture loop, connect its dormant
-bounded sender foundation to capture writes, or start reconstruction workers. Local-network
-permission, firewall, Bonjour, and two-cycle iPhone evidence remain physical acceptance gates.
+This checkpoint does not modify Capture Splat's iPhone capture loop or close physical-device
+acceptance. Optional reconstruction workers run only when Electron main explicitly registers
+a reviewed executable; the renderer cannot provide commands, paths, arguments, environment,
+or working directories. Browser builds and the default packaged app report the worker as
+unavailable. See [Reconstruction Worker M1](docs/reconstruction_worker_m1.md).
 
 ## Package Desktop App
 

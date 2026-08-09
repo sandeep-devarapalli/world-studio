@@ -21,8 +21,9 @@ M0 is complete and unchanged. World Studio now has the desktop-side seams for:
 - authenticated session receipts linked from finalized handoffs;
 - secret-free `_capturesplat._tcp` Bonjour publication through `/usr/bin/dns-sd`.
 
-This is a partial M1 checkpoint. It does not implement the iPhone sender or capture-loop
-networking, start reconstruction workers, or satisfy physical Bonjour, firewall, Wi-Fi, or
+This is a partial M1 checkpoint. The progressive evidence inspector and software-only
+reconstruction-worker lifecycle are present, but no reconstruction runtime is bundled or
+selected by default. It does not satisfy physical Bonjour, firewall, Wi-Fi, thermal, or
 two-cycle iPhone acceptance.
 
 ## Required Sequence
@@ -38,14 +39,15 @@ two-cycle iPhone acceptance.
    - backpressure that never changes capture acceptance;
    - ACK, resume, retry, and final reconciliation using the active three-schema contract;
    - thermal, queue, and transfer events in capture metadata.
-3. Extend World Studio progressive evidence:
-   - source RGB, camera, quality, optional depth/confidence/masks, and bounded mesh proposals;
-   - explicit source, checksum, coordinate frame, and proposal authority;
-   - no mutation of the loaded world.
-4. Add an isolated worker lifecycle:
-   - capabilities, start/stop/retry, resource budget, input/output hashes, and logs;
-   - no i3dgs, LingBot, Isaac, CUDA, or reconstruction dependency in receiver core;
-   - workers cannot overwrite Capture Splat or promoted metric authority.
+3. Close the remaining progressive evidence gates:
+   - keep the implemented RGB, camera, quality, optional depth/confidence/mask inspector;
+   - add mesh or other geometry only through an explicit checksum-bound contract;
+   - validate a reviewed external reconstruction worker through the implemented lifecycle;
+   - keep every output proposal-only and separate from the loaded world.
+4. Preserve the isolated worker lifecycle:
+   - keep capabilities, start/stop/retry, requested budgets, input/output hashes, and logs;
+   - do not vendor i3dgs, LingBot, Isaac, CUDA, or reconstruction dependencies into the receiver;
+   - require separate quality and promotion gates before any output gains additional authority.
 5. Validate two physical-device cycles:
    - disconnect/reconnect and receiver restart;
    - bounded memory and storage;

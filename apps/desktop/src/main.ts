@@ -7,6 +7,7 @@ import type {
   LiveSecuritySnapshot,
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
+  ReconstructionWorkerSnapshot,
   SaveEpisodeBundleInput
 } from "@world-studio/world-core";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,12 +15,14 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { desktopSmokeUserDataPath } from "./desktop-smoke.js";
 import { LiveSessionReceiver } from "./live-session-receiver.js";
-import { assertLiveAssetRole } from "./live-session-contract.js";
+import { assertLiveAssetRole, validSessionId } from "./live-session-contract.js";
 import { DesktopIdentityStore, type SecretProtector } from "./live-desktop-identity.js";
 import { PairingStore } from "./live-pairing-store.js";
 import { LiveSecureGateway } from "./live-secure-gateway.js";
 import { createOpenLocalPackageDialogOptions } from "./open-local-dialog-options.js";
 import { readLocalPackage } from "./package-reader.js";
+import { ReconstructionLiveSessionInputStager } from "./reconstruction-live-session-stager.js";
+import { ReconstructionWorkerSupervisor } from "./reconstruction-worker-supervisor.js";
 import {
   assertTrustedRendererInvocation,
   isTrustedRendererUrl,
@@ -31,7 +34,8 @@ const smokeUserDataPath = desktopSmokeUserDataPath(process.env);
 if (smokeUserDataPath) app.setPath("userData", smokeUserDataPath);
 let liveReceiver: LiveSessionReceiver | null = null;
 let liveSecurityGateway: LiveSecureGateway | null = null;
-let liveTransportsStoppedForQuit = false;
+let reconstructionWorkerSupervisor: ReconstructionWorkerSupervisor | null = null;
+let servicesStoppedForQuit = false;
 const trustedRendererUrls = new Map<number, string>();
 
 async function createWindow() {
@@ -183,6 +187,38 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("world-studio:get-reconstruction-worker-status", async (event): Promise<ReconstructionWorkerSnapshot> => {
+  assertTrustedReconstructionWorkerIpcSender(event);
+  return getReconstructionWorkerSupervisor().getStatus();
+});
+
+ipcMain.handle(
+  "world-studio:start-reconstruction-worker",
+  async (event, input: unknown): Promise<ReconstructionWorkerSnapshot> => {
+    assertTrustedReconstructionWorkerIpcSender(event);
+    const request = validateReconstructionWorkerStartInput(input);
+    return getReconstructionWorkerSupervisor().start(request);
+  }
+);
+
+ipcMain.handle(
+  "world-studio:stop-reconstruction-worker",
+  async (event, input: unknown): Promise<ReconstructionWorkerSnapshot> => {
+    assertTrustedReconstructionWorkerIpcSender(event);
+    const request = validateReconstructionWorkerJobInput(input, "Stop");
+    return getReconstructionWorkerSupervisor().stop(request);
+  }
+);
+
+ipcMain.handle(
+  "world-studio:retry-reconstruction-worker",
+  async (event, input: unknown): Promise<ReconstructionWorkerSnapshot> => {
+    assertTrustedReconstructionWorkerIpcSender(event);
+    const request = validateReconstructionWorkerJobInput(input, "Retry");
+    return getReconstructionWorkerSupervisor().retry(request);
+  }
+);
+
 ipcMain.handle("world-studio:get-live-security-status", async (event): Promise<LiveSecuritySnapshot> => {
   assertTrustedSecurityIpcSender(event);
   return readLiveSecurityStatus();
@@ -251,11 +287,12 @@ ipcMain.handle(
 );
 
 app.whenReady().then(async () => {
-  const stopSecureLan = () => {
+  const stopOptionalServices = () => {
     if (liveSecurityGateway) void liveSecurityGateway.stop();
+    if (reconstructionWorkerSupervisor) void reconstructionWorkerSupervisor.stopAll();
   };
-  powerMonitor.on("suspend", stopSecureLan);
-  powerMonitor.on("lock-screen", stopSecureLan);
+  powerMonitor.on("suspend", stopOptionalServices);
+  powerMonitor.on("lock-screen", stopOptionalServices);
   await createWindow();
 });
 
@@ -264,12 +301,13 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
-  if ((!liveReceiver && !liveSecurityGateway) || liveTransportsStoppedForQuit) return;
+  if ((!liveReceiver && !liveSecurityGateway && !reconstructionWorkerSupervisor) || servicesStoppedForQuit) return;
   event.preventDefault();
-  liveTransportsStoppedForQuit = true;
+  servicesStoppedForQuit = true;
   void Promise.all([
     liveReceiver ? liveReceiver.stop() : Promise.resolve(),
-    liveSecurityGateway ? liveSecurityGateway.stop() : Promise.resolve()
+    liveSecurityGateway ? liveSecurityGateway.stop() : Promise.resolve(),
+    reconstructionWorkerSupervisor ? reconstructionWorkerSupervisor.stopAll() : Promise.resolve()
   ]).finally(() => app.quit());
 });
 
@@ -297,6 +335,10 @@ function assertTrustedSecurityIpcSender(event: IpcMainInvokeEvent): void {
 
 function assertTrustedEvidenceIpcSender(event: IpcMainInvokeEvent): void {
   assertTrustedLiveIpcSender(event, "Live evidence IPC");
+}
+
+function assertTrustedReconstructionWorkerIpcSender(event: IpcMainInvokeEvent): void {
+  assertTrustedLiveIpcSender(event, "Reconstruction worker IPC");
 }
 
 function assertTrustedLiveIpcSender(event: IpcMainInvokeEvent, label: string): void {
@@ -347,6 +389,52 @@ function getLiveSecurityGateway(): LiveSecureGateway {
   });
   liveSecurityGateway = gateway;
   return gateway;
+}
+
+function getReconstructionWorkerSupervisor(): ReconstructionWorkerSupervisor {
+  if (reconstructionWorkerSupervisor) return reconstructionWorkerSupervisor;
+  const supervisor = new ReconstructionWorkerSupervisor({
+    root: path.join(app.getPath("userData"), "reconstruction-jobs"),
+    inputStager: new ReconstructionLiveSessionInputStager(getLiveReceiver().store)
+  });
+  supervisor.subscribe((snapshot) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send("world-studio:reconstruction-worker-update", snapshot);
+    }
+  });
+  reconstructionWorkerSupervisor = supervisor;
+  return supervisor;
+}
+
+function validateReconstructionWorkerStartInput(input: unknown): { workerId: string; sessionId: string } {
+  if (!isRecord(input) || !hasExactKeys(input, ["sessionId", "workerId"])) {
+    throw new Error("Reconstruction start accepts only a registered worker ID and live-session ID.");
+  }
+  if (typeof input.workerId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.workerId)) {
+    throw new Error("Reconstruction start requires a valid registered worker ID.");
+  }
+  if (typeof input.sessionId !== "string") {
+    throw new Error("Reconstruction start requires a valid live-session ID.");
+  }
+  return { workerId: input.workerId, sessionId: validSessionId(input.sessionId) };
+}
+
+function validateReconstructionWorkerJobInput(input: unknown, action: string): { jobId: string } {
+  if (
+    !isRecord(input)
+    || !hasExactKeys(input, ["jobId"])
+    || typeof input.jobId !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.jobId)
+  ) {
+    throw new Error(`${action} requires a valid reconstruction job ID.`);
+  }
+  return { jobId: input.jobId };
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+  const keys = Object.keys(value).sort();
+  const expectedKeys = [...expected].sort();
+  return keys.length === expectedKeys.length && keys.every((key, index) => key === expectedKeys[index]);
 }
 
 async function readLiveSecurityStatus(): Promise<LiveSecuritySnapshot> {
