@@ -8,7 +8,7 @@ outcomes and acceptance gates.
 | Milestone | Outcome | Status |
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
-| M1 Authenticated LAN And Progressive World | Paired TLS sender, bounded queues, live RGB-D/mesh proposals, isolated worker lifecycle | partial |
+| M1 Authenticated LAN And Progressive World | Manual-import and replay-first progressive evidence, optional paired TLS transport, and isolated worker lifecycle | partial; iPhone live transport held by thermal evidence |
 | M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas | partial |
 | M3 Indoor Navigation And First Deployment Twin - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
@@ -33,17 +33,19 @@ outcomes and acceptance gates.
 - Simulate now inspects checksum-verified RGB-D, confidence, masks, camera, trajectory, and
   quality evidence through bounded on-demand previews. Point derivation is withheld because
   live v0.1 binds no depth units/scale, and it does not transport point-cloud or mesh bytes.
-- Capture Splat's bounded sender foundation remains dormant until QR/Bonjour application
-  wiring and a nonblocking post-write integration land. Networking cannot change keyframe
-  acceptance.
+- Capture Splat implements the bounded sender, pairing, durable journal, recovery, and
+  nonblocking post-write bridge. It is disabled by default and remains experimental on
+  iPhone after a live-enabled physical trial reached serious thermal state before any
+  upload attempt started. Networking cannot change keyframe acceptance.
 - Live reconstruction workers remain isolated proposals and cannot mutate Capture Splat
   evidence or a loaded World.
 - The M1 software worker boundary now defines strict capabilities, immutable checksum-bound
   inputs, requested budgets, explicit start/stop/retry, bounded logs, durable restart
   reconciliation, and verified proposal outputs. No reconstruction runtime is bundled, and
   these jobs do not implement or claim the M5 Newton physics runtime.
-- Physical Bonjour, firewall, Wi-Fi interruption, receiver-restart, and two-cycle iPhone
-  evidence remain acceptance gates; software-only tests do not close them.
+- Local Capture Splat finalization plus Manual Export is the production ingestion path.
+  Physical Bonjour, firewall, interruption, restart, and multi-cycle evidence are optional
+  live-transport promotion gates and do not block M1 progressive-world work.
 
 ### World And Editor
 

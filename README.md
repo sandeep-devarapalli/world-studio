@@ -76,7 +76,8 @@ access flow in this repo today.
   bundled or selected by default.
 - An M1 desktop security boundary for explicit selected-interface pairing, pinned TLS,
   P-256 device identity, signed requests, credential expiry/revocation, and durable replay
-  defense. It does not yet include the iPhone sender or physical-device acceptance.
+  defense. Capture Splat implements an optional bounded sender, but iPhone live transport
+  remains experimental and is not the production ingestion path.
 - Episode recording, playback, export, browser import, Electron import, package bundle export,
   source relink, companion asset validation, embedded asset manifests, and per-asset integrity
   drilldowns.
@@ -136,6 +137,11 @@ the Electron bridge. `WORLD_STUDIO_LIVE_PORT` changes the port;
 `WORLD_STUDIO_LIVE_HOST` is accepted only as `127.0.0.1` or `::1`, so environment
 configuration cannot widen the Phase 1 listener beyond loopback.
 
+For iPhone captures, the production workflow is local finalization followed by Capture
+Splat **Manual Export** and explicit package opening in World Studio. Live LAN transfer is
+disabled by default on iPhone, remains an optional experiment, and is not required for
+reconstruction, progressive-world work, or package review.
+
 Selecting a received frame exposes its declared evidence roles on demand. Preview reads are
 byte-bounded and revalidate the stored checksum; decoded NPY depth/confidence stays in a
 separate proposal-only inspector and never enters world or collision state. Point derivation
@@ -148,8 +154,8 @@ metadata. Expired or revoked grants fail closed, and durable request counters re
 after restart. Bonjour advertises only the allowlisted `_capturesplat._tcp` service metadata
 and never an invitation secret. See [Live Security M1](docs/live_security_m1.md).
 
-This checkpoint does not modify Capture Splat's iPhone capture loop or close physical-device
-acceptance. Optional reconstruction workers run only when Electron main explicitly registers
+This checkpoint does not make iPhone live transport a product dependency or close its
+separate physical promotion gate. Optional reconstruction workers run only when Electron main explicitly registers
 a reviewed executable; the renderer cannot provide commands, paths, arguments, environment,
 or working directories. Browser builds and the default packaged app report the worker as
 unavailable. See [Reconstruction Worker M1](docs/reconstruction_worker_m1.md).

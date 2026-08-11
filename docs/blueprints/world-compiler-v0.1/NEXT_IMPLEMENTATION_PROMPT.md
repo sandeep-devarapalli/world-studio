@@ -21,24 +21,24 @@ M0 is complete and unchanged. World Studio now has the desktop-side seams for:
 - authenticated session receipts linked from finalized handoffs;
 - secret-free `_capturesplat._tcp` Bonjour publication through `/usr/bin/dns-sd`.
 
-This is a partial M1 checkpoint. The progressive evidence inspector and software-only
-reconstruction-worker lifecycle are present, but no reconstruction runtime is bundled or
-selected by default. It does not satisfy physical Bonjour, firewall, Wi-Fi, thermal, or
-two-cycle iPhone acceptance.
+This is a partial M1 checkpoint. Capture Splat's bounded sender is implemented, but iPhone
+live transfer is disabled by default and held as an optional experiment after serious
+thermal evidence. The production ingestion path is local Capture Splat finalization,
+Manual Export, and explicit World Studio package opening. The progressive evidence
+inspector and software-only reconstruction-worker lifecycle are present, but no production
+reconstruction runtime is bundled or selected by default.
 
 ## Required Sequence
 
-1. Close the pairing integration gates without widening M0:
-   - render the short-lived QR invitation in packaged Electron;
-   - validate Bonjour discovery, exact-interface binding, pinned TLS, expiry, revocation,
-     replay rejection, and receiver restart on a physical Mac/iPhone pair;
-   - keep pre-pairing LAN routes limited to the pairing exchange.
-2. Add a bounded Capture Splat sender:
-   - durable phone write before enqueue;
-   - queue and byte budgets;
-   - backpressure that never changes capture acceptance;
-   - ACK, resume, retry, and final reconciliation using the active three-schema contract;
-   - thermal, queue, and transfer events in capture metadata.
+1. Preserve the production manual-export path:
+   - reopen finalized Capture Splat packages without a live-session dependency;
+   - keep source hashes, cameras, RGB-D, masks, mesh, quality, and provenance intact;
+   - make replay and manual import converge on the same proposal-only evidence model.
+2. Keep live transport optional and isolated:
+   - preserve the implemented durable write-before-enqueue, bounded queues, ACK/resume,
+     retry, and reconciliation behavior;
+   - never enable it by default on iPhone or make it an M1 dependency;
+   - require a separate device-class thermal gate before future promotion.
 3. Close the remaining progressive evidence gates:
    - keep the implemented RGB, camera, quality, optional depth/confidence/mask inspector;
    - add mesh or other geometry only through an explicit checksum-bound contract;
@@ -48,12 +48,11 @@ two-cycle iPhone acceptance.
    - keep capabilities, start/stop/retry, requested budgets, input/output hashes, and logs;
    - do not vendor i3dgs, LingBot, Isaac, CUDA, or reconstruction dependencies into the receiver;
    - require separate quality and promotion gates before any output gains additional authority.
-5. Validate two physical-device cycles:
-   - disconnect/reconnect and receiver restart;
+5. Validate production package continuity:
+   - two manually exported captures reopen deterministically after app restart;
    - bounded memory and storage;
-   - no capture throughput regression beyond the accepted threshold;
-   - thermal downgrade and successful finalization;
-   - deterministic reconciled manifests.
+   - successful local finalization and strict manifests;
+   - deterministic worker inputs and proposal outputs.
 
 ## Constraints
 
@@ -71,9 +70,11 @@ two-cycle iPhone acceptance.
 
 - Positive and negative protocol tests for authentication, expiry, replay, corruption,
   traversal, duplicate conflict, resume, and finalization.
-- Packaged and physical evidence that QR, Bonjour, TLS pinning, macOS local-network
-  permission, firewall behavior, expiry, and revocation work as designed.
-- iPhone queue, thermal, writer-drop, and finalization reports.
+- Strict manual-export and replay evidence that resolve to the same immutable frame,
+  camera, quality, and sidecar records.
+- iPhone thermal, writer-drop, and finalization reports with live transfer disabled.
+- QR, Bonjour, TLS, interruption, and queue evidence only when proposing live transport
+  promotion for a specific device class.
 - Desktop receiver persistence and restart tests.
 - Browser/Electron UI tests showing proposal labels and no loaded-world replacement.
 - Byte-identical mirrored contracts.
