@@ -196,9 +196,10 @@ pairing expiry, pending device metadata, grants, expiry/revocation, and last aut
 Its only sensitive field is the short-lived invitation URI described above. It grants no
 reconstruction, metric, collision, semantic, navigation, physics, or safety authority.
 
-The iPhone sender and its durable queue/resume records are not implemented in this
-checkpoint. Physical Bonjour, firewall, local-network permission, and device-cycle evidence
-are also not contract acceptance proof.
+Capture Splat implements the iPhone sender and durable queue/resume records, but live
+transport is disabled by default and held as an optional experiment on iPhone. Physical
+Bonjour, firewall, local-network permission, thermal, and device-cycle evidence remain
+separate transport-promotion proof; they are not required for manual package ingestion.
 
 ## Reconstruction Worker
 

@@ -62,10 +62,12 @@ M1 security state is also separate from `WorldSession` and `LiveSessionSnapshot`
 receiving evidence cannot replace a loaded world. All streamed evidence remains
 `proposal_only`.
 
-This checkpoint does not modify the Capture Splat iPhone capture loop or run live 3D Gaussian
-Splatting. Physical Bonjour discovery, macOS firewall/local-network permission, Wi-Fi
-interruption, receiver restart, and two complete iPhone capture cycles remain deferred
-acceptance gates.
+Capture Splat now implements the optional bounded sender outside its capture queues, but
+iPhone live transfer is disabled by default and is not the production ingestion path.
+World Studio accepts manually exported packages and replay without depending on a live
+device session. Physical Bonjour discovery, macOS firewall/local-network permission, Wi-Fi
+interruption, receiver restart, thermal behavior, and complete device cycles remain
+separate live-transport promotion gates.
 
 ## Reconstruction Worker Boundary
 

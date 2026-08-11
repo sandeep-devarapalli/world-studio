@@ -128,13 +128,15 @@ This checkpoint does not:
 - mutate or replace an already loaded world;
 - establish metric, collision, semantic, navigation, physics, or safety authority.
 
-## Deferred Acceptance
+## Optional Live-Transport Promotion
 
-The following remain required before M1 can be marked complete:
+The secure transport remains available for research and future device classes, but iPhone
+live transfer is disabled by default and is not required for M1 completion. The following
+evidence is required only before promoting live transport on a specific device class:
 
 1. A real Capture Splat pairing client outside the capture loop and physical QR scan.
-2. Nonblocking capture-writer integration and physical validation of bounded local-first
-   store-and-forward with persistent resume state.
+2. Physical validation of bounded local-first store-and-forward with persistent resume
+   state and no harmful thermal or throughput regression.
 3. Packaged-app verification of macOS local-network permission and firewall behavior.
 4. Physical Bonjour discovery and pinned-TLS pairing on the intended Wi-Fi network.
 5. Two complete iPhone-to-Mac capture cycles, including receiver restart and Wi-Fi

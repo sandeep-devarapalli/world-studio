@@ -17,7 +17,8 @@ Status: completed.
 
 ## M1 Authenticated LAN And Progressive World
 
-Outcome: bounded iPhone-to-Mac transfer with useful immediate evidence.
+Outcome: useful progressive evidence from manual packages and replay, with optional bounded
+authenticated device transport when hardware budgets permit.
 
 Status: partial. The M1A desktop boundary keeps M0 loopback unchanged and adds explicit
 selected-interface pairing seams, QR invitation state, pinned TLS identity, P-256
@@ -26,8 +27,10 @@ durable request-counter replay defense. The progressive inspector covers checksu
 RGB-D, confidence, masks, cameras, quality, and trajectory without inferring unsupported
 geometry. A software-only optional reconstruction-worker lifecycle now binds immutable
 inputs, requested budgets, bounded logs, failures, retries, and verified proposal outputs;
-no production worker is bundled. Progressive mesh transport, physical iPhone acceptance,
-and reconstruction-quality evidence remain open.
+no production worker is bundled. Capture Splat's bounded iPhone sender is implemented but
+disabled by default and held from promotion after a live-enabled physical trial reached
+serious thermal state before any upload attempt started. Progressive mesh ingestion and
+reconstruction-quality evidence remain open.
 
 Acceptance:
 
@@ -37,12 +40,12 @@ Acceptance:
 - RGB-D, camera, mask, mesh, and quality proposals arrive with resume and reconciliation.
 - Optional reconstruction workers have explicit lifecycle, provenance, resource budgets,
   and failure isolation.
-- Two physical-device cycles preserve throughput, thermal behavior, and finalization.
+- Manual-exported captures reopen with complete immutable evidence and can drive the same
+  progressive inspector and worker inputs as replayed sessions.
 
-The desktop implementation and software tests do not by themselves satisfy the first or
-last acceptance items. Packaged macOS local-network permission/firewall behavior, physical
-Bonjour discovery, real QR pairing, receiver restart, Wi-Fi interruption, and two complete
-iPhone cycles must still be recorded.
+Physical Bonjour discovery, real QR pairing, receiver restart, Wi-Fi interruption, and two
+complete device cycles remain required only to promote live transport on a specific device
+class. They do not block M1 completion through manual import and replay.
 
 ## M2 Canonical World, Asset And Delta Graph
 
