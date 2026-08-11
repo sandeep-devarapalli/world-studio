@@ -117,8 +117,42 @@ The first canonical-graph contract slice is active under `contracts/world-graph/
 It defines immutable World v0.2 and Asset v0.1 revisions plus reversible Delta v0.1
 records with content hashes, transforms, units, uncertainty, provenance, and separate
 authority lanes. These records are deliberately separate from the mutable `WorldSession`.
-Existing local package and Episode contracts remain the active loading paths until a
-confined store, migration, and referenced-byte round-trip path is implemented.
+Existing local package and Episode contracts remain the active loading paths.
+
+The pure Node `CanonicalWorldPackageStore` is the first persistence boundary for canonical
+revisions. Its constructor accepts an absolute root so tests use temporary directories;
+desktop wiring will supply `app.getPath("userData")/world-packages` later. A publication is
+staged under `.incoming`, then the complete immutable revision directory is atomically
+renamed into a deterministic World or Asset version slot. The store retains the exact raw
+manifest bytes and writes store-owned metadata separately. Identical republication is a
+duplicate; the same identity or version slot with different bytes is a conflict.
+
+```text
+<root>/.incoming/<publication-id>/
+<root>/worlds/<world-id>/versions/<10-digit-version>/{record,content}/
+<root>/assets/<asset-id>/versions/<10-digit-version>/{record,content}/
+```
+
+Recovery and every explicit reopen validate the committed directory instead of trusting
+cached state. They strictly parse JSON records, rehash the manifest, Delta, direct content,
+and the complete transitive Asset closure, then rerun lineage and transition validation.
+World revisions therefore bind exact Asset revisions that already exist in the same store.
+Malformed committed entries fail closed. Recovery removes only stale real directories from
+`.incoming`; committed revision directories remain authoritative and immutable.
+
+The supported writer is one Electron main process. Store instances in that process
+serialize by root; live foreign staging fails closed, while independent publishers reconcile
+only at the deterministic final rename. This is not a hostile multi-process lock. Full-file
+verification streams bytes, while materialized reads have a non-raiseable 16 MiB cap.
+Recovery also has lower-only hard ceilings of 100,000 stored versions, 1,000,000 aggregate
+content references, and 262,144 content directories so immutable history cannot become an
+unbounded memory path.
+
+This module has no Electron main, preload, IPC, UI, current package-reader, autoload, or
+editor integration. It does not migrate either historical World v0.1 shape, materialize
+`hide` or `annotate`, add Site revisions, deduplicate global blobs, or promote authority.
+It also changes no reconstruction worker, renderer, simulation, physics, Capture Splat, or
+iPhone behavior.
 
 Delta v0.1 is a forward grammar, not an editor executor. Commit-time transition validation
 currently materializes artifact edits, World asset membership, and World `manual_edit`
