@@ -52,6 +52,7 @@ import {
   spinFirstPersonCamera,
   firstPersonCameraFromFrame,
   floorHeightFromWorldPoints,
+  frameWorldPoints,
   holdRepeatStepsPerSecond,
   moveFirstPersonCamera,
   moveFreeCamera,
@@ -808,18 +809,19 @@ export function App() {
   );
   const simulateComparisonCapture = selectedEpisodeCapture ?? simulateCompareCaptures[0] ?? latestSensorCapture;
   const simulateSourceFrame = simulateComparisonCapture ? null : selectedSourceFrame;
+  const worldPointFrame = useMemo(() => frameWorldPoints(worldPoints), [worldPoints]);
   const worldOrientation = useMemo<WorldOrientation | undefined>(
     () => {
-      const center = centerFromWorldPoints(worldPoints);
+      const center = worldPointFrame?.center ?? centerFromWorldPoints(worldPoints);
       const base = worldOrientationFromUp(handoffSceneHints.worldUp, center)
         ?? estimateWorldOrientation(captureFrames.map((frame) => frame.frameCamera), center);
       return refineWorldOrientationWithFloorNormal(worldPoints, base);
     },
-    [captureFrames, handoffSceneHints.worldUp, worldPoints]
+    [captureFrames, handoffSceneHints.worldUp, worldPointFrame, worldPoints]
   );
   const sceneRadius = useMemo(
-    () => handoffSceneHints.radius ?? radiusFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints)),
-    [handoffSceneHints.radius, worldPoints]
+    () => handoffSceneHints.radius ?? worldPointFrame?.radius ?? radiusFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints)),
+    [handoffSceneHints.radius, worldPointFrame, worldPoints]
   );
   const simulateSteps = useMemo(
     () => stepsForSceneRadius(handoffSceneHints.median ?? sceneRadius),
@@ -901,8 +903,8 @@ export function App() {
   const activeWorldOrientation =
     (mode === "simulate" && (simulateFrameCamera || simulateFirstPersonCamera)) || mode === "view" ? worldOrientation : undefined;
   const sceneFloorY = useMemo(
-    () => floorHeightFromWorldPoints(worldPoints, centerFromWorldPoints(worldPoints), activeWorldOrientation?.rotation),
-    [activeWorldOrientation, worldPoints]
+    () => floorHeightFromWorldPoints(worldPoints, worldPointFrame?.center ?? centerFromWorldPoints(worldPoints), activeWorldOrientation?.rotation),
+    [activeWorldOrientation, worldPointFrame, worldPoints]
   );
   const simulateCameraLabel =
     simulateCameraMode === "frame"
@@ -1035,18 +1037,15 @@ export function App() {
   }, [captureFrames, worldOrientation]);
 
   useEffect(() => {
-    if (!worldPoints.length) return;
-    const center = centerFromWorldPoints(worldPoints);
-    const radius = radiusFromWorldPoints(worldPoints, center);
-    if (!radius) return;
-    const target: [number, number, number] = worldOrientation ? [0, 0, 0] : center;
+    if (!worldPointFrame) return;
+    const target: [number, number, number] = activeWorldOrientation ? [0, 0, 0] : worldPointFrame.center;
     setCamera((current) => ({
       ...current,
       target,
-      distance: Math.min(28, Math.max(2.4, radius * 2.3)),
+      distance: Math.min(28, Math.max(2.4, worldPointFrame.radius * 2.6)),
       pitch: 0.5
     }));
-  }, [worldOrientation, worldPoints]);
+  }, [activeWorldOrientation, worldPointFrame]);
 
   const requestStageFullscreen = useCallback(async () => {
     const stage = canvasRef.current?.closest(".ws-stage-shell") as HTMLElement | null;
@@ -2820,7 +2819,6 @@ export function App() {
   };
 
   const onWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
     if (mode === "simulate") {
       if (simulateCameraMode === "walk") {
         setLastAction("walk dolly disabled");

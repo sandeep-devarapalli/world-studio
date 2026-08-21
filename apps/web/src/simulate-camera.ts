@@ -22,6 +22,52 @@ export interface SimulateSteps {
 
 export const defaultSimulateSteps: SimulateSteps = { move: freeMoveStep, rise: freeRiseStep, scale: 1 };
 
+export interface WorldPointFrame {
+  center: [number, number, number];
+  radius: number;
+}
+
+const worldPointFrameMaxSamples = 20_000;
+const worldPointFrameTrimFraction = 0.01;
+const worldPointFrameRadialTrimFraction = worldPointFrameTrimFraction * 2;
+
+export function frameWorldPoints(points: Array<{ x: number; y: number; z: number }>): WorldPointFrame | undefined {
+  if (points.length < 8) return undefined;
+  const samples: Array<[number, number, number]> = [];
+  let validCount = 0;
+  let sampleState = 0x9e3779b9;
+  for (const point of points) {
+    if (![point.x, point.y, point.z].every(Number.isFinite)) continue;
+    validCount += 1;
+    sampleState = (Math.imul(sampleState, 1_664_525) + 1_013_904_223) >>> 0;
+    const sample: [number, number, number] = [point.x, point.y, point.z];
+    if (samples.length < worldPointFrameMaxSamples) {
+      samples.push(sample);
+      continue;
+    }
+    const replacement = Math.floor((sampleState / 0x1_0000_0000) * validCount);
+    if (replacement < worldPointFrameMaxSamples) samples[replacement] = sample;
+  }
+  if (samples.length < 8) return undefined;
+  const axes: [number[], number[], number[]] = [
+    samples.map((sample) => sample[0]),
+    samples.map((sample) => sample[1]),
+    samples.map((sample) => sample[2])
+  ];
+  for (const axis of axes) axis.sort((a, b) => a - b);
+  const center = axes.map((axis) => {
+    const trim = trimmedCount(axis.length, worldPointFrameTrimFraction);
+    return (axis[trim]! + axis[axis.length - trim - 1]!) * 0.5;
+  }) as [number, number, number];
+  const distances: number[] = [];
+  for (const sample of samples) {
+    distances.push(Math.hypot(sample[0] - center[0], sample[1] - center[1], sample[2] - center[2]));
+  }
+  distances.sort((a, b) => a - b);
+  const radius = distances[distances.length - trimmedCount(distances.length, worldPointFrameRadialTrimFraction) - 1]!;
+  return Number.isFinite(radius) && radius > 0 ? { center, radius } : undefined;
+}
+
 export function stepsForSceneRadius(sceneRadius?: number): SimulateSteps {
   if (sceneRadius === undefined || !Number.isFinite(sceneRadius) || sceneRadius <= 0) return defaultSimulateSteps;
   const move = Math.min(1.0, Math.max(0.02, 0.04 * sceneRadius));
@@ -62,6 +108,10 @@ export function radiusFromWorldPoints(points: Array<{ x: number; y: number; z: n
   distances.sort((a, b) => a - b);
   const p95 = distances[Math.min(distances.length - 1, Math.floor(distances.length * 0.95))];
   return Number.isFinite(p95) && p95 > 0 ? p95 : undefined;
+}
+
+function trimmedCount(length: number, fraction: number): number {
+  return Math.min(Math.ceil(length * fraction), Math.floor((length - 1) / 2));
 }
 
 export function firstPersonCameraFromFrame(frameCamera: FrameCamera): FirstPersonCamera {

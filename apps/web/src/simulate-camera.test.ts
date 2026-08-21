@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CameraState } from "@world-studio/world-core";
-import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius, walkDirectionForCommands, worldOrientationFromUp } from "./simulate-camera";
+import { applyWorldOrientationToFrameCamera, centerSpinCameraFromFrames, classifySimulateDrag, commandForKey, defaultSimulateSteps, dollyCamera, dollyFirstPersonCamera, estimateWorldOrientation, firstPersonCameraFromFrame, floorHeightFromWorldPoints, frameWorldPoints, freeKeyboardLookStepX, freeMoveStep, insideLookCameraFromFrames, interpolateFrameCameras, moveFirstPersonCamera, moveFreeCamera, panFirstPersonCamera, radiusFromWorldPoints, refineWorldOrientationWithFloorNormal, rotateFirstPersonCamera, rotateFirstPersonCameraClamped, panCamera, rotateCamera, spinFirstPersonCamera, stepsForSceneRadius, walkDirectionForCommands, worldOrientationFromUp } from "./simulate-camera";
 
 const camera: CameraState = {
   yaw: 0,
@@ -163,6 +163,69 @@ describe("simulate camera controls", () => {
     expect(radius!).toBeGreaterThan(4.5);
     expect(radius!).toBeLessThanOrEqual(5.01);
     expect(radiusFromWorldPoints(points.slice(0, 3), [0, 0, 0])).toBeUndefined();
+  });
+
+  it("frames the useful point mass without letting sparse extremes move the camera", () => {
+    const points = Array.from({ length: 100 }, (_, index) => ({
+      x: 2 + Math.cos(index) * 5,
+      y: 3 + Math.sin(index * 0.7) * 2,
+      z: 4 + Math.sin(index) * 5
+    }));
+    points.push({ x: -1_000, y: -1_000, z: -1_000 }, { x: 1_000, y: 1_000, z: 1_000 });
+    const frame = frameWorldPoints(points);
+    expect(frame).toBeDefined();
+    expect(frame!.center[0]).toBeCloseTo(2, 0);
+    expect(frame!.center[1]).toBeCloseTo(3, 0);
+    expect(frame!.center[2]).toBeCloseTo(4, 0);
+    expect(frame!.radius).toBeGreaterThan(4.5);
+    expect(frame!.radius).toBeLessThan(8);
+    expect(frameWorldPoints(points.slice(0, 3))).toBeUndefined();
+  });
+
+  it("trims one-sided extremes at exact small-sample boundaries", () => {
+    const points = Array.from({ length: 99 }, (_, index) => ({
+      x: 2 + Math.cos(index) * 5,
+      y: 3 + Math.sin(index * 0.7) * 2,
+      z: 4 + Math.sin(index) * 5
+    }));
+    points.push({ x: -1_000, y: -1_000, z: -1_000 });
+    const frame = frameWorldPoints(points);
+    expect(frame).toBeDefined();
+    expect(frame!.center[0]).toBeCloseTo(2, 0);
+    expect(frame!.center[1]).toBeCloseTo(3, 0);
+    expect(frame!.center[2]).toBeCloseTo(4, 0);
+    expect(frame!.radius).toBeLessThan(8);
+  });
+
+  it("trims both coordinate tails from the radial envelope at scale", () => {
+    const points = Array.from({ length: 9_800 }, (_, index) => ({
+      x: 2 + Math.cos(index) * 5,
+      y: 3 + Math.sin(index * 0.7) * 2,
+      z: 4 + Math.sin(index) * 5
+    }));
+    points.push(
+      ...Array.from({ length: 100 }, () => ({ x: -1_000, y: -1_000, z: -1_000 })),
+      ...Array.from({ length: 100 }, () => ({ x: 1_000, y: 1_000, z: 1_000 }))
+    );
+    const frame = frameWorldPoints(points);
+    expect(frame).toBeDefined();
+    expect(frame!.center[0]).toBeCloseTo(2, 0);
+    expect(frame!.center[1]).toBeCloseTo(3, 0);
+    expect(frame!.center[2]).toBeCloseTo(4, 0);
+    expect(frame!.radius).toBeLessThan(8);
+  });
+
+  it("samples ordered point sets without periodic aliasing", () => {
+    const points = Array.from({ length: 40_000 }, (_, index) => ({
+      x: index % 2 === 0 ? -10 : 10,
+      y: (index % 11) * 0.01,
+      z: (index % 7) * 0.01
+    }));
+    const frame = frameWorldPoints(points);
+    expect(frame).toBeDefined();
+    expect(frame!.center[0]).toBeCloseTo(0, 6);
+    expect(frame!.radius).toBeGreaterThan(9.9);
+    expect(frameWorldPoints(points)).toEqual(frame);
   });
 
   it("scales keyboard movement by scene-derived steps and per-frame fractions", () => {
