@@ -1,0 +1,6 @@
+{
+  "$id": "urn:world-studio:schema:world_studio.gaussian_training_job.v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "urn:world-studio:schema:world_studio.gaussian_pipeline_defs.v0.1#/$defs/trainingJob",
+  "title": "World Studio Gaussian training job v0.1"
+}
