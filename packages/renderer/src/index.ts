@@ -36,6 +36,7 @@ interface SparkRuntimeProfile {
   sortRadial?: boolean;
   maxGaussianScale?: number;
   maxGaussianPositionRadius?: number;
+  hideGaussianScaleAbove?: number;
 }
 
 const fallbackClassColors = [
@@ -70,7 +71,11 @@ const sparkRuntimeProfiles: Record<SparkRenderProfile, SparkRuntimeProfile> = {
   "world-studio-default": {
     minAlpha: 1 / 255,
     maxPixelRadius: 180,
-    focalAdjustment: 1.5
+    focalAdjustment: 1.5,
+    // Spark 2.1 PackedSplats uses float16 centers and log-scales in [-12, 9].
+    maxGaussianScale: Math.exp(9),
+    maxGaussianPositionRadius: 65_000,
+    hideGaussianScaleAbove: Math.exp(9)
   },
   // Spark defaults (as proven by Budo Studio on Bonsai PLYs) plus preview-only tail handling:
   // Capture Splat scenes keep most mass in faint splats, so raising minAlpha darkens them.
@@ -887,7 +892,8 @@ export class ThreeWorldRenderer implements RenderAdapter {
     const prepared = prepareGaussianPlyForSpark(await response.arrayBuffer(), {
       maxScale: profile.maxGaussianScale,
       normalizeRotations: this.sparkProfile.startsWith("capture-splat-"),
-      hideOutliersBeyondRadius: profile.maxGaussianPositionRadius
+      hideOutliersBeyondRadius: profile.maxGaussianPositionRadius,
+      hideScalesBeyond: profile.hideGaussianScaleAbove
     });
     this.gaussianSourceFormat = prepared.sourceFormat;
     this.gaussianPreparedForSpark = prepared.converted;

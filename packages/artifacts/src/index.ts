@@ -41,6 +41,7 @@ export interface SparkGaussianPlyPrepareOptions {
   maxScale?: number;
   normalizeRotations?: boolean;
   hideOutliersBeyondRadius?: number;
+  hideScalesBeyond?: number;
 }
 
 interface PlyScalarProperty {
@@ -177,12 +178,14 @@ export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer, opt
   if (kind !== "gaussian-ply") throw new Error(`Expected Gaussian PLY, got ${kind}`);
   const maxLogScale = options.maxScale && options.maxScale > 0 ? Math.log(options.maxScale) : undefined;
   const hideRadius = options.hideOutliersBeyondRadius && options.hideOutliersBeyondRadius > 0 ? options.hideOutliersBeyondRadius : undefined;
+  const hideLogScale = options.hideScalesBeyond && options.hideScalesBeyond > 0 ? Math.log(options.hideScalesBeyond) : undefined;
   if (header.format !== "ascii") {
-    if (header.format === "binary_little_endian" && (maxLogScale !== undefined || options.normalizeRotations || hideRadius !== undefined)) {
+    if (header.format === "binary_little_endian" && (maxLogScale !== undefined || options.normalizeRotations || hideRadius !== undefined || hideLogScale !== undefined)) {
       const prepared = prepareBinaryGaussianRows(bytes, headerText, headerLength, {
         maxLogScale,
         normalizeRotations: options.normalizeRotations,
-        hideOutliersBeyondRadius: hideRadius
+        hideOutliersBeyondRadius: hideRadius,
+        hideLogScalesAbove: hideLogScale
       });
       return {
         bytes: prepared.bytes,
@@ -219,20 +222,19 @@ export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer, opt
     if (cols.length < properties.length) {
       throw new Error(`ASCII Gaussian PLY row ${rowIndex + 1} has ${cols.length} columns`);
     }
-    let clampedScaleCount = 0;
     for (let propertyIndex = 0; propertyIndex < properties.length; propertyIndex++) {
       const property = properties[propertyIndex]!;
       const rawValue = cols[propertyIndex];
-      const value = maxLogScale === undefined ? rawValue : clampGaussianScaleRawValue(property, rawValue, maxLogScale);
-      if (value !== rawValue) clampedScaleCount++;
-      offset = writePlyScalar(view, offset, property, value);
+      offset = writePlyScalar(view, offset, property, rawValue);
     }
   }
 
-  const normalized = options.normalizeRotations || hideRadius !== undefined
+  const normalized = maxLogScale !== undefined || options.normalizeRotations || hideRadius !== undefined || hideLogScale !== undefined
     ? prepareBinaryGaussianRows(outputBytes, binaryHeader, headerBytes.length, {
+        maxLogScale,
         normalizeRotations: options.normalizeRotations,
-        hideOutliersBeyondRadius: hideRadius
+        hideOutliersBeyondRadius: hideRadius,
+        hideLogScalesAbove: hideLogScale
       })
     : { bytes: outputBytes, normalizedRotationCount: 0, clampedScaleCount: 0, droppedOutlierCount: 0 };
 
@@ -242,9 +244,9 @@ export function prepareGaussianPlyForSpark(source: Uint8Array | ArrayBuffer, opt
     headerLength: headerBytes.length,
     sourceFormat: header.format,
     vertexCount,
-    clampedScaleCount: maxLogScale === undefined ? undefined : countAsciiGaussianScaleClamps(lines, properties, maxLogScale),
+    clampedScaleCount: maxLogScale === undefined ? undefined : normalized.clampedScaleCount,
     normalizedRotationCount: options.normalizeRotations ? normalized.normalizedRotationCount : undefined,
-    droppedOutlierCount: hideRadius === undefined ? undefined : normalized.droppedOutlierCount
+    droppedOutlierCount: hideRadius === undefined && hideLogScale === undefined ? undefined : normalized.droppedOutlierCount
   };
 }
 
@@ -712,27 +714,6 @@ function plyScalarSize(type: PlyScalarType): number {
   }
 }
 
-function clampGaussianScaleRawValue(property: PlyScalarProperty, rawValue: string | undefined, maxLogScale: number): string | undefined {
-  if (!isGaussianScaleProperty(property.name)) return rawValue;
-  const value = Number(rawValue);
-  if (!Number.isFinite(value) || value <= maxLogScale) return rawValue;
-  return String(maxLogScale);
-}
-
-function countAsciiGaussianScaleClamps(lines: string[], properties: PlyScalarProperty[], maxLogScale: number): number {
-  let count = 0;
-  for (const line of lines) {
-    const cols = line.trim().split(/\s+/);
-    for (let propertyIndex = 0; propertyIndex < properties.length; propertyIndex++) {
-      const property = properties[propertyIndex]!;
-      if (!isGaussianScaleProperty(property.name)) continue;
-      const value = Number(cols[propertyIndex]);
-      if (Number.isFinite(value) && value > maxLogScale) count++;
-    }
-  }
-  return count;
-}
-
 // sigmoid(-30) is ~1e-13, so preview-hidden splats render fully transparent without changing row layout.
 const hiddenOutlierOpacityLogit = -30;
 
@@ -740,7 +721,7 @@ function prepareBinaryGaussianRows(
   bytes: Uint8Array,
   headerText: string,
   headerLength: number,
-  options: { maxLogScale?: number; normalizeRotations?: boolean; hideOutliersBeyondRadius?: number }
+  options: { maxLogScale?: number; normalizeRotations?: boolean; hideOutliersBeyondRadius?: number; hideLogScalesAbove?: number }
 ): { bytes: Uint8Array; clampedScaleCount: number; normalizedRotationCount: number; droppedOutlierCount: number } {
   const { properties, vertexCount } = parseAsciiPlySchema(headerText);
   const offsets = propertyByteOffsets(properties);
@@ -752,7 +733,7 @@ function prepareBinaryGaussianRows(
   const opacityIndex = properties.findIndex((property) => property.name === "opacity");
   const canNormalizeRotations = Boolean(options.normalizeRotations && rotationIndexes.every((index) => index >= 0));
   const canHideOutliers = Boolean(
-    options.hideOutliersBeyondRadius !== undefined &&
+    (options.hideOutliersBeyondRadius !== undefined || options.hideLogScalesAbove !== undefined) &&
     positionIndexes.every((index) => index >= 0) &&
     opacityIndex >= 0
   );
@@ -767,12 +748,22 @@ function prepareBinaryGaussianRows(
   let droppedOutlierCount = 0;
   for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
     const rowOffset = headerLength + vertexIndex * stride;
+    let hideRow = false;
     if (canHideOutliers) {
-      const [x, y, z] = positionIndexes.map((propertyIndex) =>
-        readPlyScalar(view, rowOffset + offsets[propertyIndex]!, properties[propertyIndex]!)
-      );
-      const distance = Math.hypot(x!, y!, z!);
-      if (!Number.isFinite(distance) || distance > options.hideOutliersBeyondRadius!) {
+      if (options.hideOutliersBeyondRadius !== undefined) {
+        const [x, y, z] = positionIndexes.map((propertyIndex) =>
+          readPlyScalar(view, rowOffset + offsets[propertyIndex]!, properties[propertyIndex]!)
+        );
+        const distance = Math.hypot(x!, y!, z!);
+        hideRow = !Number.isFinite(distance) || distance > options.hideOutliersBeyondRadius;
+      }
+      if (!hideRow && options.hideLogScalesAbove !== undefined) {
+        hideRow = scaleIndexes.some((propertyIndex) => {
+          const value = readPlyScalar(view, rowOffset + offsets[propertyIndex]!, properties[propertyIndex]!);
+          return !Number.isFinite(value) || value > options.hideLogScalesAbove!;
+        });
+      }
+      if (hideRow) {
         const property = properties[opacityIndex]!;
         writePlyNumber(view, rowOffset + offsets[opacityIndex]!, property, hiddenOutlierOpacityLogit);
         for (const propertyIndex of positionIndexes) {
