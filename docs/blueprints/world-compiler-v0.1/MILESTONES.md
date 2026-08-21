@@ -82,9 +82,17 @@ Current evidence note (non-normative, 2026-08-21): checksum-bound Playroom and L
 passed candidate Spark 2.1 functional visualization gates. The Lego lane used supplied camera
 poses and therefore did not validate SfM. Its result report hashes to `a16f0d23...a7323d4`, and
 the r4 functional and bound manual reports hash to `598b3d74...70f06a3` and
-`7b4ab201...5fe61c7`. This does not change M2 acceptance, publish a canonical Asset, clear
-candidate release, or grant metric, collision, navigation, physics, performance, quality, or
-general capacity authority.
+`7b4ab201...5fe61c7`. Current-candidate Playroom preparation also returned exact unchanged
+bytes in report `31b53e38...8f0181c`, while fresh current-candidate UI replay remains held
+separately.
+
+The independent iPhone HLOC-to-Spirula-to-Spark lane promoted 300/300-image registration and
+functional visibility/orbit/zoom. Its SfM, Spirula, Spark, and manual evidence hash to
+`1b992660...d9c7d`, `d6493854...580d0`, `ace2c758...4cbe9`, and `7e55e53a...5a3ba1`.
+Package completeness, USB timing, candidate release, and quality remain held; the next gate is
+same-camera capture/reconstruction quality improvement. This does not change M2 acceptance,
+publish a canonical Asset, or grant metric, collision, navigation, physics, performance,
+quality, or general capacity authority.
 
 ## M3 Indoor Navigation And First Deployment Twin - R3
 

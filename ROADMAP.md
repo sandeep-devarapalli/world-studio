@@ -92,13 +92,26 @@ outcomes and acceptance gates.
   satisfy the versioned benchmark contract without a fixed-camera quality regression.
 - The corrected Playroom CPU-cache ladder passed seven eight-view/finite-output runs. Its
   checksum-bound 100,000-splat PLY subsequently passed candidate Spark load, centered framing,
-  orbit, and zoom; performance, quality, metric, collision, navigation, and physics remain held.
+  orbit, and zoom at revision `3ea4107`. Revision `cb0a93d` also returned the exact source bytes
+  through the packaged preparation path with no conversion, clamps, normalization, or drops;
+  that regression hashes to `31b53e38...8f0181c`. Fresh `cb0a93d` UI replay remains held because
+  no honest generic Playroom harness is available. Performance, quality, metric, collision,
+  navigation, and physics remain held.
 - The checksum-bound Lego known-pose adapter, external Spirula 7,000-step result, and finite
   99,996-splat SH3 PLY passed candidate Spark 2.1 load, orbit, and inward zoom at revision
   `cb0a93d`. The run result hashes to `a16f0d23...a7323d4`, the r4 functional report to
   `598b3d74...70f06a3`, and the manual review to `7b4ab201...5fe61c7`. Supplied poses bypass
   SfM, external-USB timings are non-production, candidate release remains held, and this gate
   makes no general quality or capacity claim.
+- The independent iPhone lane completed NetVLAD/ALIKED/LightGlue reconstruction, external
+  Spirula training, finite SH3 export, and Spark 2.1 functional visibility/orbit/zoom. The SfM
+  validator registered 300/300 images, while the selected 99,979-splat result remained visibly
+  blurry with floaters. SfM, Spirula, and Spark/manual evidence hash to
+  `1b992660...d9c7d`, `d6493854...580d0`, and `ace2c758...4cbe9` / `7e55e53a...5a3ba1`.
+  Registration and functional visualization are promoted; package completeness, timing,
+  release, render quality, metric, collision, navigation, and physics are held. The next gate
+  is capture/reconstruction quality improvement with same-camera comparison, not first pipeline
+  execution.
 
 ### Simulation, Calibration And R2S2R
 
