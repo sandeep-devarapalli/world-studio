@@ -6,10 +6,10 @@
   "main": "dist/main.js",
   "scripts": {
     "setup": "node scripts/ensure-electron.mjs",
-    "dev": "pnpm run setup && tsc -p tsconfig.json && WORLD_STUDIO_RENDERER_URL=http://127.0.0.1:5173 electron .",
+    "dev": "pnpm --filter @world-studio/world-core build && pnpm run setup && tsc -p tsconfig.json && WORLD_STUDIO_RENDERER_URL=http://127.0.0.1:5173 electron .",
     "package": "node scripts/package-macos.mjs",
     "smoke": "node scripts/smoke-packaged.mjs",
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm --filter @world-studio/world-core build && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

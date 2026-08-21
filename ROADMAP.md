@@ -9,7 +9,7 @@ outcomes and acceptance gates.
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
 | M1 Authenticated LAN And Progressive World | Manual-import and replay-first progressive evidence, optional paired TLS transport, and isolated worker lifecycle | partial; iPhone live transport held by thermal evidence |
-| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas | partial |
+| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial |
 | M3 Indoor Navigation And First Deployment Twin - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
 | M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal | planned |
@@ -63,12 +63,55 @@ outcomes and acceptance gates.
   Package and edit graph.
 - Preserve ordinary PLY, Gaussian PLY, mesh, collision, navigation, semantic, and physics
   roles separately.
+- The first 3DGS contract slice defines strict, checksum-bound training-job, Gaussian-asset,
+  and benchmark-report records under `contracts/gaussian-pipeline/v0.1`. It does not register
+  a trainer, load an output, publish a canonical Asset, or change physics. Training jobs use
+  an explicit `null` seed when a provider exposes no deterministic seed control. Gaussian
+  assets preserve unregistered trainer gauge as unknown units with null axes until a separate
+  metric registration is accepted. Job quantization describes training storage; asset
+  quantization independently describes serialized delivery encoding.
+- The package reader validates additive Capture Splat handoff v0.3 `training_dataset`
+  metadata and rebinds its canonical digest to `source_frames`; the result remains capture
+  evidence and cannot create or execute a training job.
 
 ### Rendering And Large Assets
 
 - Continue `docs/3dgs_walkthrough_measurement_plan.md`.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
+- Spark remains pinned at 2.1.0. The initial benchmark allowlist is NeRF Synthetic Lego,
+  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego and
+  Playroom are available only for private local technical validation while dataset-byte rights
+  remain under review; all other OneDrive assets remain cloud-only.
+- Pinned Spirula Playroom outputs retain arbitrary COLMAP/SfM gauge and are visual-only;
+  they cannot support measurement, collision, navigation, or physics until registered to
+  separately validated metric geometry. Its mixed training storage does not imply compressed
+  output: the observed exported PLY properties are dequantized float32.
+- Apple M2 Max is the first target, not evidence for other devices. Cross-vendor Vulkan,
+  native equirectangular, and 10M SH3 in 8GB claims remain held until exact-device reports
+  satisfy the versioned benchmark contract without a fixed-camera quality regression.
+- The corrected Playroom CPU-cache ladder passed seven eight-view/finite-output runs. Its
+  checksum-bound 100,000-splat PLY subsequently passed candidate Spark load, centered framing,
+  orbit, and zoom at revision `3ea4107`. Revision `cb0a93d` also returned the exact source bytes
+  through the packaged preparation path with no conversion, clamps, normalization, or drops;
+  that regression hashes to `31b53e38...8f0181c`. Fresh `cb0a93d` UI replay remains held because
+  no honest generic Playroom harness is available. Performance, quality, metric, collision,
+  navigation, and physics remain held.
+- The checksum-bound Lego known-pose adapter, external Spirula 7,000-step result, and finite
+  99,996-splat SH3 PLY passed candidate Spark 2.1 load, orbit, and inward zoom at revision
+  `cb0a93d`. The run result hashes to `a16f0d23...a7323d4`, the r4 functional report to
+  `598b3d74...70f06a3`, and the manual review to `7b4ab201...5fe61c7`. Supplied poses bypass
+  SfM, external-USB timings are non-production, candidate release remains held, and this gate
+  makes no general quality or capacity claim.
+- The independent iPhone lane completed NetVLAD/ALIKED/LightGlue reconstruction, external
+  Spirula training, finite SH3 export, and Spark 2.1 functional visibility/orbit/zoom. The SfM
+  validator registered 300/300 images, while the selected 99,979-splat result remained visibly
+  blurry with floaters. SfM, Spirula, and Spark/manual evidence hash to
+  `1b992660...d9c7d`, `d6493854...580d0`, and `ace2c758...4cbe9` / `7e55e53a...5a3ba1`.
+  Registration and functional visualization are promoted; package completeness, timing,
+  release, render quality, metric, collision, navigation, and physics are held. The next gate
+  is capture/reconstruction quality improvement with same-camera comparison, not first pipeline
+  execution.
 
 ### Simulation, Calibration And R2S2R
 
@@ -101,6 +144,9 @@ The following work cannot be promoted by code or visual inspection alone:
 - point-to-point measurement promotion;
 - sensor-supervision and reconstruction A/B results;
 - SPZ/LoD round-trip orientation and color;
+- 3DGS training time, peak process/device memory, first-visible latency, frame-time
+  distributions, and fixed-camera quality on each claimed hardware class;
+- cross-vendor Vulkan, native equirectangular, and 10M SH3 in 8GB claims;
 - physical calibration apparatus and held-out trials;
 - Newton local/remote parity and effective-collider conformance;
 - matched open-loop real/sim observation and outcome residuals;

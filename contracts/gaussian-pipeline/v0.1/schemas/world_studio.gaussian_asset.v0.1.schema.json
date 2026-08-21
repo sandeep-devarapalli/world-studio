@@ -1,0 +1,6 @@
+{
+  "$id": "urn:world-studio:schema:world_studio.gaussian_asset.v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "urn:world-studio:schema:world_studio.gaussian_pipeline_defs.v0.1#/$defs/asset",
+  "title": "World Studio Gaussian asset v0.1"
+}

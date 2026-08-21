@@ -31,6 +31,7 @@ is relevant and whether it can be used as a dependency in an Apache 2.0 project.
 | World Labs Real-to-Sim-to-Real | No source dependency | Task-level real/sim observation, outcome, failure-region, and policy-ranking reference. | Product/research reference only. |
 | `dimforge/salva` | Apache-2.0 | Fluid simulation future reference. | Optional future dependency. |
 | `harry7557558/vksplat` | Apache-2.0 | Vulkan 3DGS training reference. | Optional future reference/dependency after build review. |
+| `harry7557558/spirula-studio` at `aede0ae3b2d01a7930c71b9c7f52354dc180146b` | GPL-3.0 | Audited reference for Vulkan training, combined optimization, quantization, native projection, correction, preprocessing, and derived-output contracts. | External user-installed process/reference only. Do not vendor, link, translate, or copy implementation code into the Apache source tree. This pin exposes no fixed-seed CLI flag, so jobs record seed `null` and benchmark stochastic runs through repetitions/raw evidence. |
 | `MrNeRF/LichtFeld-Studio` | GPL-3.0 | Native 3DGS studio UX reference. | Reference-only unless relicensing is intended. |
 
 ## M1 Local Security Utilities

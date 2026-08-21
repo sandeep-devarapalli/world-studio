@@ -1,0 +1,78 @@
+{
+  "asset_id": "gaussian-lego-fixture",
+  "authority": "visual_proposal",
+  "created_at": "2026-08-21T12:00:00.000Z",
+  "dataset": {
+    "fixture_id": "nerf-synthetic-lego",
+    "manifest_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "loaded_world_effect": "none",
+  "primary": {
+    "format": "ply",
+    "media_type": "application/octet-stream",
+    "path": "outputs/point_cloud.ply",
+    "sha256": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "size_bytes": 262144
+  },
+  "prohibited_uses": ["metric_measurement", "collision", "navigation", "physics"],
+  "representation": {
+    "camera_models": ["pinhole"],
+    "color_space": "linear",
+    "coordinate_frame": {
+      "forward_axis": null,
+      "frame_id": "trainer_world_unregistered",
+      "handedness": "right",
+      "length_unit": "unknown",
+      "up_axis": null
+    },
+    "quantization": "none",
+    "sh_degree": 3,
+    "source_splat_count": 1000,
+    "splat_count": 998
+  },
+  "schema": "world_studio.gaussian_asset.v0.1",
+  "sidecars": [
+    {
+      "content": {
+        "media_type": "application/json",
+        "path": "outputs/cameras.json",
+        "sha256": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        "size_bytes": 4096
+      },
+      "role": "cameras"
+    },
+    {
+      "content": {
+        "media_type": "application/json",
+        "path": "outputs/depth.manifest.json",
+        "sha256": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "size_bytes": 4096
+      },
+      "role": "depth"
+    },
+    {
+      "content": {
+        "media_type": "application/json",
+        "path": "outputs/normals.manifest.json",
+        "sha256": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "size_bytes": 4096
+      },
+      "role": "normals"
+    }
+  ],
+  "training_job": {
+    "job_id": "gaussian-training-lego-fixture",
+    "manifest_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "validation": {
+    "nonfinite_value_count": 0,
+    "removed_splat_count": 2,
+    "report": {
+      "media_type": "application/json",
+      "path": "outputs/finite-validation.json",
+      "sha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size_bytes": 1024
+    },
+    "status": "passed"
+  }
+}

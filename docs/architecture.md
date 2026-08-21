@@ -164,6 +164,55 @@ unsupported scope/intent combinations, and future Site revisions fail closed.
 The target R2S2R and runtime boundaries are documented in the
 [R2S2R and Newton adoption note](blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md).
 
+## Gaussian Pipeline Contract Boundary
+
+`contracts/gaussian-pipeline/v0.1` defines strict training-job, Gaussian-asset, and
+benchmark-report records. A job binds a dataset manifest, external worker source/build,
+feature profile, an observed seed or explicit unavailable `null`, requested outputs, and
+budgets. An asset binds that exact job and
+dataset plus format, splat representation, coordinate/color metadata, sidecars, and finite
+validation. A report binds the exact job/asset/dataset and records hardware, command argv,
+cold/warm repetitions, raw results, distributions, fixed-camera quality, noise controls,
+claims, limitations, and a `promote|hold|reject` decision.
+
+Coordinate frames distinguish accepted metric registration from arbitrary trainer gauge.
+Registered frames declare metres and distinct cardinal up/forward axes. Unregistered frames
+declare unknown units and null axes. In particular, pinned Spirula Playroom output preserves
+the source COLMAP/SfM gauge and remains visual-only until a separate metric registration is
+accepted.
+
+Job-profile quantization describes training and optimizer storage precision. Asset
+quantization describes the serialized Gaussian properties independently. Spirula qlevel 1
+uses mixed training storage but its checkpoint export dequantizes PLY properties to float32,
+so that binding is `job.profile.quantization = mixed` and
+`asset.representation.quantization = none`; it is not a compressed-output claim.
+
+These are data contracts only. They do not generalize the live-session-specific
+`ReconstructionWorkerSupervisor`, register or execute Spirula, load PLY/SPZ/RAD into Spark,
+publish a canonical Asset, or alter Rapier/Newton behavior. Every output remains a visual
+proposal with no loaded-World effect. GPL-3.0 Spirula Studio is pinned only as an external
+process/reference at `aede0ae3b2d01a7930c71b9c7f52354dc180146b`; no upstream code enters
+the Apache tree.
+
+The desktop package reader recognizes additive Capture Splat handoff v0.3 and strictly
+validates its `capture_splat.training_dataset.v0.1` block. It recomputes the declared
+canonical digest from the handoff's relative path, size, and SHA-256 frame identities before
+exposing the typed evidence inventory. Capture profiles use the producer's bounded identifier
+grammar, including `video_3dgs_max`, instead of a closed World Studio enum. The reader does
+not rehash every frame byte, construct a training job, or execute a worker.
+
+The current benchmark fixture allowlist is exactly NeRF Synthetic Lego, original-3DGS Deep
+Blending Playroom, and private Capture Splat fixture `capture-splat:2026-08-09T060230Z`
+(122 accepted RGB-D frames).
+Lego remains metadata-first until manifest/reference completeness is revalidated. Playroom is
+locally hydrated and binds all 229 archive members through dataset manifest SHA-256
+`494b7f8f069292f6b08497cbd8d820112c69677046ce39fd3c7e6268d4d8dc36`, but no explicit
+dataset-byte license was located; redistribution, public demos, product use, and commercial
+use remain held for rights review. Every other OneDrive dataset stays cloud-only. Reports
+must hold every claim that lacks exact measured evidence; Apple M2 Max results cannot stand
+in for NVIDIA, AMD, Intel, other Apple devices, native equirectangular input, or a literal
+10M SH3/8GB result.
+
 ## Physical Asset Calibration Boundary
 
 [Physical Asset Calibration](blueprints/world-compiler-v0.1/PHYSICAL_ASSET_CALIBRATION.md)

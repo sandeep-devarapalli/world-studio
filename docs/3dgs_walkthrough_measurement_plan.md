@@ -1,6 +1,6 @@
 # 3DGS Walkthrough and Metric Measurement Plan
 
-Last updated: 2026-07-13
+Last updated: 2026-08-21
 
 ## Objective
 
@@ -58,6 +58,8 @@ Capture Splat already records:
 5. The current room handoff has an accepted ARKit-to-trainer transform chain;
    packages without accepted registration remain Fly-only.
 6. Large Gaussian PLY files are loaded monolithically instead of using paged LoD.
+7. Strict 3DGS job/asset/benchmark contracts now exist, but no production trainer is
+   registered and no contract output is loaded into Spark or a canonical World automatically.
 
 ## Execution Phases
 
@@ -184,18 +186,188 @@ Recommended capture path:
 Avoid pure in-place rotation, fast turns, large exposure changes, and long
 straight paths without side parallax.
 
-## Test Assets
+## Current Benchmark Fixtures
 
-Use this progression:
+The contract benchmark allowlist is exactly:
 
-1. Capture Splat room, about 141 MB and 627k Gaussians.
-2. iPhone RGB-D cloud, about 143 MB and 3.1M points.
-3. DL3DV Gaussian scene, about 599 MB.
-4. Lublin city Gaussian, about 5.6 GB and 106M splats.
-5. Lublin full asset, about 16 GB, only after paged LoD passes.
+1. NeRF Synthetic Lego staged as private fixture `nerf-synthetic:lego`, with its derived
+   known-pose adapter in the dedicated external test workspace.
+2. Original-3DGS Deep Blending Playroom staged as private fixture
+   `deep-blending:playroom` from its checksum-bound GraphDeco-INRIA archive.
+3. Private Capture Splat fixture `capture-splat:2026-08-09T060230Z` with 122 accepted RGB-D
+   frames.
 
-Bonsai remains an object Orbit and visual-rendering regression asset. It is not
-a metric room-walkthrough test.
+Lego referenced-byte completeness and its deterministic known-pose adapter have been
+revalidated. Lego and Playroom remain limited to private local technical evaluation and held
+for redistribution, public demos, product use, and commercial use because dataset-byte rights
+have not been cleared.
+The local iPhone capture is the capture-to-training integration fixture.
+All other OneDrive datasets, including Bonsai, DL3DV, and Lublin, stay cloud-only and outside
+the active benchmark matrix. This contract slice does not hydrate or offload anything.
+
+Current local evidence, scoped to these exact artifacts rather than upstream constants:
+
+- the staged Lego manifest inventories 803 files with SHA-256
+  `21454ce25a35b567d0701bff615914497df93af1ed80949763ae7c9b25189f3d`.
+  The derived adapter dataset manifest hashes to
+  `306531bb28d4ecebc5459c4b57afe164b5522d930bef7cd98e8be5d2b16ac41f`, and its adapter
+  manifest hashes to `ae38a14ceed55b0070ee058fc55b7b1b40b402b9b2a0670ae874577dbe8d35bc`;
+- the staged Playroom checksum list inventories 229 files and hashes to
+  `bc23594180b9226dc5bacb4313e6036869d95c56d36d420666fea884f61f8eb6`;
+  its local sparse metadata reports
+  225/225 registered images, one `PINHOLE` camera, 37,005 points, and 0.616264 px mean
+  reprojection error. Its first-class dataset manifest hashes to
+  `494b7f8f069292f6b08497cbd8d820112c69677046ce39fd3c7e6268d4d8dc36`
+  and binds the GraphDeco-INRIA-distributed T&T+DB archive SHA-256 plus exact 229/229 member
+  parity;
+- the local iPhone v0.3 probe uses capture profile `video_3dgs_max` and inventories 122
+  frames with training-frame digest
+  `sha256:9fa6cc5c8447be6a4f58a7d61b97bc15b584711454468a66fb65f1300c51875c`
+  and handoff SHA-256
+  `bb53d2c713fc9240d4750182e6c8b6032e75d2c3fbb51d90482bdd1b38f844c1`. Its independent
+  300-frame HLOC reconstruction validation hashes to
+  `1b9926601b7330a7c8b54572ec4509979cd88a143a44e9514047b12855ad9c7d`.
+
+Lego completeness and the adapter hashes bind the measured known-pose route, but supplied
+poses bypass feature matching, triangulation, and pose recovery and therefore do not validate
+SfM or the iPhone capture-to-SfM lane. Neither Lego nor Playroom completeness clears dataset
+rights or proves general reconstruction quality. The v0.3 iPhone values validate only that
+local handoff's capture-evidence binding. The separate measured lane below binds SfM, trainer,
+finite export, and Spark functional evidence, but it still does not promote reconstruction
+quality.
+
+The pinned Spirula Playroom run preserves the arbitrary COLMAP/SfM gauge. Its Gaussian asset
+therefore records unknown length units and null up/forward axes and remains visual-only; no
+measurement, collision, navigation, or physics use is allowed without separate accepted
+metric registration. Spirula qlevel 1 uses mixed training storage (including quantized SH
+and optimizer state), but checkpoint export dequantizes PLY properties to float32. The job
+records mixed training-storage quantization while the exported PLY asset records no serialized
+quantization; this is not evidence of compressed delivery.
+
+### Measured Playroom Apple quality ladder and Spark gate - 2026-08-21
+
+The first disk-cache evaluation ladder is rejected: Spirula's asynchronous disk decode path
+repeated held-out views, leaving only five to seven unique cameras in an eight-camera set. The
+superseding CPU-cache contract requires the same unordered eight-image GT hash set in every run.
+All four corrected exploratory rungs and three corrected 7,000-step repetitions passed that
+gate, produced eight unique renders, and had finite PLY payloads.
+
+On the exact Apple M2 Max host, the corrected exploratory ladder measured:
+
+| steps | splats | PSNR | SSIM | LPIPS Alex | process elapsed | max RSS |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 | 36,593 | 21.6994 | 0.792177 | 0.469052 | 18.76 s | 1,008,893,952 B |
+| 1,000 | 44,651 | 23.3253 | 0.820748 | 0.390421 | 33.79 s | 1,004,994,560 B |
+| 3,000 | 99,912 | 26.3961 | 0.861971 | 0.289709 | 99.70 s | 1,005,518,848 B |
+| 7,000 | 100,000 | 27.8425 | 0.883883 | 0.239737 | 237.74 s | 1,005,142,016 B |
+
+Three warm 7,000-step repetitions measured median/p95 process elapsed time of
+238.42/254.93 seconds and median/p95 maximum RSS of 1,009,696,768/1,012,547,584 bytes.
+MPS LPIPS completed without CPU fallback. Because the trainer exposes no seed, only one scene
+was measured, and only the selected rung was repeated, these are bounded host observations and
+not a promoted World Studio quality claim.
+
+The selected Spark asset is `playroom-fx-q7000-w3`: 100,000 splats, 24,801,531 bytes, zero
+non-finite values, and PLY SHA-256
+`12379d273214e5370e92c36f8e0cfe8761977ab5c10b1a83f9a371c5912a067b`. The checksum-bound
+benchmark report is
+`data/generated/world_studio_3dgs_quality_ladder_20260821/aede0ae3/evidence/playroom-quality-ladder-benchmark-report.v0.1.json`
+with SHA-256 `a909eb2a9bc0cd2cd3d43287b0e9146e77765aa2084b75ee3b311ba76c256c45`.
+
+The earlier 37,005-splat development probe identified off-centre framing and a passive wheel
+listener warning. Robust bounded framing, non-periodic preview sampling, and the interaction
+regression are now covered by unit, package-reader, and Playwright tests. The 100,000-splat
+candidate subsequently passed Spark load, centered framing, orbit, and zoom with exact
+provenance and manual screenshot review. The functional decision report hashes to
+`59404b227647f48a544bb52ee7c93427d86b4e33e085b9b9ef61fc7994b41a60` as
+`world-studio-spark-functional-decision.v0.1.json`. This promotes only candidate functional
+visualization; first-visible latency, draw time, memory, image quality, metric measurement,
+collision, navigation, and Newton physics remain held.
+
+At current candidate implementation revision `cb0a93d`, the packaged preparation-path
+regression returned the selected Playroom PLY byte-for-byte with `converted: false` and zero
+scale clamps, rotation normalizations, or dropped outliers. Report
+`playroom-prepare-spark-regression.v0.1.json` has SHA-256
+`31b53e38ea97b5194562060a40d3ce651dadd5c846afb29e9204dbdc88f0181c`.
+This is preparation-path non-regression only. The earlier `3ea4107` load/orbit/zoom evidence
+remains distinct; fresh `cb0a93d` packaged UI replay is held because no honest generic
+Playroom harness exists without fabricating unrelated dataset provenance.
+
+### Measured Lego known-pose ladder and Spark gate - 2026-08-21
+
+The deterministic Lego adapter consumes the staged images and supplied camera transforms. Its
+dataset manifest hashes to `306531bb28d4ecebc5459c4b57afe164b5522d930bef7cd98e8be5d2b16ac41f`,
+and its adapter manifest hashes to
+`ae38a14ceed55b0070ee058fc55b7b1b40b402b9b2a0670ae874577dbe8d35bc`. This is an
+images-with-known-poses training gate: it bypasses SfM and does not validate feature extraction,
+matching, triangulation, pose recovery, or the iPhone capture-to-SfM workflow.
+
+On the exact Apple M2 Max host, the exploratory 7,000-step run measured 34.4092 PSNR,
+0.975988 SSIM, and 0.0220346 LPIPS Alex. The selected third fresh repetition measured 34.4931
+PSNR, 0.976296 SSIM, and 0.0217699 LPIPS Alex. Three fresh repetitions measured 147.67, 144.44,
+and 153.32 seconds elapsed, with median/p95 147.67/152.755 seconds; maximum RSS was
+819,625,984, 810,696,704, and 806,912,000 bytes, with median/p95
+810,696,704/818,733,056 bytes. Outputs were written to external USB-attached APFS storage, so
+these timing observations are non-production and cannot establish internal-storage throughput.
+
+The selected repetition exported a finite 99,996-splat SH3 PLY of 24,800,538 bytes with
+SHA-256 `8dd218d9b472845efb475f42423de95994333b708d7d3f80beb5f107273eeb78`. The
+checksum-bound `spirula-lego-ladder-result.v0.2.json` hashes to
+`a16f0d2371b3607e0376581c3cb047798e484c9a4b28c757464b5d898a7323d4`.
+
+Candidate revision `cb0a93d71ec959bf4d1198499dc0fe2a122304ef` with Spark 2.1.0 loaded the
+exact PLY and retained `spark gaussian · world-studio-default · 99996 splats` through initial
+load, orbit, and inward zoom. R4 report `spark-lego-candidate-functional.v0.1.json` has SHA-256
+`598b3d74c01f7bc9c2731bada9456aec026bc0ed5ae0540f79731d83470f06a3`. The bound initial,
+orbit, and inward-zoom screenshots passed manual inspection in
+`spark-lego-manual-visual-review.v0.1.json`, SHA-256
+`7b4ab2019407fb1c6d2b073f4f14813750055953f726092985081084a5fe61c7`.
+
+Renderer preparation clamped six scale values and hid two outlier rows only in the render-time
+preview blob; the source PLY remained byte-identical. This gate promotes Spark 2.1 functional
+visualization only. Candidate release remains held pending review and merge, and this evidence
+does not establish image quality, Spark performance, metric scale, collision, navigation,
+physics, Newton behavior, cross-vendor support, or general splat capacity.
+
+### Measured iPhone HLOC-to-Spirula-to-Spark lane - 2026-08-21
+
+The independent iPhone lane reconstructed 300 prepared frames with NetVLAD top-32 retrieval,
+ALIKED-N16 features, LightGlue matching, and COLMAP. Checksum-bound report
+`iphone060230-global-hloc-real-a077533f-r3.validation.json` has SHA-256
+`1b9926601b7330a7c8b54572ec4509979cd88a143a44e9514047b12855ad9c7d`.
+It promotes registration with 300/300 images registered, 14,888 points, 321,782 observations,
+and 1.2636579 px mean reprojection error. Completed `capture_splat_sfm_summary.json` hashes to
+`7b32d88ac49b1f8d9d01c02a7d22a43cafb3b81f78715f5084bd3a91f0131f5b`.
+Overall package acceptance remains held because the raw SfM output is not self-contained, and
+timing remains held because the run used external USB storage, a CPU override, a local worker
+patch, one sample, and no thermal telemetry. Registration promotion is not a quality claim.
+
+External report `spirula-iphone-ladder-result.v0.1.json` has SHA-256
+`d64938544b19ca6314001547b3f0d20a418a2cd058da68f438b7fe9f427580d0`.
+Its selected 7,000-step second repetition exported a finite 99,979-splat SH3 PLY of
+24,796,322 bytes with SHA-256
+`207edbe4020c9e7ba60fa836a2d66c7012d53a26eb99b7265d05075e6ac6759e` and measured
+24.6459 PSNR, 0.868393 SSIM, and 0.209897 LPIPS Alex. Three fresh repetitions measured
+median/p95 elapsed time of 540.33/552.75 seconds and median/p95 maximum RSS of
+3,214,573,568/3,215,708,979.2 bytes. External-USB timing is non-production, and these bounded
+metrics do not promote training or render quality.
+
+Candidate revision `3ea4107` with Spark 2.1.0 retained
+`spark gaussian · capture-splat-generic · 99979 splats` through load, orbit, and inward zoom.
+R6 report `spark-candidate-functional.v0.1.json` has SHA-256
+`ace2c7580129bfc6b59b434ee1f4396e72949cf2a130dcc2e391d8085654cbe9`. Its bound manual
+review `spark-candidate-manual-visual-review.v0.1.json` has SHA-256
+`7e55e53acb1396f031a2224bfa8437d5d4ad41765d115304bb8761b8d65a3ba1`.
+Functional visibility, orbit, and zoom are promoted. Candidate release and render quality remain
+held because the screenshots show blur, smearing, floaters, and poorly resolved surfaces.
+Spark preparation clamped 11,452 scale values and hid nine outliers in the render-only preview;
+the selected source PLY remained unchanged. The result remains a visual proposal with no
+metric, collision, navigation, physics, Newton, performance, or general capacity authority.
+
+This completes the first iPhone images-to-SfM-to-3DGS-to-Spark execution. The Lego known-pose
+lane is a separate control and does not revalidate SfM. The next gate is capture and
+reconstruction quality improvement with a checksum-bound same-camera before/after comparison,
+not first pipeline execution.
 
 ## Evidence Gates
 
@@ -205,6 +377,26 @@ a metric room-walkthrough test.
 - Every measurement reports its geometry source, coordinate frame, and units.
 - Known-length checks are compared with LiDAR or RoomPlan references.
 - Desktop and mobile frame time are reported separately.
+- Each report binds exact dataset/job/asset hashes, hardware, command argv, build mode,
+  cold runs, warmups, measured repetitions, raw samples, thermal/noise controls, fixed-camera
+  PSNR/SSIM/MAE, and a `promote|hold|reject` decision.
+- A known-pose fixture validates image ingestion, trainer consumption, finite export, and its
+  declared evaluation route only; it never substitutes for an SfM or capture-to-SfM gate.
+- A completed SfM-to-Spark execution and promoted registration do not promote reconstruction
+  quality. Quality changes require checksum-bound before/after renders from the same cameras
+  plus the declared image metrics and manual failure review.
+- Spark functional promotion requires the exact input PLY hash and count, candidate revision,
+  Spark version, unchanged post-render source bytes, interaction checks, and bound manual
+  screenshots. It remains separate from quality, latency, draw-time, memory, and capacity.
+- Timings from the external USB test volume are labeled non-production and are not compared
+  with internal-storage or deployment targets as if the storage conditions were equivalent.
+- Record the trainer seed only when the provider exposes and consumes it. The pinned Spirula
+  CLI exposes no fixed-seed flag, so its jobs use `seed: null`; repeated stochastic outputs
+  and differing hashes remain raw evidence rather than being labeled deterministic.
+- Cross-vendor Vulkan, 10M SH3 in 8GB, native equirectangular, quantized-training, combined
+  strategy, exposure/WB, built-in preprocessing, and derived-output claims remain held until
+  their declared evidence conditions are measured. Quantized-training evidence binds the job's
+  training-storage profile and never implies a quantized or compressed exported asset.
 - Large assets become interactive without loading the full source PLY first.
 - Missing or held metric evidence produces `Fly only`, never a Walk claim.
 
@@ -213,6 +405,8 @@ a metric room-walkthrough test.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
+| 3DGS job/asset/benchmark contracts | Implemented; two standard-scene ladders and candidate Spark functional gates passed; production runtime held | Playroom report `a909eb2a...c256c45`; current-candidate preparation regression `31b53e38...8f0181c`; Lego result `a16f0d23...a7323d4`; r4 Spark/manual evidence `598b3d74...70f06a3` / `7b4ab201...5fe61c7` | Review and merge the candidate; retain the standard scenes as controls for same-camera quality comparisons |
+| iPhone HLOC to Spirula to Spark | First end-to-end functional execution complete; package, timing, release, and quality held | SfM validation `1b992660...d9c7d`; Spirula result `d6493854...580d0`; r6 Spark/manual evidence `ace2c758...4cbe9` / `7e55e53a...5a3ba1` | Improve capture and reconstruction quality, then run a checksum-bound same-camera before/after comparison |
 | 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
 | 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
 | 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
@@ -414,6 +608,11 @@ checksum-bound candidate report. Metric measurement remains blocked.
 ## Reference Boundaries
 
 - Spark remains World Studio's Gaussian renderer.
+- Spark stays pinned at 2.1.0 for this contract checkpoint; the contract does not change its
+  loader or claim SPZ/RAD/LoD support.
+- Spirula Studio is a GPL-3.0 external-process/reference boundary pinned at
+  `aede0ae3b2d01a7930c71b9c7f52354dc180146b`; no implementation code is copied into World
+  Studio.
 - Rapier remains the current browser physics implementation for this plan checkpoint. The
   public roadmap targets a supervised Newton worker and removes Rapier only after parity
   and cutover gates pass.

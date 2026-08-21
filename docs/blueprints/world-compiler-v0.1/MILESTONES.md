@@ -62,6 +62,37 @@ Acceptance:
 - Site revisions and asset revisions form immutable deltas rather than mutating prior
   evidence.
 - Package migration and round-trip tests reproduce referenced bytes.
+- 3DGS training jobs bind exact dataset manifests, worker source/build identity, feature
+  profile, outputs, and resource budgets without carrying executable authority; seed is an
+  observed non-negative integer or explicit `null` when the provider exposes no seed control.
+- Gaussian assets bind the exact job and dataset, representation/coordinate/color metadata,
+  finite-value validation, sidecars, and a visual-only prohibited-use boundary. Arbitrary
+  SfM/trainer gauge remains unknown-unit with null axes until metric registration is accepted;
+  serialized-asset quantization remains independent of training-storage precision.
+- Benchmark reports bind exact job, asset, dataset, World Studio/Spark versions, hardware,
+  commands, repetitions, distributions, raw evidence, quality cameras, noise controls, and
+  `promote|hold|reject`; unmeasured vendor, capacity, projection, and feature claims stay held.
+- Additive Capture Splat handoff v0.3 `training_dataset` metadata is shape-validated and its
+  canonical frame count/digest is rebound to `source_frames`; it remains capture evidence,
+  not a trainer request, execution receipt, or authority promotion.
+- Trainer execution, Spark loading, and canonical Asset publication remain explicit later
+  gates rather than side effects of validating these records.
+
+Current evidence note (non-normative, 2026-08-21): checksum-bound Playroom and Lego PLYs have
+passed candidate Spark 2.1 functional visualization gates. The Lego lane used supplied camera
+poses and therefore did not validate SfM. Its result report hashes to `a16f0d23...a7323d4`, and
+the r4 functional and bound manual reports hash to `598b3d74...70f06a3` and
+`7b4ab201...5fe61c7`. Current-candidate Playroom preparation also returned exact unchanged
+bytes in report `31b53e38...8f0181c`, while fresh current-candidate UI replay remains held
+separately.
+
+The independent iPhone HLOC-to-Spirula-to-Spark lane promoted 300/300-image registration and
+functional visibility/orbit/zoom. Its SfM, Spirula, Spark, and manual evidence hash to
+`1b992660...d9c7d`, `d6493854...580d0`, `ace2c758...4cbe9`, and `7e55e53a...5a3ba1`.
+Package completeness, USB timing, candidate release, and quality remain held; the next gate is
+same-camera capture/reconstruction quality improvement. This does not change M2 acceptance,
+publish a canonical Asset, or grant metric, collision, navigation, physics, performance,
+quality, or general capacity authority.
 
 ## M3 Indoor Navigation And First Deployment Twin - R3
 

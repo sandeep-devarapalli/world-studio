@@ -1,0 +1,518 @@
+{
+  "$id": "urn:world-studio:schema:world_studio.gaussian_pipeline_defs.v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "asset": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": { "$ref": "#/$defs/identifier" },
+        "authority": { "const": "visual_proposal" },
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "dataset": { "$ref": "#/$defs/datasetIdentity" },
+        "loaded_world_effect": { "const": "none" },
+        "primary": { "$ref": "#/$defs/primary" },
+        "prohibited_uses": {
+          "const": ["metric_measurement", "collision", "navigation", "physics"]
+        },
+        "representation": { "$ref": "#/$defs/representation" },
+        "schema": { "const": "world_studio.gaussian_asset.v0.1" },
+        "sidecars": {
+          "items": { "$ref": "#/$defs/sidecar" },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "training_job": { "$ref": "#/$defs/jobIdentity" },
+        "validation": { "$ref": "#/$defs/assetValidation" }
+      },
+      "required": [
+        "schema", "asset_id", "created_at", "training_job", "dataset", "primary",
+        "representation", "sidecars", "validation", "authority", "loaded_world_effect",
+        "prohibited_uses"
+      ],
+      "type": "object"
+    },
+    "assetValidation": {
+      "additionalProperties": false,
+      "properties": {
+        "nonfinite_value_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "removed_splat_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "report": { "$ref": "#/$defs/contentReference" },
+        "status": { "enum": ["passed", "failed", "not_run"] }
+      },
+      "required": ["status", "nonfinite_value_count", "removed_splat_count", "report"],
+      "type": "object"
+    },
+    "axis": {
+      "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
+    },
+    "benchmark": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "const": "evidence_only" },
+        "baseline_report": { "$ref": "#/$defs/nullableContentReference" },
+        "claims": {
+          "items": { "$ref": "#/$defs/claim" },
+          "maxItems": 8,
+          "minItems": 8,
+          "type": "array"
+        },
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "decision": { "$ref": "#/$defs/decision" },
+        "environment": { "$ref": "#/$defs/environment" },
+        "execution": { "$ref": "#/$defs/execution" },
+        "limitations": {
+          "items": { "$ref": "#/$defs/boundedString" },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "metrics": { "$ref": "#/$defs/metrics" },
+        "quality_camera_set": { "$ref": "#/$defs/nullableContentReference" },
+        "raw_results": { "$ref": "#/$defs/nullableContentReference" },
+        "report_id": { "$ref": "#/$defs/identifier" },
+        "schema": { "const": "world_studio.gaussian_benchmark_report.v0.1" },
+        "subject": { "$ref": "#/$defs/subject" }
+      },
+      "required": [
+        "schema", "report_id", "created_at", "subject", "environment", "execution",
+        "raw_results", "quality_camera_set", "baseline_report", "metrics", "claims",
+        "decision", "limitations", "authority"
+      ],
+      "type": "object"
+    },
+    "boundedString": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+      "type": "string"
+    },
+    "budget": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_bytes": { "$ref": "#/$defs/positiveSafeInteger" },
+        "output_bytes": { "$ref": "#/$defs/positiveSafeInteger" },
+        "wall_time_ms": {
+          "maximum": 604800000,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": ["wall_time_ms", "memory_bytes", "output_bytes"],
+      "type": "object"
+    },
+    "cameraModel": {
+      "enum": ["pinhole", "fisheye", "equirectangular"]
+    },
+    "claim": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_id": {
+          "enum": [
+            "cross_vendor_vulkan", "ten_million_sh3_in_8gb", "native_equirectangular",
+            "quantized_training", "combined_quality_strategy", "exposure_white_balance",
+            "built_in_preprocessing", "depth_normal_mesh_skybox"
+          ]
+        },
+        "decision": { "$ref": "#/$defs/decision" },
+        "evidence": {
+          "items": { "$ref": "#/$defs/contentReference" },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "limitation": {
+          "maxLength": 4096,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]*$",
+          "type": "string"
+        }
+      },
+      "required": ["claim_id", "decision", "evidence", "limitation"],
+      "type": "object"
+    },
+    "contentReference": {
+      "additionalProperties": false,
+      "properties": {
+        "media_type": { "$ref": "#/$defs/mediaType" },
+        "path": { "$ref": "#/$defs/safeRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "$ref": "#/$defs/positiveSafeInteger" }
+      },
+      "required": ["path", "sha256", "size_bytes", "media_type"],
+      "type": "object"
+    },
+    "coordinateFrame": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "forward_axis": { "$ref": "#/$defs/axis" },
+            "frame_id": { "$ref": "#/$defs/identifier" },
+            "handedness": { "enum": ["right", "left"] },
+            "length_unit": { "const": "m" },
+            "up_axis": { "$ref": "#/$defs/axis" }
+          },
+          "required": ["frame_id", "length_unit", "handedness", "up_axis", "forward_axis"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "forward_axis": { "type": "null" },
+            "frame_id": { "$ref": "#/$defs/identifier" },
+            "handedness": { "enum": ["right", "left"] },
+            "length_unit": { "const": "unknown" },
+            "up_axis": { "type": "null" }
+          },
+          "required": ["frame_id", "length_unit", "handedness", "up_axis", "forward_axis"],
+          "type": "object"
+        }
+      ]
+    },
+    "dataset": {
+      "additionalProperties": false,
+      "properties": {
+        "fixture_id": { "$ref": "#/$defs/identifier" },
+        "kind": { "enum": ["standard", "local_capture"] },
+        "manifest": { "$ref": "#/$defs/contentReference" },
+        "storage_state": { "$ref": "#/$defs/fixtureState" }
+      },
+      "required": ["fixture_id", "kind", "storage_state", "manifest"],
+      "type": "object"
+    },
+    "datasetIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "fixture_id": { "$ref": "#/$defs/identifier" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["fixture_id", "manifest_sha256"],
+      "type": "object"
+    },
+    "decision": {
+      "enum": ["promote", "hold", "reject"]
+    },
+    "distribution": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum": { "minimum": 0, "type": "number" },
+        "median": { "minimum": 0, "type": "number" },
+        "minimum": { "minimum": 0, "type": "number" },
+        "p95": { "minimum": 0, "type": "number" },
+        "samples": { "$ref": "#/$defs/positiveSafeInteger" }
+      },
+      "required": ["samples", "minimum", "median", "p95", "maximum"],
+      "type": "object"
+    },
+    "environment": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": { "$ref": "#/$defs/boundedString" },
+        "cpu": { "$ref": "#/$defs/boundedString" },
+        "gpu": { "$ref": "#/$defs/boundedString" },
+        "gpu_api": { "enum": ["vulkan", "metal", "cuda", "webgpu", "cpu"] },
+        "hardware_id": { "$ref": "#/$defs/identifier" },
+        "memory_bytes": { "$ref": "#/$defs/positiveSafeInteger" },
+        "os": { "$ref": "#/$defs/boundedString" },
+        "power_mode": { "$ref": "#/$defs/boundedString" },
+        "spark_version": { "const": "2.1.0" },
+        "thermal_state": { "$ref": "#/$defs/boundedString" },
+        "world_studio_revision": { "$ref": "#/$defs/gitRevision" }
+      },
+      "required": [
+        "hardware_id", "os", "architecture", "cpu", "gpu", "gpu_api", "memory_bytes",
+        "power_mode", "thermal_state", "world_studio_revision", "spark_version"
+      ],
+      "type": "object"
+    },
+    "execution": {
+      "additionalProperties": false,
+      "properties": {
+        "build_mode": { "enum": ["release", "production"] },
+        "cold_runs": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "command_argv": {
+          "items": { "$ref": "#/$defs/boundedString" },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        "concurrency": { "$ref": "#/$defs/positiveSafeInteger" },
+        "fixture_state": { "$ref": "#/$defs/fixtureState" },
+        "measured_runs": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "noise_controls": {
+          "items": { "$ref": "#/$defs/boundedString" },
+          "maxItems": 64,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "warmup_runs": { "$ref": "#/$defs/nonNegativeSafeInteger" }
+      },
+      "required": [
+        "fixture_state", "build_mode", "command_argv", "cold_runs", "warmup_runs",
+        "measured_runs", "concurrency", "noise_controls"
+      ],
+      "type": "object"
+    },
+    "fixtureState": {
+      "enum": ["metadata_only", "hydrated"]
+    },
+    "gitRevision": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "type": "string"
+    },
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "content": { "$ref": "#/$defs/contentReference" },
+        "role": {
+          "enum": ["images", "cameras", "capture_manifest", "video", "frame_index", "masks", "depth", "normals", "mesh"]
+        }
+      },
+      "required": ["role", "content"],
+      "type": "object"
+    },
+    "jobIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["job_id", "manifest_sha256"],
+      "type": "object"
+    },
+    "mediaType": {
+      "pattern": "^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$",
+      "type": "string"
+    },
+    "metrics": {
+      "additionalProperties": false,
+      "properties": {
+        "first_visible_ms": { "$ref": "#/$defs/nullableDistribution" },
+        "frame_time_ms": { "$ref": "#/$defs/nullableDistribution" },
+        "mae": { "$ref": "#/$defs/nullableDistribution" },
+        "peak_device_memory_bytes": { "$ref": "#/$defs/nullableDistribution" },
+        "peak_memory_bytes": { "$ref": "#/$defs/nullableDistribution" },
+        "psnr_db": { "$ref": "#/$defs/nullableDistribution" },
+        "ssim": { "$ref": "#/$defs/nullableDistribution" },
+        "training_wall_time_ms": { "$ref": "#/$defs/nullableDistribution" }
+      },
+      "required": [
+        "training_wall_time_ms", "peak_memory_bytes", "peak_device_memory_bytes",
+        "first_visible_ms", "frame_time_ms", "psnr_db", "ssim", "mae"
+      ],
+      "type": "object"
+    },
+    "nonNegativeSafeInteger": {
+      "maximum": 9007199254740991,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "nullableContentReference": {
+      "anyOf": [{ "$ref": "#/$defs/contentReference" }, { "type": "null" }]
+    },
+    "nullableDistribution": {
+      "anyOf": [{ "$ref": "#/$defs/distribution" }, { "type": "null" }]
+    },
+    "outputs": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": { "type": "boolean" },
+        "gaussian_formats": {
+          "items": { "enum": ["ply", "spz", "rad"] },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "mesh": { "type": "boolean" },
+        "normals": { "type": "boolean" },
+        "skybox": { "type": "boolean" }
+      },
+      "required": ["gaussian_formats", "depth", "normals", "mesh", "skybox"],
+      "type": "object"
+    },
+    "positiveSafeInteger": {
+      "maximum": 9007199254740991,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "preprocessing": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": { "enum": ["none", "provided", "estimated"] },
+        "frame_extraction": { "enum": ["none", "provided", "built_in"] },
+        "masking": { "enum": ["none", "provided", "built_in_ai"] },
+        "normals": { "enum": ["none", "provided", "estimated"] },
+        "sfm": { "enum": ["none", "provided", "built_in"] }
+      },
+      "required": ["frame_extraction", "sfm", "masking", "depth", "normals"],
+      "type": "object"
+    },
+    "primary": {
+      "additionalProperties": false,
+      "properties": {
+        "format": { "enum": ["ply", "spz", "rad"] },
+        "media_type": { "$ref": "#/$defs/mediaType" },
+        "path": { "$ref": "#/$defs/safeRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "$ref": "#/$defs/positiveSafeInteger" }
+      },
+      "required": ["path", "sha256", "size_bytes", "media_type", "format"],
+      "type": "object"
+    },
+    "profile": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_model": { "$ref": "#/$defs/cameraModel" },
+        "color_space": { "enum": ["linear", "srgb"] },
+        "exposure_correction": { "enum": ["none", "bilateral_grid", "ppisp", "bilateral_grid_ppisp"] },
+        "iterations": { "maximum": 10000000, "minimum": 1, "type": "integer" },
+        "max_gaussians": { "$ref": "#/$defs/positiveSafeInteger" },
+        "native_projection": { "type": "boolean" },
+        "optimization_components": {
+          "items": { "enum": ["mcmc", "igs_plus", "mrnf"] },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "outputs": { "$ref": "#/$defs/outputs" },
+        "preprocessing": { "$ref": "#/$defs/preprocessing" },
+        "quantization": {
+          "description": "Training and optimizer storage precision; it does not describe the serialized Gaussian output.",
+          "enum": ["none", "fp16", "int8", "mixed"]
+        },
+        "seed": {
+          "anyOf": [{ "$ref": "#/$defs/nonNegativeSafeInteger" }, { "type": "null" }]
+        },
+        "sh_degree": { "enum": [0, 1, 2, 3] },
+        "white_balance_correction": { "enum": ["none", "bilateral_grid", "ppisp", "bilateral_grid_ppisp"] }
+      },
+      "required": [
+        "camera_model", "native_projection", "optimization_components", "iterations", "seed",
+        "sh_degree", "max_gaussians", "quantization", "color_space", "exposure_correction",
+        "white_balance_correction", "preprocessing", "outputs"
+      ],
+      "type": "object"
+    },
+    "serializedAssetQuantization": {
+      "description": "Encoding of the serialized Gaussian asset properties after export or checkpoint dequantization.",
+      "enum": ["none", "fp16", "int8", "mixed"]
+    },
+    "representation": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_models": {
+          "items": { "$ref": "#/$defs/cameraModel" },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "color_space": { "enum": ["linear", "srgb"] },
+        "coordinate_frame": { "$ref": "#/$defs/coordinateFrame" },
+        "quantization": { "$ref": "#/$defs/serializedAssetQuantization" },
+        "sh_degree": { "enum": [0, 1, 2, 3] },
+        "source_splat_count": { "$ref": "#/$defs/positiveSafeInteger" },
+        "splat_count": { "$ref": "#/$defs/positiveSafeInteger" }
+      },
+      "required": [
+        "source_splat_count", "splat_count", "sh_degree", "quantization", "color_space",
+        "coordinate_frame", "camera_models"
+      ],
+      "type": "object"
+    },
+    "safeRelativePath": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "\\\\" },
+          { "pattern": "//|/$" },
+          { "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:" },
+          { "pattern": "(^|/)\\.\\.?(/|$)" }
+        ]
+      },
+      "pattern": "^[^\\u0000]+$",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "sidecar": {
+      "additionalProperties": false,
+      "properties": {
+        "content": { "$ref": "#/$defs/contentReference" },
+        "role": { "enum": ["cameras", "depth", "normals", "mesh", "skybox", "exposure", "white_balance"] }
+      },
+      "required": ["role", "content"],
+      "type": "object"
+    },
+    "subject": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": { "$ref": "#/$defs/identifier" },
+        "asset_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "dataset_fixture_id": { "$ref": "#/$defs/identifier" },
+        "dataset_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "job_manifest_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["job_id", "job_manifest_sha256", "asset_id", "asset_manifest_sha256", "dataset_fixture_id", "dataset_manifest_sha256"],
+      "type": "object"
+    },
+    "timestamp": {
+      "pattern": "^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z$",
+      "type": "string"
+    },
+    "trainingJob": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "const": "proposal_only" },
+        "budget": { "$ref": "#/$defs/budget" },
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "dataset": { "$ref": "#/$defs/dataset" },
+        "inputs": {
+          "items": { "$ref": "#/$defs/input" },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array"
+        },
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "loaded_world_effect": { "const": "none" },
+        "profile": { "$ref": "#/$defs/profile" },
+        "schema": { "const": "world_studio.gaussian_training_job.v0.1" },
+        "worker": { "$ref": "#/$defs/worker" }
+      },
+      "required": ["schema", "job_id", "created_at", "dataset", "worker", "inputs", "profile", "budget", "authority", "loaded_world_effect"],
+      "type": "object"
+    },
+    "worker": {
+      "additionalProperties": false,
+      "properties": {
+        "build_sha256": {
+          "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        },
+        "implementation_id": { "$ref": "#/$defs/identifier" },
+        "integration": { "const": "external_process" },
+        "license_id": { "$ref": "#/$defs/boundedString" },
+        "source_revision": { "$ref": "#/$defs/gitRevision" },
+        "source_url": {
+          "format": "uri",
+          "pattern": "^https://",
+          "type": "string"
+        },
+        "version": { "$ref": "#/$defs/boundedString" }
+      },
+      "required": ["integration", "implementation_id", "version", "source_url", "source_revision", "license_id", "build_sha256"],
+      "type": "object"
+    }
+  },
+  "title": "World Studio Gaussian pipeline contract definitions"
+}

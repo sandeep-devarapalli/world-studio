@@ -1,0 +1,6 @@
+{
+  "$id": "urn:world-studio:schema:world_studio.gaussian_benchmark_report.v0.1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "urn:world-studio:schema:world_studio.gaussian_pipeline_defs.v0.1#/$defs/benchmark",
+  "title": "World Studio Gaussian benchmark report v0.1"
+}

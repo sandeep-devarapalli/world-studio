@@ -1,13 +1,75 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parsePointCloudPly } from "@world-studio/artifacts";
 import { readLocalPackage } from "./package-reader.js";
 
 const tempRoots: string[] = [];
 const loftFixtureRoot = () => fileURLToPath(new URL("../../../apps/web/public/fixtures/loft_04", import.meta.url));
 const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mPcunXrfwAJpwP6J7EkXwAAAABJRU5ErkJggg==", "base64");
+
+function sha256(bytes: Uint8Array): string {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function captureTrainingDataset(frames: Array<{ rgb_path: string; size_bytes: number; checksum: string }>) {
+  const digest = createHash("sha256");
+  for (const frame of [...frames].sort((left, right) => left.rgb_path < right.rgb_path ? -1 : left.rgb_path > right.rgb_path ? 1 : 0)) {
+    digest.update(frame.rgb_path, "utf8");
+    digest.update("\0");
+    digest.update(String(frame.size_bytes), "ascii");
+    digest.update("\0");
+    digest.update(frame.checksum, "ascii");
+    digest.update("\n");
+  }
+  return {
+    schema: "capture_splat.training_dataset.v0.1",
+    capture_profile: "room_interior",
+    source_frame_set: {
+      count: frames.length,
+      digest: `sha256:${digest.digest("hex")}`,
+      canonicalization: "utf8_relative_path_nul_size_nul_sha256_lf_v1",
+    },
+    projection: {
+      mode: "perspective",
+      source_is_equirectangular: false,
+      training_images_are_projected_pinhole: false,
+      native_equirectangular: false,
+      rig_evidence: { available: false },
+    },
+    evidence: {
+      capture_manifest: { available: true, asset: "capture_manifest" },
+      sfm: {
+        available: true,
+        camera_count: 1,
+        camera_models: ["PINHOLE"],
+        registered_images_available: true,
+        sparse_points_available: false,
+        asset: "colmap_sparse",
+      },
+      depth: { referenced_frame_count: 0, available_frame_count: 0 },
+      confidence: { referenced_frame_count: 0, available_frame_count: 0 },
+      masks: { referenced_frame_count: 0, available_frame_count: 0 },
+      mesh: {
+        available: true,
+        asset: "navigation_mesh",
+        report_available: true,
+        report_asset: "mesh_report",
+      },
+    },
+    authority: {
+      capture_evidence_only: true,
+      trainer_consumption_claim: false,
+      training_execution_authority: false,
+      quality_claim: false,
+      metric_authority: false,
+      collision_authority: false,
+    },
+  };
+}
 
 async function makePackage(name: string) {
   const root = await mkdtemp(join(tmpdir(), `world-studio-${name}-`));
@@ -294,6 +356,35 @@ end_header
     expect(payload.packageIssues).toEqual([]);
   });
 
+  it("preserves alternating Gaussian clusters through bounded package preview sampling", async () => {
+    const root = await makePackage("gaussian-preview-sampling");
+    const rows = Array.from({ length: 50_002 }, (_, index) => `${index % 2 === 0 ? -10 : 10} 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`).join("\n");
+    await writeFile(join(root, "splat.ply"), `ply
+format ascii 1.0
+element vertex 50002
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+${rows}`);
+
+    const payload = await readLocalPackage(root);
+    const preview = parsePointCloudPly(payload.pointsPly!.text);
+    expect(preview.points).toHaveLength(50_000);
+    expect(new Set(preview.points.map((point) => point.x))).toEqual(new Set([-10, 10]));
+  });
+
   it("loads a directly selected standalone Gaussian PLY", async () => {
     const root = await makePackage("standalone-gaussian-ply");
     const plyPath = join(root, "capture-splat-7000.ply");
@@ -478,28 +569,33 @@ end_header
     await writeJson(root, "colmap/transforms.json", { schema: "capture_splat.transforms.v0.1", frames: [] });
     await writeFile(join(root, "colmap", "cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
     await writeFile(join(root, "colmap", "images.txt"), "1 1 0 0 0 0 0 0 1 frame_000001.png\n\n2 1 0 0 0 -1 0 0 1 frame_000002.png\n\n");
+    const frameChecksum = sha256(onePixelPng);
+    const sourceFrames = [
+      {
+        rgb_path: "rgb/frame_000001.png",
+        size_bytes: onePixelPng.byteLength,
+        checksum: frameChecksum,
+        width: 8,
+        height: 6,
+        intrinsics: { fx: 10, fy: 11, cx: 4, cy: 3 },
+        pose: {
+          translation: [2, 3, 4],
+          rotation: [1, 0, 0, 0],
+          coordinate_frame: "colmap_world",
+          authority: "inline handoff"
+        }
+      },
+      {
+        rgb_path: "rgb/frame_000002.png",
+        size_bytes: onePixelPng.byteLength,
+        checksum: frameChecksum,
+      }
+    ];
     await writeJson(root, "capture-splat.world-studio.json", {
-      schema: "capture_splat.world_studio_handoff.v0.1",
+      schema: "capture_splat.world_studio_handoff.v0.3",
       status: "visual_evidence_with_3dgs_proposal",
-      source_frames: [
-        {
-          path: "rgb/frame_000001.png",
-          width: 8,
-          height: 6,
-          intrinsics: { fx: 10, fy: 11, cx: 4, cy: 3 },
-          pose: {
-            translation: [2, 3, 4],
-            rotation: [1, 0, 0, 0],
-            coordinate_frame: "colmap_world",
-            authority: "inline handoff"
-          }
-        },
-        { path: "rgb/frame_000002.png" }
-      ],
-      frames: [
-        { path: "rgb/frame_000001.png" },
-        { path: "rgb/frame_000002.png" }
-      ],
+      source_frames: sourceFrames,
+      frames: sourceFrames,
       assets: {
         points: "exports/points.ply",
         gaussian: "renders/splat.ply",
@@ -536,6 +632,7 @@ end_header
       capture_profile: "room_interior",
       scene_transform: { trainer: "gsplat" },
       initial_camera: { position: [0.5, -0.1, -2], coordinate_frame: "colmap_world", mode: "inside" },
+      training_dataset: captureTrainingDataset(sourceFrames),
       artifacts: [
         { kind: "mesh", path: "exports/collision_mesh.obj" }
       ]
@@ -577,6 +674,11 @@ end_header
       renderSourceQa: { relativePath: "quality/render_source_qa.json" },
       plyStats: { relativePath: "quality/ply_stats.json" }
     });
+    expect(payload.captureSplatTrainingDataset).toMatchObject({
+      schema: "capture_splat.training_dataset.v0.1",
+      source_frame_set: { count: 2 },
+      authority: { trainer_consumption_claim: false, training_execution_authority: false }
+    });
     expect(mediaFrames.source_kind).toBe("capture_splat.world_studio_handoff");
     expect(mediaFrames.frames).toHaveLength(2);
     expect(mediaFrames.frames?.[0]?.rgb_path).toBe("rgb/frame_000001.png");
@@ -617,6 +719,34 @@ end_header
     expect(payload.captureProfile).toBe("room_interior");
     expect(payload.splatTrainer).toBe("gsplat");
     expect(payload.initialCamera).toEqual({ position: [0.5, -0.1, -2], coordinateFrame: "colmap_world", mode: "inside" });
+  });
+
+  it("fails closed on an unbound Capture Splat v0.3 training dataset", async () => {
+    const root = await makePackage("capture-splat-invalid-training-dataset");
+    await mkdir(join(root, "rgb"), { recursive: true });
+    await writeFile(join(root, "rgb", "frame_000001.png"), onePixelPng);
+    const frames = [{
+      rgb_path: "rgb/frame_000001.png",
+      size_bytes: onePixelPng.byteLength,
+      checksum: sha256(onePixelPng),
+    }];
+    const trainingDataset = captureTrainingDataset(frames);
+    trainingDataset.source_frame_set.digest = `sha256:${"f".repeat(64)}`;
+    await writeJson(root, "capture-splat.world-studio.json", {
+      schema: "capture_splat.world_studio_handoff.v0.3",
+      status: "visual_evidence_with_3dgs_proposal",
+      source_frames: frames,
+      frames,
+      assets: {},
+      training_dataset: trainingDataset,
+    });
+
+    const payload = await readLocalPackage(root);
+
+    expect(payload.captureSplatTrainingDataset).toBeUndefined();
+    expect(payload.packageIssues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "invalid_capture_splat_training_dataset", severity: "error" })
+    ]));
   });
 
   it("does not trust malformed or unbound Capture Splat quality evidence", async () => {

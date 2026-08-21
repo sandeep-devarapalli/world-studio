@@ -167,6 +167,52 @@ end_header
     expect(view.getFloat32(prepared.headerLength + stride + 8, true)).toBeCloseTo(0, 5);
   });
 
+  it("hides rows outside Spark 2.1 packed center and scale domains", () => {
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 3
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+0 0 0 0 0 0 2 -5 -5 -5 1 0 0 0
+100000 0 0 0 0 0 2 70.501 70.501 70.501 1 0 0 0
+1 1 1 0 0 0 2 70.501 70.501 70.501 1 0 0 0
+`);
+    const binary = prepareGaussianPlyForSpark(source).bytes;
+    const prepared = prepareGaussianPlyForSpark(binary, {
+      maxScale: Math.exp(9),
+      hideOutliersBeyondRadius: 65_000,
+      hideScalesBeyond: Math.exp(9)
+    });
+    const view = new DataView(prepared.bytes.buffer, prepared.bytes.byteOffset, prepared.bytes.byteLength);
+    const stride = 14 * 4;
+    const opacityOffset = 6 * 4;
+    const scaleOffset = 7 * 4;
+
+    expect(prepared.converted).toBe(true);
+    expect(prepared.droppedOutlierCount).toBe(2);
+    expect(prepared.clampedScaleCount).toBe(6);
+    for (const row of [1, 2]) {
+      expect(view.getFloat32(prepared.headerLength + row * stride + opacityOffset, true)).toBeLessThanOrEqual(-30);
+      expect(view.getFloat32(prepared.headerLength + row * stride, true)).toBeCloseTo(0, 5);
+      expect(view.getFloat32(prepared.headerLength + row * stride + 4, true)).toBeCloseTo(0, 5);
+      expect(view.getFloat32(prepared.headerLength + row * stride + 8, true)).toBeCloseTo(0, 5);
+      expect(view.getFloat32(prepared.headerLength + row * stride + scaleOffset, true)).toBeCloseTo(9, 5);
+    }
+  });
+
   it("builds ordinary preview points from Gaussian PLYs", async () => {
     const gaussians = await readFile(fixture("gaussians.ply"));
     const preview = buildGaussianPreviewPointCloudPly(gaussians, { maxPoints: 64 });
@@ -188,6 +234,48 @@ end_header
     expect(parsed.points.length).toBeLessThanOrEqual(32);
     expect(parsed.points[0]?.red).toBeGreaterThanOrEqual(0);
     expect(parsed.points[0]?.red).toBeLessThanOrEqual(255);
+  });
+
+  it("samples capped Gaussian previews without periodic aliasing", () => {
+    const rows = Array.from({ length: 100 }, (_, index) => `${index % 2 === 0 ? -10 : 10} 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`).join("\n");
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 100
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+${rows}`);
+    const preview = parsePointCloudPly(buildGaussianPreviewPointCloudPly(source, { maxPoints: 50 }));
+    expect(new Set(preview.points.map((point) => point.x))).toEqual(new Set([-10, 10]));
+  });
+
+  it("samples capped ordinary previews without periodic aliasing", () => {
+    const rows = Array.from({ length: 100 }, (_, index) => `${index % 2 === 0 ? -10 : 10} 0 0 255 255 255`).join("\n");
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 100
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+${rows}`);
+    const preview = parsePointCloudPly(buildPointCloudPreviewPly(source, { maxPoints: 50 }));
+    expect(new Set(preview.points.map((point) => point.x))).toEqual(new Set([-10, 10]));
   });
 
   it("builds capped ordinary preview points from binary point-cloud PLYs", () => {

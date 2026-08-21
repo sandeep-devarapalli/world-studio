@@ -1,5 +1,6 @@
 import { buildGaussianPreviewPointCloudPly, buildPointCloudPreviewPly } from "@world-studio/artifacts";
-import type { AuthorityStatus, CaptureSplatMetricHandoff, CaptureSplatQualityHandoff, FrameCamera, LocalPackageInsight, LocalPackageIssue, LocalWorldPackageBinaryFile, LocalWorldPackagePayload, LocalWorldPackageTextFile, WorldAssetManifestEntry } from "@world-studio/world-core";
+import { validateCaptureSplatTrainingDataset, type AuthorityStatus, type CaptureSplatMetricHandoff, type CaptureSplatQualityHandoff, type CaptureSplatTrainingDatasetV1, type FrameCamera, type LocalPackageInsight, type LocalPackageIssue, type LocalWorldPackageBinaryFile, type LocalWorldPackagePayload, type LocalWorldPackageTextFile, type WorldAssetManifestEntry } from "@world-studio/world-core";
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -59,6 +60,9 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
   const captureSplatManifest = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, captureSplatManifestPath, packageIssues);
   const parsedCaptureSplatManifest = captureSplatManifest
     ? parseJsonRecord(captureSplatManifest.text, captureSplatManifest.relativePath, packageIssues)
+    : undefined;
+  const captureSplatTrainingDataset = parsedCaptureSplatManifest
+    ? readCaptureSplatTrainingDataset(parsedCaptureSplatManifest, packageIssues)
     : undefined;
   const captureSplatRefs = parsedCaptureSplatManifest ? extractCaptureSplatManifestRefs(parsedCaptureSplatManifest) : emptyCaptureSplatRefs();
   const captureSplatPointsTransform = parsedCaptureSplatManifest ? captureSplatPointTransform(parsedCaptureSplatManifest) : undefined;
@@ -197,6 +201,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     jsonManifests,
     captureSplatMetric,
     captureSplatQuality,
+    captureSplatTrainingDataset,
     ...extractHandoffSceneHints(parsedCaptureSplatManifest),
     packageInsights: buildPackageInsights({
       articleFigureViews,
@@ -1047,6 +1052,60 @@ function emptyCaptureSplatRefs(): CaptureSplatManifestRefs {
     renderSourceQaPaths: [],
     roomSemanticsPaths: []
   };
+}
+
+function readCaptureSplatTrainingDataset(
+  manifest: Record<string, unknown>,
+  packageIssues: LocalPackageIssue[]
+): CaptureSplatTrainingDatasetV1 | undefined {
+  if (manifest.schema !== "capture_splat.world_studio_handoff.v0.3") return undefined;
+  try {
+    const dataset = validateCaptureSplatTrainingDataset(manifest.training_dataset);
+    const frames = Array.isArray(manifest.source_frames) ? manifest.source_frames : [];
+    if (frames.length !== dataset.source_frame_set.count) {
+      throw new Error("training_dataset source frame count differs from source_frames.");
+    }
+    const identities = frames.map((value, index) => captureFrameIdentity(value, index));
+    if (new Set(identities.map((frame) => frame.path)).size !== identities.length) {
+      throw new Error("training_dataset source frame paths must be unique.");
+    }
+    const digest = createHash("sha256");
+    for (const frame of identities.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)) {
+      digest.update(frame.path, "utf8");
+      digest.update("\0");
+      digest.update(String(frame.sizeBytes), "ascii");
+      digest.update("\0");
+      digest.update(frame.checksum, "ascii");
+      digest.update("\n");
+    }
+    if (`sha256:${digest.digest("hex")}` !== dataset.source_frame_set.digest) {
+      throw new Error("training_dataset source frame digest differs from source_frames.");
+    }
+    return dataset;
+  } catch (error) {
+    pushIssue(packageIssues, {
+      artifact: captureSplatManifestPath,
+      code: "invalid_capture_splat_training_dataset",
+      message: error instanceof Error ? error.message : "Capture Splat training_dataset is invalid.",
+      severity: "error",
+      title: "Invalid Capture Splat training dataset"
+    });
+    return undefined;
+  }
+}
+
+function captureFrameIdentity(value: unknown, index: number): { path: string; sizeBytes: number; checksum: string } {
+  if (!isRecord(value)) throw new Error(`source_frames[${index}] must be an object.`);
+  if (typeof value.rgb_path !== "string") throw new Error(`source_frames[${index}].rgb_path must be a relative path.`);
+  const relativePath = normalizeManifestRelativePath(value.rgb_path);
+  if (!relativePath || relativePath !== value.rgb_path) throw new Error(`source_frames[${index}].rgb_path must be canonical.`);
+  if (!Number.isSafeInteger(value.size_bytes) || (value.size_bytes as number) < 1) {
+    throw new Error(`source_frames[${index}].size_bytes must be a positive safe integer.`);
+  }
+  if (typeof value.checksum !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value.checksum)) {
+    throw new Error(`source_frames[${index}].checksum must be SHA-256.`);
+  }
+  return { path: relativePath, sizeBytes: value.size_bytes as number, checksum: value.checksum };
 }
 
 function extractCaptureSplatManifestRefs(manifest: Record<string, unknown>): CaptureSplatManifestRefs {

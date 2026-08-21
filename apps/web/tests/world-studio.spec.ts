@@ -2146,13 +2146,28 @@ test("rejects invalid Episode manifest imports", async ({ page }) => {
 });
 
 test("switches renderer modes, isolates a class, and captures canvas screenshots", async ({ page }) => {
+  const passiveWheelErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("Unable to preventDefault inside passive event listener")) {
+      passiveWheelErrors.push(message.text());
+    }
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Load loft_04" }).click();
   const statusbar = page.locator(".ws-statusbar");
+  const rendererStatus = statusbar.locator(".ws-status-item.acc");
 
+  await expect(rendererStatus).toContainText("spark gaussian", { timeout: 15_000 });
+  await page.getByRole("button", { name: "points" }).click();
+  await expect(rendererStatus).toContainText("three.js · ordinary PLY");
   await page.getByRole("button", { name: "splat" }).click();
-  await expect(statusbar).toContainText("spark gaussian", { timeout: 15_000 });
-  await expect(statusbar).not.toContainText("point fallback");
+  await expect(rendererStatus).toContainText("spark gaussian", { timeout: 15_000 });
+  await expect(rendererStatus).not.toContainText("point fallback");
+  await expect(rendererStatus).not.toContainText("hidden");
+  await page.getByTestId("world-canvas").hover();
+  await page.mouse.wheel(0, 240);
+  await page.waitForTimeout(50);
+  expect(passiveWheelErrors).toEqual([]);
 
   for (const mode of ["splat", "points", "mesh", "semantic", "depth"]) {
     await page.getByRole("button", { name: mode }).click();
