@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parsePointCloudPly } from "@world-studio/artifacts";
 import { readLocalPackage } from "./package-reader.js";
 
 const tempRoots: string[] = [];
@@ -353,6 +354,35 @@ end_header
       details: [{ label: "points source", value: "generated preview, not a package file" }]
     }));
     expect(payload.packageIssues).toEqual([]);
+  });
+
+  it("preserves alternating Gaussian clusters through bounded package preview sampling", async () => {
+    const root = await makePackage("gaussian-preview-sampling");
+    const rows = Array.from({ length: 50_002 }, (_, index) => `${index % 2 === 0 ? -10 : 10} 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`).join("\n");
+    await writeFile(join(root, "splat.ply"), `ply
+format ascii 1.0
+element vertex 50002
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+${rows}`);
+
+    const payload = await readLocalPackage(root);
+    const preview = parsePointCloudPly(payload.pointsPly!.text);
+    expect(preview.points).toHaveLength(50_000);
+    expect(new Set(preview.points.map((point) => point.x))).toEqual(new Set([-10, 10]));
   });
 
   it("loads a directly selected standalone Gaussian PLY", async () => {

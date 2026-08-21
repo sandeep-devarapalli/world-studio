@@ -190,6 +190,48 @@ end_header
     expect(parsed.points[0]?.red).toBeLessThanOrEqual(255);
   });
 
+  it("samples capped Gaussian previews without periodic aliasing", () => {
+    const rows = Array.from({ length: 100 }, (_, index) => `${index % 2 === 0 ? -10 : 10} 0 0 0 0 0 1 -6 -6 -6 1 0 0 0`).join("\n");
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 100
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+${rows}`);
+    const preview = parsePointCloudPly(buildGaussianPreviewPointCloudPly(source, { maxPoints: 50 }));
+    expect(new Set(preview.points.map((point) => point.x))).toEqual(new Set([-10, 10]));
+  });
+
+  it("samples capped ordinary previews without periodic aliasing", () => {
+    const rows = Array.from({ length: 100 }, (_, index) => `${index % 2 === 0 ? -10 : 10} 0 0 255 255 255`).join("\n");
+    const source = new TextEncoder().encode(`ply
+format ascii 1.0
+element vertex 100
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+${rows}`);
+    const preview = parsePointCloudPly(buildPointCloudPreviewPly(source, { maxPoints: 50 }));
+    expect(new Set(preview.points.map((point) => point.x))).toEqual(new Set([-10, 10]));
+  });
+
   it("builds capped ordinary preview points from binary point-cloud PLYs", () => {
     const header = new TextEncoder().encode(`ply
 format binary_little_endian 1.0

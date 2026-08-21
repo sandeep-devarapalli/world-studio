@@ -270,7 +270,7 @@ export function buildGaussianPreviewPointCloudPly(
   const yIndex = requireProperty(propertyIndex, "y");
   const zIndex = requireProperty(propertyIndex, "z");
   const maxPoints = Math.max(1, Math.floor(options.maxPoints ?? 50_000));
-  const sampleStep = Math.max(1, Math.ceil(vertexCount / maxPoints));
+  const sampleIndices = boundedSampleIndices(vertexCount, maxPoints);
   const rows: string[] = [];
 
   if (header.format === "ascii") {
@@ -279,7 +279,7 @@ export function buildGaussianPreviewPointCloudPly(
     if (lines.length < vertexCount) {
       throw new Error(`ASCII Gaussian PLY has ${lines.length} rows for ${vertexCount} vertices`);
     }
-    for (let index = 0; index < vertexCount; index += sampleStep) {
+    for (const index of sampleIndices) {
       const cols = lines[index]?.trim().split(/\s+/) ?? [];
       rows.push(formatPreviewPoint(
         numeric(cols, xIndex),
@@ -292,7 +292,7 @@ export function buildGaussianPreviewPointCloudPly(
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const offsets = propertyByteOffsets(properties);
     const stride = properties.reduce((sum, property) => sum + plyScalarSize(property.type), 0);
-    for (let index = 0; index < vertexCount; index += sampleStep) {
+    for (const index of sampleIndices) {
       const rowOffset = headerLength + index * stride;
       rows.push(formatPreviewPoint(
         readPlyScalar(view, rowOffset + offsets[xIndex]!, properties[xIndex]!),
@@ -341,7 +341,7 @@ export function buildPointCloudPreviewPly(
   const yIndex = requireProperty(propertyIndex, "y");
   const zIndex = requireProperty(propertyIndex, "z");
   const maxPoints = Math.max(1, Math.floor(options.maxPoints ?? 50_000));
-  const sampleStep = Math.max(1, Math.ceil(vertexCount / maxPoints));
+  const sampleIndices = boundedSampleIndices(vertexCount, maxPoints);
   const rows: string[] = [];
 
   if (header.format === "ascii") {
@@ -350,7 +350,7 @@ export function buildPointCloudPreviewPly(
     if (lines.length < vertexCount) {
       throw new Error(`ASCII point-cloud PLY has ${lines.length} rows for ${vertexCount} vertices`);
     }
-    for (let index = 0; index < vertexCount; index += sampleStep) {
+    for (const index of sampleIndices) {
       const cols = lines[index]?.trim().split(/\s+/) ?? [];
       const position = transformPreviewPoint(numeric(cols, xIndex), numeric(cols, yIndex), numeric(cols, zIndex), options.transform);
       rows.push(formatPreviewPoint(position[0], position[1], position[2], readAsciiPointColor(cols, propertyIndex)));
@@ -359,7 +359,7 @@ export function buildPointCloudPreviewPly(
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const offsets = propertyByteOffsets(properties);
     const stride = properties.reduce((sum, property) => sum + plyScalarSize(property.type), 0);
-    for (let index = 0; index < vertexCount; index += sampleStep) {
+    for (const index of sampleIndices) {
       const rowOffset = headerLength + index * stride;
       const position = transformPreviewPoint(
         readPlyScalar(view, rowOffset + offsets[xIndex]!, properties[xIndex]!),
@@ -385,6 +385,20 @@ export function buildPointCloudPreviewPly(
     "end_header",
     ...rows
   ].join("\n") + "\n";
+}
+
+function boundedSampleIndices(vertexCount: number, maxPoints: number): number[] {
+  const sampleCount = Math.min(vertexCount, maxPoints);
+  const indices: number[] = [];
+  let sampleState = 0x9e3779b9;
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+    sampleState = (Math.imul(sampleState, 1_664_525) + 1_013_904_223) >>> 0;
+    const start = Math.floor((sampleIndex * vertexCount) / sampleCount);
+    const end = Math.floor(((sampleIndex + 1) * vertexCount) / sampleCount);
+    const width = Math.max(1, end - start);
+    indices.push(start + Math.floor((sampleState / 0x1_0000_0000) * width));
+  }
+  return indices;
 }
 
 export function parsePointCloudPly(source: string, maxPoints = Number.POSITIVE_INFINITY): ParsedPointCloud {
