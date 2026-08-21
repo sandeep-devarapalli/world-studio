@@ -32,10 +32,11 @@
   delivery artifact compressed without inspecting its serialized properties.
 - The active 3DGS benchmark allowlist is NeRF Synthetic Lego, original-3DGS Deep Blending
   Playroom, and the local 122-frame iPhone capture at
-  `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`. Lego and Playroom remain
-  metadata-first until their manifests and references are revalidated; do not substitute
-  Bonsai. Keep every other OneDrive dataset cloud-only unless the user explicitly changes
-  the allowlist.
+  `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`. Lego remains metadata-first.
+  Playroom is checksum-validated against all 229 members of the GraphDeco-INRIA-distributed
+  T&T+DB archive and may be used only for private local technical validation while dataset
+  rights remain under review; do not substitute Bonsai. Keep every other OneDrive dataset
+  cloud-only unless the user explicitly changes the allowlist.
 - Performance and capability claims must bind exact dataset bytes, hardware, commands,
   repetitions, raw results, noise controls, quality gates, and a `promote|hold|reject`
   decision. Hold cross-vendor Vulkan, 10M SH3 in 8GB, native equirectangular, and every

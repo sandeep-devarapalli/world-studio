@@ -80,8 +80,9 @@ outcomes and acceptance gates.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
 - Spark remains pinned at 2.1.0. The initial benchmark allowlist is NeRF Synthetic Lego,
-  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego and
-  Playroom are metadata-first until manifest/reference completeness is revalidated; all
+  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego remains
+  metadata-first. Playroom has exact 229/229 archive-member parity and is available
+  only for private local technical validation while dataset rights remain under review; all
   other OneDrive assets remain cloud-only.
 - Pinned Spirula Playroom outputs retain arbitrary COLMAP/SfM gauge and are visual-only;
   they cannot support measurement, collision, navigation, or physics until registered to

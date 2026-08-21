@@ -192,13 +192,17 @@ The contract benchmark allowlist is exactly:
 
 1. NeRF Synthetic Lego at
    `/Users/dev/Library/CloudStorage/OneDrive-Personal/smallFoundationModel-data/datasets/nerf_synthetic/scenes/nerf_synthetic/lego`.
-2. Original-3DGS Deep Blending Playroom at
-   `/Users/dev/Library/CloudStorage/OneDrive-Personal/smallFoundationModel-data/datasets/3dgs_original/scenes/db/playroom`.
+2. Original-3DGS Deep Blending Playroom staged at
+   `/Users/dev/Desktop/smallFoundationModel/data/generated/world_studio_3dgs_fixtures_20260821/db/playroom`
+   from the OneDrive `datasets/3dgs_original/archives/tandt_db.zip` source archive.
 3. The local 122-frame iPhone capture at
    `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`.
 
-Lego and Playroom are metadata-first until their manifest and referenced-byte completeness
-is revalidated. The local iPhone capture is the capture-to-training integration fixture.
+Lego is metadata-first until its manifest and referenced-byte completeness is revalidated.
+Playroom is byte- and COLMAP-reference-complete for private local benchmark evaluation but
+remains held for redistribution, public demos, product use, and commercial use because no
+dataset-byte license was located.
+The local iPhone capture is the capture-to-training integration fixture.
 All other OneDrive datasets, including Bonsai, DL3DV, and Lublin, stay cloud-only and outside
 the active benchmark matrix. This contract slice does not hydrate or offload anything.
 
@@ -206,18 +210,23 @@ Current local evidence, scoped to these exact artifacts rather than upstream con
 
 - the staged Lego manifest inventories 803 files with SHA-256
   `21454ce25a35b567d0701bff615914497df93af1ed80949763ae7c9b25189f3d`;
-- the staged Playroom manifest inventories 229 files; its local sparse metadata reports
-  225/225 registered images, one `PINHOLE` camera, 37,005 points, and 0.616264 px mean
-  reprojection error, with manifest SHA-256
+- the staged Playroom checksum list inventories 229 files and hashes to
   `bc23594180b9226dc5bacb4313e6036869d95c56d36d420666fea884f61f8eb6`;
+  its local sparse metadata reports
+  225/225 registered images, one `PINHOLE` camera, 37,005 points, and 0.616264 px mean
+  reprojection error. Its first-class dataset manifest hashes to
+  `494b7f8f069292f6b08497cbd8d820112c69677046ce39fd3c7e6268d4d8dc36`
+  and binds the GraphDeco-INRIA-distributed T&T+DB archive SHA-256 plus exact 229/229 member
+  parity;
 - the local iPhone v0.3 probe uses capture profile `video_3dgs_max` and inventories 122
   frames with training-frame digest
   `sha256:9fa6cc5c8447be6a4f58a7d61b97bc15b584711454468a66fb65f1300c51875c`
   and handoff SHA-256
   `bb53d2c713fc9240d4750182e6c8b6032e75d2c3fbb51d90482bdd1b38f844c1`.
 
-The staged standard-scene inventories remain metadata-first until referenced-byte
-completeness is revalidated. The v0.3 iPhone values validate only that local handoff's
+The staged Lego inventory remains metadata-first until referenced-byte completeness is
+revalidated. Playroom completeness does not clear dataset rights or prove trainer consumption
+or reconstruction quality. The v0.3 iPhone values validate only that local handoff's
 capture-evidence binding; they do not prove trainer consumption or reconstruction quality.
 
 The pinned Spirula Playroom run preserves the arbitrary COLMAP/SfM gauge. Its Gaussian asset

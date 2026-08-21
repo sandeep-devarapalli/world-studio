@@ -203,10 +203,14 @@ not rehash every frame byte, construct a training job, or execute a worker.
 
 The current benchmark fixture allowlist is exactly NeRF Synthetic Lego, original-3DGS Deep
 Blending Playroom, and `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z` (122 frames).
-Lego and Playroom remain metadata-first until manifest/reference completeness is
-revalidated. Every other OneDrive dataset stays cloud-only. Reports must hold every claim
-that lacks exact measured evidence; Apple M2 Max results cannot stand in for NVIDIA, AMD,
-Intel, other Apple devices, native equirectangular input, or a literal 10M SH3/8GB result.
+Lego remains metadata-first until manifest/reference completeness is revalidated. Playroom is
+locally hydrated and binds all 229 archive members through dataset manifest SHA-256
+`494b7f8f069292f6b08497cbd8d820112c69677046ce39fd3c7e6268d4d8dc36`, but no explicit
+dataset-byte license was located; redistribution, public demos, product use, and commercial
+use remain held for rights review. Every other OneDrive dataset stays cloud-only. Reports
+must hold every claim that lacks exact measured evidence; Apple M2 Max results cannot stand
+in for NVIDIA, AMD, Intel, other Apple devices, native equirectangular input, or a literal
+10M SH3/8GB result.
 
 ## Physical Asset Calibration Boundary
 
