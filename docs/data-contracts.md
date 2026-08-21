@@ -258,7 +258,7 @@ capture-splat.world-studio.json
 
 Supported fields:
 
-- `schema = "capture_splat.world_studio_handoff.v0.1"` or additive `v0.2`
+- `schema = "capture_splat.world_studio_handoff.v0.1"`, additive `v0.2`, or additive `v0.3`
 - `status`, usually `visual_evidence_with_3dgs_proposal`
 - `source_frames[]` or `frames[]` entries as relative RGB/source image paths
 - `assets.points` for an ordinary PLY point cloud
@@ -281,10 +281,26 @@ Supported fields:
   `vksplat` or `gsplat`; package kind alone does not identify the trainer
 - `walk_eligibility.status = eligible|held|missing`
 - `artifacts[]` entries with `kind` and `path` for equivalent references
+- v0.3 `training_dataset` with schema `capture_splat.training_dataset.v0.1`, a canonical
+  source-frame count/digest, projection provenance, capture/SfM/modality evidence, and
+  capture-only authority flags; `capture_profile` is a bounded producer identifier such as
+  `video_3dgs_max`, not a closed World Studio enum
 
 World Studio treats source frames as visual evidence. Trained Gaussian/splat
 outputs are review proposals, not metric, collision, semantic, or navigation
 authority unless separately validated.
+
+Gaussian asset coordinate frames have two closed states. Registered metric frames use metres
+with distinct cardinal up/forward axes; arbitrary SfM/trainer gauge uses unknown units with
+null axes. Mixed states fail semantic validation, and unregistered outputs remain visual-only.
+Job quantization records training/optimizer storage precision, while asset quantization records
+serialized delivery encoding. A mixed-precision job may validly export a float32 PLY asset with
+`quantization: none`; that binding does not claim compressed output.
+
+For v0.3, the package reader validates the complete `training_dataset` shape and recomputes
+its canonical digest from the handoff's relative frame paths, sizes, and SHA-256 identities.
+Invalid or unbound metadata is withheld and reported as a package error. This metadata check
+does not rehash every image byte, create a Gaussian training job, or claim trainer execution.
 
 World Studio displays attached QA as `promote`, `hold`, or `reject` evidence
 only after validating its schema and counts. It accepts finite PLY evidence only

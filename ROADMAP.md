@@ -9,7 +9,7 @@ outcomes and acceptance gates.
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
 | M1 Authenticated LAN And Progressive World | Manual-import and replay-first progressive evidence, optional paired TLS transport, and isolated worker lifecycle | partial; iPhone live transport held by thermal evidence |
-| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas | partial |
+| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial |
 | M3 Indoor Navigation And First Deployment Twin - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
 | M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal | planned |
@@ -63,12 +63,33 @@ outcomes and acceptance gates.
   Package and edit graph.
 - Preserve ordinary PLY, Gaussian PLY, mesh, collision, navigation, semantic, and physics
   roles separately.
+- The first 3DGS contract slice defines strict, checksum-bound training-job, Gaussian-asset,
+  and benchmark-report records under `contracts/gaussian-pipeline/v0.1`. It does not register
+  a trainer, load an output, publish a canonical Asset, or change physics. Training jobs use
+  an explicit `null` seed when a provider exposes no deterministic seed control. Gaussian
+  assets preserve unregistered trainer gauge as unknown units with null axes until a separate
+  metric registration is accepted. Job quantization describes training storage; asset
+  quantization independently describes serialized delivery encoding.
+- The package reader validates additive Capture Splat handoff v0.3 `training_dataset`
+  metadata and rebinds its canonical digest to `source_frames`; the result remains capture
+  evidence and cannot create or execute a training job.
 
 ### Rendering And Large Assets
 
 - Continue `docs/3dgs_walkthrough_measurement_plan.md`.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
+- Spark remains pinned at 2.1.0. The initial benchmark allowlist is NeRF Synthetic Lego,
+  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego and
+  Playroom are metadata-first until manifest/reference completeness is revalidated; all
+  other OneDrive assets remain cloud-only.
+- Pinned Spirula Playroom outputs retain arbitrary COLMAP/SfM gauge and are visual-only;
+  they cannot support measurement, collision, navigation, or physics until registered to
+  separately validated metric geometry. Its mixed training storage does not imply compressed
+  output: the observed exported PLY properties are dequantized float32.
+- Apple M2 Max is the first target, not evidence for other devices. Cross-vendor Vulkan,
+  native equirectangular, and 10M SH3 in 8GB claims remain held until exact-device reports
+  satisfy the versioned benchmark contract without a fixed-camera quality regression.
 
 ### Simulation, Calibration And R2S2R
 
@@ -101,6 +122,9 @@ The following work cannot be promoted by code or visual inspection alone:
 - point-to-point measurement promotion;
 - sensor-supervision and reconstruction A/B results;
 - SPZ/LoD round-trip orientation and color;
+- 3DGS training time, peak process/device memory, first-visible latency, frame-time
+  distributions, and fixed-camera quality on each claimed hardware class;
+- cross-vendor Vulkan, native equirectangular, and 10M SH3 in 8GB claims;
 - physical calibration apparatus and held-out trials;
 - Newton local/remote parity and effective-collider conformance;
 - matched open-loop real/sim observation and outcome residuals;

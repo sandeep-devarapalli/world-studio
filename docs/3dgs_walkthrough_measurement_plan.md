@@ -1,6 +1,6 @@
 # 3DGS Walkthrough and Metric Measurement Plan
 
-Last updated: 2026-07-13
+Last updated: 2026-08-21
 
 ## Objective
 
@@ -58,6 +58,8 @@ Capture Splat already records:
 5. The current room handoff has an accepted ARKit-to-trainer transform chain;
    packages without accepted registration remain Fly-only.
 6. Large Gaussian PLY files are loaded monolithically instead of using paged LoD.
+7. Strict 3DGS job/asset/benchmark contracts now exist, but no production trainer is
+   registered and no contract output is loaded into Spark or a canonical World automatically.
 
 ## Execution Phases
 
@@ -184,18 +186,62 @@ Recommended capture path:
 Avoid pure in-place rotation, fast turns, large exposure changes, and long
 straight paths without side parallax.
 
-## Test Assets
+## Current Benchmark Fixtures
 
-Use this progression:
+The contract benchmark allowlist is exactly:
 
-1. Capture Splat room, about 141 MB and 627k Gaussians.
-2. iPhone RGB-D cloud, about 143 MB and 3.1M points.
-3. DL3DV Gaussian scene, about 599 MB.
-4. Lublin city Gaussian, about 5.6 GB and 106M splats.
-5. Lublin full asset, about 16 GB, only after paged LoD passes.
+1. NeRF Synthetic Lego at
+   `/Users/dev/Library/CloudStorage/OneDrive-Personal/smallFoundationModel-data/datasets/nerf_synthetic/scenes/nerf_synthetic/lego`.
+2. Original-3DGS Deep Blending Playroom at
+   `/Users/dev/Library/CloudStorage/OneDrive-Personal/smallFoundationModel-data/datasets/3dgs_original/scenes/db/playroom`.
+3. The local 122-frame iPhone capture at
+   `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`.
 
-Bonsai remains an object Orbit and visual-rendering regression asset. It is not
-a metric room-walkthrough test.
+Lego and Playroom are metadata-first until their manifest and referenced-byte completeness
+is revalidated. The local iPhone capture is the capture-to-training integration fixture.
+All other OneDrive datasets, including Bonsai, DL3DV, and Lublin, stay cloud-only and outside
+the active benchmark matrix. This contract slice does not hydrate or offload anything.
+
+Current local evidence, scoped to these exact artifacts rather than upstream constants:
+
+- the staged Lego manifest inventories 803 files with SHA-256
+  `21454ce25a35b567d0701bff615914497df93af1ed80949763ae7c9b25189f3d`;
+- the staged Playroom manifest inventories 229 files; its local sparse metadata reports
+  225/225 registered images, one `PINHOLE` camera, 37,005 points, and 0.616264 px mean
+  reprojection error, with manifest SHA-256
+  `bc23594180b9226dc5bacb4313e6036869d95c56d36d420666fea884f61f8eb6`;
+- the local iPhone v0.3 probe uses capture profile `video_3dgs_max` and inventories 122
+  frames with training-frame digest
+  `sha256:9fa6cc5c8447be6a4f58a7d61b97bc15b584711454468a66fb65f1300c51875c`
+  and handoff SHA-256
+  `bb53d2c713fc9240d4750182e6c8b6032e75d2c3fbb51d90482bdd1b38f844c1`.
+
+The staged standard-scene inventories remain metadata-first until referenced-byte
+completeness is revalidated. The v0.3 iPhone values validate only that local handoff's
+capture-evidence binding; they do not prove trainer consumption or reconstruction quality.
+
+The pinned Spirula Playroom run preserves the arbitrary COLMAP/SfM gauge. Its Gaussian asset
+therefore records unknown length units and null up/forward axes and remains visual-only; no
+measurement, collision, navigation, or physics use is allowed without separate accepted
+metric registration. Spirula qlevel 1 uses mixed training storage (including quantized SH
+and optimizer state), but checkpoint export dequantizes PLY properties to float32. The job
+records mixed training-storage quantization while the exported PLY asset records no serialized
+quantization; this is not evidence of compressed delivery.
+
+### Measured Spark 2.1 visual probe - 2026-08-21
+
+World Studio's Electron development build loaded the 100-step Playroom output through
+Spark 2.1 as `spark gaussian · world-studio-default · 37005 splats`. The exact input PLY
+SHA-256 is
+`5330d06f583dd849d0e0d4dd8365bc9f98488bc8b3c3592152b74a8a8e76bb86`. The rendered
+scene remained visible during an Orbit interaction, with no page exception or loader error.
+
+This is a renderer-ingest and interaction regression only. It is intentionally separate from
+the benchmark report because first-visible latency, frame time, and rendered-image parity were
+not measured or contract-bound. The 100-step output is visibly unconverged, initial auto-framing
+clips the unregistered-gauge scene, a visibility diagnostic can remain stale after point/splat
+toggling, and a wheel interaction emitted a passive-listener warning. Visual quality, automatic
+framing, performance, metric measurement, collision, and Newton physics therefore remain held.
 
 ## Evidence Gates
 
@@ -205,6 +251,16 @@ a metric room-walkthrough test.
 - Every measurement reports its geometry source, coordinate frame, and units.
 - Known-length checks are compared with LiDAR or RoomPlan references.
 - Desktop and mobile frame time are reported separately.
+- Each report binds exact dataset/job/asset hashes, hardware, command argv, build mode,
+  cold runs, warmups, measured repetitions, raw samples, thermal/noise controls, fixed-camera
+  PSNR/SSIM/MAE, and a `promote|hold|reject` decision.
+- Record the trainer seed only when the provider exposes and consumes it. The pinned Spirula
+  CLI exposes no fixed-seed flag, so its jobs use `seed: null`; repeated stochastic outputs
+  and differing hashes remain raw evidence rather than being labeled deterministic.
+- Cross-vendor Vulkan, 10M SH3 in 8GB, native equirectangular, quantized-training, combined
+  strategy, exposure/WB, built-in preprocessing, and derived-output claims remain held until
+  their declared evidence conditions are measured. Quantized-training evidence binds the job's
+  training-storage profile and never implies a quantized or compressed exported asset.
 - Large assets become interactive without loading the full source PLY first.
 - Missing or held metric evidence produces `Fly only`, never a Walk claim.
 
@@ -213,6 +269,7 @@ a metric room-walkthrough test.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
+| 3DGS job/asset/benchmark contracts | Implemented; Apple regression passed; production runtime held | Strict schemas, fixtures, runtime validators, cross-record binding, GPL external-process boundary, five-run Apple benchmark, and a separate Spark 2.1 visual probe | Add a production trainer adapter and contract-bound quality, frame-time, and memory measurements |
 | 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
 | 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
 | 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
@@ -414,6 +471,11 @@ checksum-bound candidate report. Metric measurement remains blocked.
 ## Reference Boundaries
 
 - Spark remains World Studio's Gaussian renderer.
+- Spark stays pinned at 2.1.0 for this contract checkpoint; the contract does not change its
+  loader or claim SPZ/RAD/LoD support.
+- Spirula Studio is a GPL-3.0 external-process/reference boundary pinned at
+  `aede0ae3b2d01a7930c71b9c7f52354dc180146b`; no implementation code is copied into World
+  Studio.
 - Rapier remains the current browser physics implementation for this plan checkpoint. The
   public roadmap targets a supervised Newton worker and removes Rapier only after parity
   and cutover gates pass.

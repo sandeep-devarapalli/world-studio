@@ -62,6 +62,21 @@ Acceptance:
 - Site revisions and asset revisions form immutable deltas rather than mutating prior
   evidence.
 - Package migration and round-trip tests reproduce referenced bytes.
+- 3DGS training jobs bind exact dataset manifests, worker source/build identity, feature
+  profile, outputs, and resource budgets without carrying executable authority; seed is an
+  observed non-negative integer or explicit `null` when the provider exposes no seed control.
+- Gaussian assets bind the exact job and dataset, representation/coordinate/color metadata,
+  finite-value validation, sidecars, and a visual-only prohibited-use boundary. Arbitrary
+  SfM/trainer gauge remains unknown-unit with null axes until metric registration is accepted;
+  serialized-asset quantization remains independent of training-storage precision.
+- Benchmark reports bind exact job, asset, dataset, World Studio/Spark versions, hardware,
+  commands, repetitions, distributions, raw evidence, quality cameras, noise controls, and
+  `promote|hold|reject`; unmeasured vendor, capacity, projection, and feature claims stay held.
+- Additive Capture Splat handoff v0.3 `training_dataset` metadata is shape-validated and its
+  canonical frame count/digest is rebound to `source_frames`; it remains capture evidence,
+  not a trainer request, execution receipt, or authority promotion.
+- Trainer execution, Spark loading, and canonical Asset publication remain explicit later
+  gates rather than side effects of validating these records.
 
 ## M3 Indoor Navigation And First Deployment Twin - R3
 
