@@ -92,8 +92,16 @@ outcomes and acceptance gates.
   native equirectangular, and 10M SH3 in 8GB claims remain held until exact-device reports
   satisfy the versioned benchmark contract without a fixed-camera quality regression.
 - The corrected Playroom CPU-cache ladder passed seven eight-view/finite-output runs and
-  nominates a checksum-bound 100,000-splat PLY for Spark. Its packaged visual/load gate is
-  held until APFS free capacity is restored above the predeclared 20 GiB floor.
+  nominated a checksum-bound 100,000-splat PLY for Spark. Exact packaged baseline/candidate
+  validation on a quota-limited external APFS test volume rejected the baseline's blank
+  framing and passive-wheel error, then promoted the candidate's centred load/orbit/zoom
+  behavior with no observed post-attachment console diagnostics. Comparative performance,
+  first-present/draw timing, and memory
+  remain held because the invalid baseline prevented paired measurements and the external
+  USB path plus missing runtime instrumentation are not production evidence.
+- The local iPhone lane now has a checksum-bound 300-frame prepared package and a blocker-free
+  global HLOC retrieval dry-run. Registration authority remains false until the actual
+  HLOC/COLMAP commands produce and validate a model; iPhone training and quality remain open.
 
 ### Simulation, Calibration And R2S2R
 

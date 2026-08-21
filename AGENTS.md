@@ -44,6 +44,11 @@
 - Hold production Spark load claims until measured on the named hardware. Require at least
   20 GiB free before output-producing ladder, packaging, or Spark benchmark runs; do not
   delete datasets or Time Machine snapshots to force the gate.
+- External benchmark scratch must use a separate non-backup APFS volume, never a Time Machine
+  Backup-role namespace. Verify the volume is mounted and writable, Time Machine is idle, and
+  at least 20 GiB remains before and after every run. Treat USB-backed timings as non-production
+  evidence, store no secrets, and keep rights-restricted inputs and derivatives private under
+  their source terms.
 - Use the design tokens and component classes in `packages/design-system`; do not create a
   separate visual language.
 - Destructive operations must be undoable and disabled when not applicable.

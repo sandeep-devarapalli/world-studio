@@ -78,6 +78,12 @@ Acceptance:
 - Trainer execution, Spark loading, and canonical Asset publication remain explicit later
   gates rather than side effects of validating these records.
 
+Current evidence, 2026-08-21: the exact candidate package passed a bounded Spark 2.1
+100,000-splat load/orbit/zoom visual gate after the baseline was rejected for blank framing
+and a passive-wheel error. This promotes only candidate functional visualization; trainer
+execution, canonical Asset publication, equivalent-condition performance, metric authority,
+collision, navigation, and physics remain open M2 gates.
+
 ## M3 Indoor Navigation And First Deployment Twin - R3
 
 Outcome: one validated indoor mobile robot or vacuum world tied to a physical site revision.

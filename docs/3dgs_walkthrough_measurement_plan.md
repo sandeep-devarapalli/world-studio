@@ -269,11 +269,45 @@ with SHA-256 `a909eb2a9bc0cd2cd3d43287b0e9146e77765aa2084b75ee3b311ba76c256c45`.
 
 The earlier 37,005-splat development probe identified off-centre framing and a passive wheel
 listener warning. Robust bounded framing, non-periodic preview sampling, and the interaction
-regression are now covered by unit, package-reader, and Playwright tests. The nominated
-100,000-splat packaged Spark visual/load gate has not run: APFS free capacity fell below its
-predeclared 20 GiB floor, and retained Time Machine snapshots prevented safe recovery. Spark
-visual acceptance, first-visible latency, draw time, memory, metric measurement, collision,
-and Newton physics therefore remain held.
+regression are now covered by unit, package-reader, and Playwright tests. Exact baseline
+`7e47718cbd644e3e69272389fc1d2b389342bc60` and candidate
+`3ea410791bdfb23eaac6cb85dfd7acb88f1a5d2e` packages were then built on a separate,
+quota-limited external APFS test volume and loaded with Spark 2.1.0 against the nominated
+100,000-splat PLY.
+
+The baseline is rejected: it emitted the passive-wheel console error and its raw-extrema
+camera frame left the initial canvas blank/off-scene. The candidate is promoted for the
+bounded functional gate only: it showed the exact
+`spark gaussian · world-studio-default · 100000 splats` status and source provenance,
+rendered the scene centred on first load, preserved a visible scene after orbit/zoom, and
+produced no observed post-attachment console warning, console error, or page error. The
+external-relative diagnostic report
+`spark/runs/20260821-spark-functional-diagnostic-v0.3/spark-production-load-smoke.v0.3.json`
+has SHA-256 `cc038b5ac9ab9cf5a69a0ba859c98344a9e1da35c9389bd6599a73bcdeaf8821`;
+`spark/evidence/world-studio-spark-functional-decision.v0.1.json` has SHA-256
+`59404b227647f48a544bb52ee7c93427d86b4e33e085b9b9ef61fc7994b41a60`.
+
+The harness intentionally stopped before measurement because the baseline workload was not
+functionally equivalent, so measured pairs remain zero. First-visible latency, draw time,
+memory, and comparative performance remain held; external USB I/O, unavailable thermal
+telemetry, and absent app-side present/draw/GPU-memory instrumentation also prevent promotion.
+Metric measurement, collision, navigation, and Newton physics remain separate unpassed gates.
+
+The same external workspace prepared the finalized local 122-frame iPhone capture into 300
+SfM inputs: 122 accepted RGB-D frames plus 178 bounded video supplements, with 300 valid masks.
+The preparation summary SHA-256 is
+`80a2515a4542c735b4396486c4f7d60874e00092f58e8beb8262feb6f8450701` at
+`capture/prepare/iphone060230/capture_splat_prepare_summary.json`. A corrected global
+HLOC retrieval dry-run staged all 300 images and masks, recorded ALIKED/LightGlue plus CPU
+matching commands with no blockers, and correctly kept `registration_evidence: false`; its
+clean-revision summary at
+`capture/sfm/iphone060230-global-hloc-dry-run-v3/capture_splat_sfm_summary.json` has SHA-256
+`2991319ef0e5e205ea956453afcae471eda1c353d2a0f98889ade29d637b6d69`. The portable
+`evidence/capture-splat-iphone-preflight-decision.v0.1.json` index binds Capture Splat revision
+`a077533f065d0cfc1c1fb9d0faeb3641ac0ade4d` and has SHA-256
+`5151029966bc55f2785f5e4e3274079e58fa3d11d5e27109eaf1d4548be85885`.
+No HLOC extraction, matching, COLMAP registration, iPhone training, or quality measurement ran,
+so those gates remain held.
 
 ## Evidence Gates
 
@@ -301,7 +335,7 @@ and Newton physics therefore remain held.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
-| 3DGS job/asset/benchmark contracts | Implemented; corrected Apple ladder passed; production runtime held | Strict schemas, runtime validators, rejected duplicate-view disk evaluation, seven corrected CPU-cache runs, and checksum-bound report `a909eb2a...c256c45` | Recover more than 20 GiB free, run the nominated 100k-splat packaged Spark gate, then add a production trainer adapter |
+| 3DGS job/asset/benchmark contracts | Implemented; corrected Apple ladder and candidate Spark functional gate passed; performance held | Strict schemas, runtime validators, seven corrected CPU-cache runs, exact packaged baseline/candidate evidence, rejected baseline framing/wheel behavior, and a centred 100k-splat candidate with no observed post-attachment console diagnostics | Run the real iPhone HLOC/COLMAP registration gate, then add a production trainer adapter and instrument equivalent-condition Spark performance |
 | 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
 | 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
 | 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
