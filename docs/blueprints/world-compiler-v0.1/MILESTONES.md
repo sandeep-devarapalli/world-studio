@@ -78,6 +78,14 @@ Acceptance:
 - Trainer execution, Spark loading, and canonical Asset publication remain explicit later
   gates rather than side effects of validating these records.
 
+Current evidence note (non-normative, 2026-08-21): checksum-bound Playroom and Lego PLYs have
+passed candidate Spark 2.1 functional visualization gates. The Lego lane used supplied camera
+poses and therefore did not validate SfM. Its result report hashes to `a16f0d23...a7323d4`, and
+the r4 functional and bound manual reports hash to `598b3d74...70f06a3` and
+`7b4ab201...5fe61c7`. This does not change M2 acceptance, publish a canonical Asset, clear
+candidate release, or grant metric, collision, navigation, physics, performance, quality, or
+general capacity authority.
+
 ## M3 Indoor Navigation And First Deployment Twin - R3
 
 Outcome: one validated indoor mobile robot or vacuum world tied to a physical site revision.

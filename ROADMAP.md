@@ -80,10 +80,9 @@ outcomes and acceptance gates.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
 - Spark remains pinned at 2.1.0. The initial benchmark allowlist is NeRF Synthetic Lego,
-  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego remains
-  metadata-first. Playroom has exact 229/229 archive-member parity and is available
-  only for private local technical validation while dataset rights remain under review; all
-  other OneDrive assets remain cloud-only.
+  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego and
+  Playroom are available only for private local technical validation while dataset-byte rights
+  remain under review; all other OneDrive assets remain cloud-only.
 - Pinned Spirula Playroom outputs retain arbitrary COLMAP/SfM gauge and are visual-only;
   they cannot support measurement, collision, navigation, or physics until registered to
   separately validated metric geometry. Its mixed training storage does not imply compressed
@@ -91,9 +90,15 @@ outcomes and acceptance gates.
 - Apple M2 Max is the first target, not evidence for other devices. Cross-vendor Vulkan,
   native equirectangular, and 10M SH3 in 8GB claims remain held until exact-device reports
   satisfy the versioned benchmark contract without a fixed-camera quality regression.
-- The corrected Playroom CPU-cache ladder passed seven eight-view/finite-output runs and
-  nominates a checksum-bound 100,000-splat PLY for Spark. Its packaged visual/load gate is
-  held until APFS free capacity is restored above the predeclared 20 GiB floor.
+- The corrected Playroom CPU-cache ladder passed seven eight-view/finite-output runs. Its
+  checksum-bound 100,000-splat PLY subsequently passed candidate Spark load, centered framing,
+  orbit, and zoom; performance, quality, metric, collision, navigation, and physics remain held.
+- The checksum-bound Lego known-pose adapter, external Spirula 7,000-step result, and finite
+  99,996-splat SH3 PLY passed candidate Spark 2.1 load, orbit, and inward zoom at revision
+  `cb0a93d`. The run result hashes to `a16f0d23...a7323d4`, the r4 functional report to
+  `598b3d74...70f06a3`, and the manual review to `7b4ab201...5fe61c7`. Supplied poses bypass
+  SfM, external-USB timings are non-production, candidate release remains held, and this gate
+  makes no general quality or capacity claim.
 
 ### Simulation, Calibration And R2S2R
 
