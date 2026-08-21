@@ -31,8 +31,8 @@
   mixed-precision training job may export float32 PLY (`quantization: none`); never label the
   delivery artifact compressed without inspecting its serialized properties.
 - The active 3DGS benchmark allowlist is NeRF Synthetic Lego, original-3DGS Deep Blending
-  Playroom, and the local 122-frame iPhone capture at
-  `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`. Lego remains metadata-first.
+  Playroom, and private Capture Splat fixture `capture-splat:2026-08-09T060230Z` with 122
+  accepted RGB-D frames. Lego remains metadata-first.
   Playroom is checksum-validated against all 229 members of the GraphDeco-INRIA-distributed
   T&T+DB archive and may be used only for private local technical validation while dataset
   rights remain under review; do not substitute Bonsai. Keep every other OneDrive dataset

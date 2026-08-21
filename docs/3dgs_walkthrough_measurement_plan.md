@@ -190,14 +190,12 @@ straight paths without side parallax.
 
 The contract benchmark allowlist is exactly:
 
-1. NeRF Synthetic Lego staged at
-   `/Users/dev/Desktop/smallFoundationModel/data/generated/world_studio_3dgs_fixtures_20260821/nerf_synthetic/lego`,
-   with its derived known-pose adapter under the dedicated external test workspace.
-2. Original-3DGS Deep Blending Playroom staged at
-   `/Users/dev/Desktop/smallFoundationModel/data/generated/world_studio_3dgs_fixtures_20260821/db/playroom`
-   from the OneDrive `datasets/3dgs_original/archives/tandt_db.zip` source archive.
-3. The local 122-frame iPhone capture at
-   `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`.
+1. NeRF Synthetic Lego staged as private fixture `nerf-synthetic:lego`, with its derived
+   known-pose adapter in the dedicated external test workspace.
+2. Original-3DGS Deep Blending Playroom staged as private fixture
+   `deep-blending:playroom` from its checksum-bound GraphDeco-INRIA archive.
+3. Private Capture Splat fixture `capture-splat:2026-08-09T060230Z` with 122 accepted RGB-D
+   frames.
 
 Lego referenced-byte completeness and its deterministic known-pose adapter have been
 revalidated. Lego and Playroom remain limited to private local technical evaluation and held
@@ -288,9 +286,9 @@ collision, navigation, and Newton physics remain held.
 
 At current candidate implementation revision `cb0a93d`, the packaged preparation-path
 regression returned the selected Playroom PLY byte-for-byte with `converted: false` and zero
-scale clamps, rotation normalizations, or dropped outliers. Its report is
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/standard/playroom-spark-regression-cb0a93d-r1/playroom-prepare-spark-regression.v0.1.json`,
-SHA-256 `31b53e38ea97b5194562060a40d3ce651dadd5c846afb29e9204dbdc88f0181c`.
+scale clamps, rotation normalizations, or dropped outliers. Report
+`playroom-prepare-spark-regression.v0.1.json` has SHA-256
+`31b53e38ea97b5194562060a40d3ce651dadd5c846afb29e9204dbdc88f0181c`.
 This is preparation-path non-regression only. The earlier `3ea4107` load/orbit/zoom evidence
 remains distinct; fresh `cb0a93d` packaged UI replay is held because no honest generic
 Playroom harness exists without fabricating unrelated dataset provenance.
@@ -319,12 +317,11 @@ checksum-bound `spirula-lego-ladder-result.v0.2.json` hashes to
 
 Candidate revision `cb0a93d71ec959bf4d1198499dc0fe2a122304ef` with Spark 2.1.0 loaded the
 exact PLY and retained `spark gaussian · world-studio-default · 99996 splats` through initial
-load, orbit, and inward zoom. The r4 functional report is
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/standard/spark-lego-20260821-r4/spark-lego-candidate-functional.v0.1.json`
-with SHA-256 `598b3d74c01f7bc9c2731bada9456aec026bc0ed5ae0540f79731d83470f06a3`.
-The bound initial, orbit, and inward-zoom screenshots passed manual inspection in
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/standard/spark-lego-20260821-r4/spark-lego-manual-visual-review.v0.1.json`,
-SHA-256 `7b4ab2019407fb1c6d2b073f4f14813750055953f726092985081084a5fe61c7`.
+load, orbit, and inward zoom. R4 report `spark-lego-candidate-functional.v0.1.json` has SHA-256
+`598b3d74c01f7bc9c2731bada9456aec026bc0ed5ae0540f79731d83470f06a3`. The bound initial,
+orbit, and inward-zoom screenshots passed manual inspection in
+`spark-lego-manual-visual-review.v0.1.json`, SHA-256
+`7b4ab2019407fb1c6d2b073f4f14813750055953f726092985081084a5fe61c7`.
 
 Renderer preparation clamped six scale values and hid two outlier rows only in the render-time
 preview blob; the source PLY remained byte-identical. This gate promotes Spark 2.1 functional
@@ -335,20 +332,18 @@ physics, Newton behavior, cross-vendor support, or general splat capacity.
 ### Measured iPhone HLOC-to-Spirula-to-Spark lane - 2026-08-21
 
 The independent iPhone lane reconstructed 300 prepared frames with NetVLAD top-32 retrieval,
-ALIKED-N16 features, LightGlue matching, and COLMAP. The checksum-bound validation is
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/capture/evidence/iphone060230-global-hloc-real-a077533f-r3.validation.json`,
-SHA-256 `1b9926601b7330a7c8b54572ec4509979cd88a143a44e9514047b12855ad9c7d`.
+ALIKED-N16 features, LightGlue matching, and COLMAP. Checksum-bound report
+`iphone060230-global-hloc-real-a077533f-r3.validation.json` has SHA-256
+`1b9926601b7330a7c8b54572ec4509979cd88a143a44e9514047b12855ad9c7d`.
 It promotes registration with 300/300 images registered, 14,888 points, 321,782 observations,
-and 1.2636579 px mean reprojection error. The completed SfM summary hashes to
-`7b32d88ac49b1f8d9d01c02a7d22a43cafb3b81f78715f5084bd3a91f0131f5b` at
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/capture/sfm/iphone060230-global-hloc-real-a077533f-r3/capture_splat_sfm_summary.json`.
+and 1.2636579 px mean reprojection error. Completed `capture_splat_sfm_summary.json` hashes to
+`7b32d88ac49b1f8d9d01c02a7d22a43cafb3b81f78715f5084bd3a91f0131f5b`.
 Overall package acceptance remains held because the raw SfM output is not self-contained, and
 timing remains held because the run used external USB storage, a CPU override, a local worker
 patch, one sample, and no thermal telemetry. Registration promotion is not a quality claim.
 
-The external Spirula ladder result is
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/capture/iphone060230-spirula-ladder-v5/spirula-iphone-ladder-result.v0.1.json`,
-SHA-256 `d64938544b19ca6314001547b3f0d20a418a2cd058da68f438b7fe9f427580d0`.
+External report `spirula-iphone-ladder-result.v0.1.json` has SHA-256
+`d64938544b19ca6314001547b3f0d20a418a2cd058da68f438b7fe9f427580d0`.
 Its selected 7,000-step second repetition exported a finite 99,979-splat SH3 PLY of
 24,796,322 bytes with SHA-256
 `207edbe4020c9e7ba60fa836a2d66c7012d53a26eb99b7265d05075e6ac6759e` and measured
@@ -359,12 +354,10 @@ metrics do not promote training or render quality.
 
 Candidate revision `3ea4107` with Spark 2.1.0 retained
 `spark gaussian · capture-splat-generic · 99979 splats` through load, orbit, and inward zoom.
-The r6 functional report is
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/spark/runs/iphone060230-candidate-functional-v0.1-r6/spark-candidate-functional.v0.1.json`,
-SHA-256 `ace2c7580129bfc6b59b434ee1f4396e72949cf2a130dcc2e391d8085654cbe9`.
-Its bound manual review is
-`/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/spark/runs/iphone060230-candidate-functional-v0.1-r6/spark-candidate-manual-visual-review.v0.1.json`,
-SHA-256 `7e55e53acb1396f031a2224bfa8437d5d4ad41765d115304bb8761b8d65a3ba1`.
+R6 report `spark-candidate-functional.v0.1.json` has SHA-256
+`ace2c7580129bfc6b59b434ee1f4396e72949cf2a130dcc2e391d8085654cbe9`. Its bound manual
+review `spark-candidate-manual-visual-review.v0.1.json` has SHA-256
+`7e55e53acb1396f031a2224bfa8437d5d4ad41765d115304bb8761b8d65a3ba1`.
 Functional visibility, orbit, and zoom are promoted. Candidate release and render quality remain
 held because the screenshots show blur, smearing, floaters, and poorly resolved surfaces.
 Spark preparation clamped 11,452 scale values and hid nine outliers in the render-only preview;

@@ -202,7 +202,8 @@ grammar, including `video_3dgs_max`, instead of a closed World Studio enum. The 
 not rehash every frame byte, construct a training job, or execute a worker.
 
 The current benchmark fixture allowlist is exactly NeRF Synthetic Lego, original-3DGS Deep
-Blending Playroom, and `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z` (122 frames).
+Blending Playroom, and private Capture Splat fixture `capture-splat:2026-08-09T060230Z`
+(122 accepted RGB-D frames).
 Lego remains metadata-first until manifest/reference completeness is revalidated. Playroom is
 locally hydrated and binds all 229 archive members through dataset manifest SHA-256
 `494b7f8f069292f6b08497cbd8d820112c69677046ce39fd3c7e6268d4d8dc36`, but no explicit
