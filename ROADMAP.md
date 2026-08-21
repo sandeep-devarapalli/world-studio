@@ -80,8 +80,9 @@ outcomes and acceptance gates.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
 - Spark remains pinned at 2.1.0. The initial benchmark allowlist is NeRF Synthetic Lego,
-  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego remains
-  metadata-first. Playroom has exact 229/229 archive-member parity and is available
+  original-3DGS Deep Blending Playroom, and one local iPhone capture with 122 accepted RGB-D
+  frames and a 300-image prepared/SfM package. Lego remains metadata-first. Playroom has exact
+  229/229 archive-member parity and is available
   only for private local technical validation while dataset rights remain under review; all
   other OneDrive assets remain cloud-only.
 - Pinned Spirula Playroom outputs retain arbitrary COLMAP/SfM gauge and are visual-only;
@@ -99,9 +100,36 @@ outcomes and acceptance gates.
   first-present/draw timing, and memory
   remain held because the invalid baseline prevented paired measurements and the external
   USB path plus missing runtime instrumentation are not production evidence.
-- The local iPhone lane now has a checksum-bound 300-frame prepared package and a blocker-free
-  global HLOC retrieval dry-run. Registration authority remains false until the actual
-  HLOC/COLMAP commands produce and validate a model; iPhone training and quality remain open.
+- The local iPhone lane now has a real global HLOC/ALIKED/LightGlue/COLMAP r3 reconstruction:
+  300/300 registered images, 14,888 finite sparse points, and 1.2636579 px mean reprojection
+  error. Registration evidence is promoted, but reconstruction quality, metric scale, and
+  production timing are not. A separate complete-v2 package verifies all 852 referenced assets.
+- The Spirula v5 ladder ran 500/1,000/3,000/7,000 exploratory steps plus three fresh 7,000-step
+  repetitions on Apple M2 Max. It selected `repeat-000007000-02`: 99,979 finite splats, PLY
+  SHA-256 `207edbe4020c9e7ba60fa836a2d66c7012d53a26eb99b7265d05075e6ac6759e`,
+  PSNR 24.6459, SSIM 0.868393, and LPIPS Alex 0.209897. The ladder result has SHA-256
+  `d64938544b19ca6314001547b3f0d20a418a2cd058da68f438b7fe9f427580d0`; its metrics did not
+  promote training or render quality.
+- The selected proposal is packaged in a fresh self-contained Capture Splat handoff v0.3. Its
+  manifest SHA-256 is `bbb356294d4ee3373036310cc4f1aecd3001e5b861f3c063769ea6696d8a596d`,
+  and its strict validation report SHA-256 is
+  `0ceef27fb8555ddde47dedd29ed22cfee4668e5efa3b21e90cd91f23de73f1c5`. The handoff remains
+  capture evidence plus a visualization proposal: it does not establish trainer-to-metric
+  registration, quality, measurement, collision, navigation, or physics authority.
+- The exact candidate-only Spark 2.1 r6 gate now binds the packaged candidate, renderer URL,
+  handoff, selected validation/PLY, displayed provenance, seven screenshots, distinct
+  pre-orbit/after-orbit/after-wheel canvas hashes, and process cleanup. The external-relative
+  automated report `spark/runs/iphone060230-candidate-functional-v0.1-r6/spark-candidate-functional.v0.1.json`
+  has SHA-256 `ace2c7580129bfc6b59b434ee1f4396e72949cf2a130dcc2e391d8085654cbe9`;
+  its sibling manual review has SHA-256
+  `7e55e53acb1396f031a2224bfa8437d5d4ad41765d115304bb8761b8d65a3ba1`, and the harness has
+  SHA-256 `02e3358b60322f1087d4fd3959afa71ea37104fbbec1037c8fd7339c4147021a`.
+  The exact displayed status was `spark gaussian · capture-splat-generic · 99979 splats`.
+  Manual review promotes only functional scene visibility, orbit, and inward zoom. Native render
+  evidence remains authoritative and shows visible smearing/blur/floaters, 11,452 scales
+  clamped, and 9 outliers hidden, so render fidelity, training quality, candidate release,
+  timing/performance, render time, memory, energy, capacity, and cross-vendor claims remain
+  held. `quality_claim=false`; metric, collision, navigation, and Newton authority remain false.
 
 ### Simulation, Calibration And R2S2R
 
@@ -125,6 +153,16 @@ outcomes and acceptance gates.
 - Keep browser tests and macOS packaged smoke green.
 - Progress toward signed/notarized macOS, then Windows/Linux packaging.
 - Use milestone issues, reproducible evidence, and explicit upstream/license decisions.
+- Benchmark scratch uses `/Volumes/WorldStudio-3DGS-TestData` UUID
+  `B65F4B13-F4B0-4295-8653-3D83B9CB79C1`; longer-lived project storage uses
+  `/Volumes/WorldStudio-3DGS-Storage` UUID `AC466C49-5A36-4769-8D64-1E9A4E0635D4`. The former
+  Time Machine volume and eight local snapshots were removed under explicit user authority;
+  postflight found no configured destination or Backup-role volume.
+- Capture Splat `runs` and Depth Pro checkpoints were relocated only after manifest parity,
+  smoke reads, and verified symlink cutover. Both external volumes are unencrypted and are not
+  independent backups. The application audit measured `/Applications` at 25.56 GiB and found
+  that Electron/Chromium profiles did not explain the reported 450+ GB category; active Docker,
+  Cursor, and Chrome state was preserved while only verified caches or stale backups were removed.
 
 ## Evidence-Dependent Work
 
@@ -134,7 +172,7 @@ The following work cannot be promoted by code or visual inspection alone:
 - point-to-point measurement promotion;
 - sensor-supervision and reconstruction A/B results;
 - SPZ/LoD round-trip orientation and color;
-- 3DGS training time, peak process/device memory, first-visible latency, frame-time
+- production or comparative 3DGS training time, peak device memory, first-visible latency, frame-time
   distributions, and fixed-camera quality on each claimed hardware class;
 - cross-vendor Vulkan, native equirectangular, and 10M SH3 in 8GB claims;
 - physical calibration apparatus and held-out trials;

@@ -78,11 +78,34 @@ Acceptance:
 - Trainer execution, Spark loading, and canonical Asset publication remain explicit later
   gates rather than side effects of validating these records.
 
-Current evidence, 2026-08-21: the exact candidate package passed a bounded Spark 2.1
+Current evidence, 2026-08-21: the exact Playroom candidate package passed a bounded Spark 2.1
 100,000-splat load/orbit/zoom visual gate after the baseline was rejected for blank framing
-and a passive-wheel error. This promotes only candidate functional visualization; trainer
-execution, canonical Asset publication, equivalent-condition performance, metric authority,
-collision, navigation, and physics remain open M2 gates.
+and a passive-wheel error.
+
+The separate local iPhone lane now has a real finite r3 HLOC/ALIKED/LightGlue/COLMAP model with
+300/300 registered images and a complete-v2 package that verifies all 852 referenced assets.
+Pinned Spirula ran a v5 500/1,000/3,000/7,000-step ladder plus three fresh selected-rung
+repetitions. Result SHA-256
+`d64938544b19ca6314001547b3f0d20a418a2cd058da68f438b7fe9f427580d0` selects the finite
+99,979-splat `repeat-000007000-02` proposal. A fresh self-contained Capture Splat v0.3 handoff
+binds that exact PLY and every dataset member; its manifest SHA-256 is
+`bbb356294d4ee3373036310cc4f1aecd3001e5b861f3c063769ea6696d8a596d` and its strict validation
+decision is `ready_for_spark_functional_gate`.
+
+The exact iPhone candidate-only Spark 2.1 r6 run is recorded at external-relative
+`spark/runs/iphone060230-candidate-functional-v0.1-r6/spark-candidate-functional.v0.1.json`,
+SHA-256 `ace2c7580129bfc6b59b434ee1f4396e72949cf2a130dcc2e391d8085654cbe9`; its sibling manual
+review SHA-256 is `7e55e53acb1396f031a2224bfa8437d5d4ad41765d115304bb8761b8d65a3ba1`, and its harness
+SHA-256 is `02e3358b60322f1087d4fd3959afa71ea37104fbbec1037c8fd7339c4147021a`.
+The exact status `spark gaussian · capture-splat-generic · 99979 splats` persisted while seven
+screenshots and distinct pre-orbit/after-orbit/after-wheel canvas hashes established functional
+scene visibility, orbit, and inward zoom. Those three functional checks are promoted.
+
+Manual native-render review still found visible smearing/blur/floaters, 11,452 scales clamped,
+and 9 outliers hidden. `quality_claim=false`; render fidelity, training quality, candidate
+release, timing/performance, render time, memory, energy, capacity, and cross-vendor claims
+remain held. The external Spirula execution does not register a production trainer or publish a
+canonical Asset, and metric, collision, navigation, and Newton physics authority remain false.
 
 ## M3 Indoor Navigation And First Deployment Twin - R3
 

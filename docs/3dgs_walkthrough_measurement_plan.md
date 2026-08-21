@@ -55,8 +55,9 @@ Capture Splat already records:
    a walkable triangle mesh and a character controller.
 4. Capture Splat metric sidecars are ingested, but the registered ARKit mesh is
    still review evidence rather than collision or measurement authority.
-5. The current room handoff has an accepted ARKit-to-trainer transform chain;
-   packages without accepted registration remain Fly-only.
+5. The July Room Walkthrough handoff has an accepted ARKit-to-trainer transform chain;
+   packages without accepted registration remain Fly-only. The current Spirula iPhone proposal
+   has no validated trainer-to-metric transform and is therefore also Fly-only.
 6. Large Gaussian PLY files are loaded monolithically instead of using paged LoD.
 7. Strict 3DGS job/asset/benchmark contracts now exist, but no production trainer is
    registered and no contract output is loaded into Spark or a canonical World automatically.
@@ -195,8 +196,10 @@ The contract benchmark allowlist is exactly:
 2. Original-3DGS Deep Blending Playroom staged at
    `/Users/dev/Desktop/smallFoundationModel/data/generated/world_studio_3dgs_fixtures_20260821/db/playroom`
    from the OneDrive `datasets/3dgs_original/archives/tandt_db.zip` source archive.
-3. The local 122-frame iPhone capture at
-   `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`.
+3. The local iPhone lane rooted at
+   `/Users/dev/Downloads/capture_splat_2026-08-09T060230Z`, with 122 accepted RGB-D source
+   frames and a checksum-bound 300-image real-SfM package staged at
+   `/Volumes/WorldStudio-3DGS-TestData/world-studio-capture-splat-tests/capture/sfm/iphone060230-global-hloc-real-a077533f-r3-complete-v2`.
 
 Lego is metadata-first until its manifest and referenced-byte completeness is revalidated.
 Playroom is byte- and COLMAP-reference-complete for private local benchmark evaluation but
@@ -218,7 +221,7 @@ Current local evidence, scoped to these exact artifacts rather than upstream con
   `494b7f8f069292f6b08497cbd8d820112c69677046ce39fd3c7e6268d4d8dc36`
   and binds the GraphDeco-INRIA-distributed T&T+DB archive SHA-256 plus exact 229/229 member
   parity;
-- the local iPhone v0.3 probe uses capture profile `video_3dgs_max` and inventories 122
+- the historical pre-SfM iPhone v0.3 probe uses capture profile `video_3dgs_max` and inventories 122
   frames with training-frame digest
   `sha256:9fa6cc5c8447be6a4f58a7d61b97bc15b584711454468a66fb65f1300c51875c`
   and handoff SHA-256
@@ -226,8 +229,9 @@ Current local evidence, scoped to these exact artifacts rather than upstream con
 
 The staged Lego inventory remains metadata-first until referenced-byte completeness is
 revalidated. Playroom completeness does not clear dataset rights or prove trainer consumption
-or reconstruction quality. The v0.3 iPhone values validate only that local handoff's
-capture-evidence binding; they do not prove trainer consumption or reconstruction quality.
+or reconstruction quality. The historical v0.3 iPhone values validate only that earlier local
+handoff's capture-evidence binding; current real-SfM, training, and self-contained-handoff
+evidence is recorded below and remains subject to its own authority gates.
 
 The pinned Spirula Playroom run preserves the arbitrary COLMAP/SfM gauge. Its Gaussian asset
 therefore records unknown length units and null up/forward axes and remains visual-only; no
@@ -237,7 +241,7 @@ and optimizer state), but checkpoint export dequantizes PLY properties to float3
 records mixed training-storage quantization while the exported PLY asset records no serialized
 quantization; this is not evidence of compressed delivery.
 
-### Measured Apple quality ladder and Spark gate - 2026-08-21
+### Measured Playroom Apple quality ladder and Spark gate - 2026-08-21
 
 The first disk-cache evaluation ladder is rejected: Spirula's asynchronous disk decode path
 repeated held-out views, leaving only five to seven unique cameras in an eight-camera set. The
@@ -293,21 +297,99 @@ memory, and comparative performance remain held; external USB I/O, unavailable t
 telemetry, and absent app-side present/draw/GPU-memory instrumentation also prevent promotion.
 Metric measurement, collision, navigation, and Newton physics remain separate unpassed gates.
 
-The same external workspace prepared the finalized local 122-frame iPhone capture into 300
-SfM inputs: 122 accepted RGB-D frames plus 178 bounded video supplements, with 300 valid masks.
-The preparation summary SHA-256 is
-`80a2515a4542c735b4396486c4f7d60874e00092f58e8beb8262feb6f8450701` at
-`capture/prepare/iphone060230/capture_splat_prepare_summary.json`. A corrected global
-HLOC retrieval dry-run staged all 300 images and masks, recorded ALIKED/LightGlue plus CPU
-matching commands with no blockers, and correctly kept `registration_evidence: false`; its
-clean-revision summary at
-`capture/sfm/iphone060230-global-hloc-dry-run-v3/capture_splat_sfm_summary.json` has SHA-256
-`2991319ef0e5e205ea956453afcae471eda1c353d2a0f98889ade29d637b6d69`. The portable
-`evidence/capture-splat-iphone-preflight-decision.v0.1.json` index binds Capture Splat revision
-`a077533f065d0cfc1c1fb9d0faeb3641ac0ade4d` and has SHA-256
-`5151029966bc55f2785f5e4e3274079e58fa3d11d5e27109eaf1d4548be85885`.
-No HLOC extraction, matching, COLMAP registration, iPhone training, or quality measurement ran,
-so those gates remain held.
+### iPhone real SfM, Spirula v5, and self-contained handoff - 2026-08-21
+
+The same external workspace prepared the finalized local capture into 300 SfM inputs: 122
+accepted RGB-D frames plus 178 bounded video supplements, with 300 valid masks. The real r3
+pipeline then ran global NetVLAD top-32 retrieval, ALIKED-N16 extraction, LightGlue matching,
+mask filtering, geometric verification, COLMAP mapping, and orientation alignment. The finite
+model registered 300/300 images, contains 14,888 sparse points and 321,782 observations, and has
+1.2636579 px mean reprojection error. The run contract SHA-256 is
+`327ada298a466bdf82faa9ffd730b59ff494bebe4241914b9373572c23e7d1db`; strict validation SHA-256
+is `1b9926601b7330a7c8b54572ec4509979cd88a143a44e9514047b12855ad9c7d`.
+Registration evidence is promoted, but quality, metric scale, and production timing are not.
+
+The immutable raw r3 output remains preserved. A separate complete-v2 derived package copied
+the missing companion evidence without mutating it and verified all 852 `capture.json`
+references. Its `capture.json` SHA-256 is
+`2c774f4b77855edaa4712ce90a4a4ab04680b9c1fb577a1c7d74a3435cd76f5c`, its payload-tree SHA-256
+is `da487746dd8f7c34d2fba5f0d42e614bd17005ce9f685dc75dab5197497965d6`, and its completeness
+report SHA-256 is `346488ce19588260f649b2b2ea72028596d37a5b91c3fdd5c4f6b25ef2d5217d`.
+
+Pinned Spirula revision `aede0ae3b2d01a7930c71b9c7f52354dc180146b` then ran the v5
+Apple M2 Max ladder with CPU image caching, interval evaluation over 38 held-out cameras, MPS
+LPIPS, masks, SH3, qlevel 1 training storage, bilateral grid, and PPISP:
+
+| steps | serialized splats | PSNR | SSIM | LPIPS Alex | process elapsed | max RSS |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 | 14,869 | 19.7974 | 0.771698 | 0.447210 | 65.29 s | 3,208,118,272 B |
+| 1,000 | 17,632 | 21.1260 | 0.792117 | 0.398180 | 132.36 s | 3,207,905,280 B |
+| 3,000 | 46,334 | 23.3286 | 0.839514 | 0.280702 | 240.57 s | 3,219,341,312 B |
+| 7,000 | 99,967 | 24.6216 | 0.867374 | 0.209928 | 538.83 s | 3,214,426,112 B |
+
+Three fresh 7,000-step repetitions measured median/p95 elapsed time of 540.33/552.75 seconds
+and median/p95 maximum RSS of 3,214,573,568/3,215,708,979.2 bytes. These are external-USB,
+unseeded host observations with unavailable thermal and device-memory telemetry, not promoted
+performance. Canonical GT v0.2 binds the fixed 38 camera names and an unordered GT hash set;
+each run separately records its ordered GT/render pairs and explicitly exposes no camera-name to
+GT-hash association.
+
+The result selected fresh repetition `repeat-000007000-02` for the next functional gate: PSNR
+24.6459, SSIM 0.868393, LPIPS Alex 0.209897, and a finite 99,979-splat PLY with SHA-256
+`207edbe4020c9e7ba60fa836a2d66c7012d53a26eb99b7265d05075e6ac6759e`. The selected validation
+v0.2 SHA-256 is `81e6cc932e623c17485498f38b78a7c3e5887c827a7d4017061de4a27f33d4bd`;
+the ladder-result SHA-256 is `d64938544b19ca6314001547b3f0d20a418a2cd058da68f438b7fe9f427580d0`.
+Its decision is `ready_for_spark_functional_gate`, not a quality promotion.
+
+Capture Splat revision `be7f6ff8bff614945cd82c3512059e8c433f2d02` exported a fresh,
+self-contained v0.3 handoff. It includes every one of the 852 dataset references plus the
+manifest, COLMAP text model, selected Gaussian, and declared companions: 865 files, 864 declared
+references, and no undeclared files. The manifest SHA-256 is
+`bbb356294d4ee3373036310cc4f1aecd3001e5b861f3c063769ea6696d8a596d`; the handoff tree SHA-256
+is `7d74c665d5866bf0db6f845b074fbd065bb715d7a0ef97f07c1723552e0bb45b`; strict validation
+SHA-256 is `0ceef27fb8555ddde47dedd29ed22cfee4668e5efa3b21e90cd91f23de73f1c5`.
+The selected Gaussian remains a trainer-world visualization proposal with no validated
+trainer-to-metric transform. Metric measurement, collision, navigation, quality, and physics
+authority are false.
+
+The exact packaged candidate-only Spark 2.1 r6 functional run completed. Its immutable automated
+report is external-relative
+`spark/runs/iphone060230-candidate-functional-v0.1-r6/spark-candidate-functional.v0.1.json`,
+SHA-256 `ace2c7580129bfc6b59b434ee1f4396e72949cf2a130dcc2e391d8085654cbe9`; the sibling
+`spark-candidate-manual-visual-review.v0.1.json` has SHA-256
+`7e55e53acb1396f031a2224bfa8437d5d4ad41765d115304bb8761b8d65a3ba1`. Harness SHA-256 is
+`02e3358b60322f1087d4fd3959afa71ea37104fbbec1037c8fd7339c4147021a`.
+The report binds the exact packaged candidate/revision/renderer URL, dedicated APFS workspace,
+idle Time Machine state, immutable ladder and selected validation/PLY, complete v0.3 handoff
+preflight/postflight, sanitized override environment, displayed package kind/loaded-via/status/
+provenance, seven screenshots, three distinct camera-response canvas hashes, and process-group
+cleanup. The exact displayed status is
+`spark gaussian · capture-splat-generic · 99979 splats`.
+
+Manual review promotes only functional scene visibility, material orbit response, and material
+inward-zoom response. It also records visible smearing and blur, floating Gaussian structure,
+poorly resolved surfaces, 11,452 scales clamped, and 9 outliers hidden. Native render evidence is
+authoritative for that review; the ladder remains `quality_claim=false`. Render fidelity,
+training quality, candidate release, timing/performance, render time, memory, energy, capacity,
+and cross-vendor claims remain held. The selected Gaussian is still proposal-only: metric,
+collision, navigation, and Newton physics authority are false.
+
+### Host storage and application boundary - 2026-08-21
+
+The former `/Volumes/My Passport` Time Machine volume and its backup history plus eight local
+snapshots were removed under explicit user authority. Postflight found no configured Time
+Machine destination, listed local snapshot, or Backup-role volume. The released space became
+the unencrypted `/Volumes/WorldStudio-3DGS-Storage` project volume, UUID
+`AC466C49-5A36-4769-8D64-1E9A4E0635D4`; quota-limited scratch remains
+`/Volumes/WorldStudio-3DGS-TestData`, UUID `B65F4B13-F4B0-4295-8653-3D83B9CB79C1`.
+
+Capture Splat `runs` and Depth Pro checkpoints moved to external scratch only after complete
+manifest parity, representative smoke reads, and verified symlink cutovers. These unencrypted,
+mount-dependent copies are not independent backups. The application audit measured the readable
+`/Applications` tree at 25.56 GiB and found that Electron/Chromium profiles did not explain the
+reported 450+ GB category. Docker's sparse image was 1 TiB logical but 17.34 GiB allocated;
+active Docker, Cursor state, and Chrome profiles were preserved while only verified rebuildable
+caches or stale backups were removed. All external USB timings remain non-production evidence.
 
 ## Evidence Gates
 
@@ -335,8 +417,8 @@ so those gates remain held.
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
-| 3DGS job/asset/benchmark contracts | Implemented; corrected Apple ladder and candidate Spark functional gate passed; performance held | Strict schemas, runtime validators, seven corrected CPU-cache runs, exact packaged baseline/candidate evidence, rejected baseline framing/wheel behavior, and a centred 100k-splat candidate with no observed post-attachment console diagnostics | Run the real iPhone HLOC/COLMAP registration gate, then add a production trainer adapter and instrument equivalent-condition Spark performance |
-| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
+| 3DGS job/asset/benchmark contracts | Implemented; Playroom and scoped iPhone Spark functional gates passed; release, performance, and quality held | Strict schemas and validators; real 300/300-image iPhone SfM; complete-v2 852-reference package; v5 Apple ladder with three selected-rung repetitions; self-contained v0.3 handoff; r6 exact-candidate report plus manual review promote visibility/orbit/inward zoom only | Improve and re-review iPhone render/training quality, then add a production trainer adapter and equivalent-condition timing, render, memory, energy, capacity, and cross-vendor instrumentation |
+| 1. Capture Splat metric handoff | Complete for the July Room Walkthrough; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence; the new Spirula iPhone proposal remains trainer-gauge held | Derive a bounded collision candidate without changing source evidence |
 | 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
 | 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
 | 3. Surface measurement | Pending | Ground-plane ruler exists; Spark raycasting is enabled | Add metric raycast and annotation export |
