@@ -91,6 +91,9 @@ outcomes and acceptance gates.
 - Apple M2 Max is the first target, not evidence for other devices. Cross-vendor Vulkan,
   native equirectangular, and 10M SH3 in 8GB claims remain held until exact-device reports
   satisfy the versioned benchmark contract without a fixed-camera quality regression.
+- The corrected Playroom CPU-cache ladder passed seven eight-view/finite-output runs and
+  nominates a checksum-bound 100,000-splat PLY for Spark. Its packaged visual/load gate is
+  held until APFS free capacity is restored above the predeclared 20 GiB floor.
 
 ### Simulation, Calibration And R2S2R
 

@@ -41,6 +41,9 @@
   repetitions, raw results, noise controls, quality gates, and a `promote|hold|reject`
   decision. Hold cross-vendor Vulkan, 10M SH3 in 8GB, native equirectangular, and every
   other unmeasured claim.
+- Hold production Spark load claims until measured on the named hardware. Require at least
+  20 GiB free before output-producing ladder, packaging, or Spark benchmark runs; do not
+  delete datasets or Time Machine snapshots to force the gate.
 - Use the design tokens and component classes in `packages/design-system`; do not create a
   separate visual language.
 - Destructive operations must be undoable and disabled when not applicable.

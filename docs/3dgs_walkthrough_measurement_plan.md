@@ -237,20 +237,43 @@ and optimizer state), but checkpoint export dequantizes PLY properties to float3
 records mixed training-storage quantization while the exported PLY asset records no serialized
 quantization; this is not evidence of compressed delivery.
 
-### Measured Spark 2.1 visual probe - 2026-08-21
+### Measured Apple quality ladder and Spark gate - 2026-08-21
 
-World Studio's Electron development build loaded the 100-step Playroom output through
-Spark 2.1 as `spark gaussian · world-studio-default · 37005 splats`. The exact input PLY
-SHA-256 is
-`5330d06f583dd849d0e0d4dd8365bc9f98488bc8b3c3592152b74a8a8e76bb86`. The rendered
-scene remained visible during an Orbit interaction, with no page exception or loader error.
+The first disk-cache evaluation ladder is rejected: Spirula's asynchronous disk decode path
+repeated held-out views, leaving only five to seven unique cameras in an eight-camera set. The
+superseding CPU-cache contract requires the same unordered eight-image GT hash set in every run.
+All four corrected exploratory rungs and three corrected 7,000-step repetitions passed that
+gate, produced eight unique renders, and had finite PLY payloads.
 
-This is a renderer-ingest and interaction regression only. It is intentionally separate from
-the benchmark report because first-visible latency, frame time, and rendered-image parity were
-not measured or contract-bound. The 100-step output is visibly unconverged, initial auto-framing
-clips the unregistered-gauge scene, a visibility diagnostic can remain stale after point/splat
-toggling, and a wheel interaction emitted a passive-listener warning. Visual quality, automatic
-framing, performance, metric measurement, collision, and Newton physics therefore remain held.
+On the exact Apple M2 Max host, the corrected exploratory ladder measured:
+
+| steps | splats | PSNR | SSIM | LPIPS Alex | process elapsed | max RSS |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 | 36,593 | 21.6994 | 0.792177 | 0.469052 | 18.76 s | 1,008,893,952 B |
+| 1,000 | 44,651 | 23.3253 | 0.820748 | 0.390421 | 33.79 s | 1,004,994,560 B |
+| 3,000 | 99,912 | 26.3961 | 0.861971 | 0.289709 | 99.70 s | 1,005,518,848 B |
+| 7,000 | 100,000 | 27.8425 | 0.883883 | 0.239737 | 237.74 s | 1,005,142,016 B |
+
+Three warm 7,000-step repetitions measured median/p95 process elapsed time of
+238.42/254.93 seconds and median/p95 maximum RSS of 1,009,696,768/1,012,547,584 bytes.
+MPS LPIPS completed without CPU fallback. Because the trainer exposes no seed, only one scene
+was measured, and only the selected rung was repeated, these are bounded host observations and
+not a promoted World Studio quality claim.
+
+The next Spark asset is `playroom-fx-q7000-w3`: 100,000 splats, 24,801,531 bytes, zero
+non-finite values, and PLY SHA-256
+`12379d273214e5370e92c36f8e0cfe8761977ab5c10b1a83f9a371c5912a067b`. The checksum-bound
+benchmark report is
+`data/generated/world_studio_3dgs_quality_ladder_20260821/aede0ae3/evidence/playroom-quality-ladder-benchmark-report.v0.1.json`
+with SHA-256 `a909eb2a9bc0cd2cd3d43287b0e9146e77765aa2084b75ee3b311ba76c256c45`.
+
+The earlier 37,005-splat development probe identified off-centre framing and a passive wheel
+listener warning. Robust bounded framing, non-periodic preview sampling, and the interaction
+regression are now covered by unit, package-reader, and Playwright tests. The nominated
+100,000-splat packaged Spark visual/load gate has not run: APFS free capacity fell below its
+predeclared 20 GiB floor, and retained Time Machine snapshots prevented safe recovery. Spark
+visual acceptance, first-visible latency, draw time, memory, metric measurement, collision,
+and Newton physics therefore remain held.
 
 ## Evidence Gates
 
@@ -278,7 +301,7 @@ framing, performance, metric measurement, collision, and Newton physics therefor
 | Phase | Status | Evidence | Next gate |
 | --- | --- | --- | --- |
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
-| 3DGS job/asset/benchmark contracts | Implemented; Apple regression passed; production runtime held | Strict schemas, fixtures, runtime validators, cross-record binding, GPL external-process boundary, five-run Apple benchmark, and a separate Spark 2.1 visual probe | Add a production trainer adapter and contract-bound quality, frame-time, and memory measurements |
+| 3DGS job/asset/benchmark contracts | Implemented; corrected Apple ladder passed; production runtime held | Strict schemas, runtime validators, rejected duplicate-view disk evaluation, seven corrected CPU-cache runs, and checksum-bound report `a909eb2a...c256c45` | Recover more than 20 GiB free, run the nominated 100k-splat packaged Spark gate, then add a production trainer adapter |
 | 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Derive a bounded collision candidate without changing source evidence |
 | 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
 | 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
