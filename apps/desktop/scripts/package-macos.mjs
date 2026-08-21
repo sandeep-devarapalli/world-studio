@@ -45,6 +45,7 @@ try {
       main: "apps/desktop/dist/main.js"
     }, null, 2)}\n`
   );
+  await writeWorldCoreRuntimePackage(payloadDir);
   await writeArtifactsRuntimePackage(payloadDir);
   await rm(path.join(stagingApp, "Contents", "Resources", "default_app.asar"), { force: true });
 
@@ -112,6 +113,28 @@ async function writeArtifactsRuntimePackage(payloadDir) {
     path.join(packageDir, "package.json"),
     `${JSON.stringify({
       name: "@world-studio/artifacts",
+      version: rootPackageJson.version,
+      type: "module",
+      main: "./dist/index.js",
+      exports: {
+        ".": "./dist/index.js"
+      }
+    }, null, 2)}\n`
+  );
+}
+
+async function writeWorldCoreRuntimePackage(payloadDir) {
+  const packageDir = path.join(payloadDir, "node_modules", "@world-studio", "world-core");
+  await mkdir(packageDir, { recursive: true });
+  await cp(
+    path.join(repoRoot, "packages", "world-core", "dist"),
+    path.join(packageDir, "dist"),
+    { recursive: true }
+  );
+  await writeFile(
+    path.join(packageDir, "package.json"),
+    `${JSON.stringify({
+      name: "@world-studio/world-core",
       version: rootPackageJson.version,
       type: "module",
       main: "./dist/index.js",
