@@ -1,89 +1,88 @@
 # Next Implementation Prompt
 
 You are working in the public World Studio and Capture Splat repositories. Read this
-blueprint, the active live-session contracts, both repository contribution guides, and the
-current roadmap before editing.
+blueprint, both repository contribution guides, the active contracts, and the current roadmap
+before editing.
 
-Continue **M1 Authenticated LAN And Progressive World** in small reviewable PRs. Do not
-redo M0 or replace the M1 desktop security boundary.
+Implement **Room-01** as the immediate physics-ready vertical slice in small, reviewable PRs.
+Do not redo completed M0, the production Manual Export path, standard-dataset controls,
+accepted metric registration, or registered evidence-mesh review.
 
 ## Current Checkpoint
 
-M0 is complete and unchanged. World Studio now has the desktop-side seams for:
-
-- explicit selected-interface pairing rather than a wildcard listener;
-- QR invitation state and pinned self-signed TLS identity;
-- P-256 desktop/device identities and signed request metadata;
-- finite grants with expiry, revocation, and scopes;
-- durable unsigned 64-bit request-counter replay defense with a 256-bit sliding window;
-- authenticated body-digest binding before delegation to the existing durable M0 store;
-- byte-identical Capture Splat-owned live-auth schemas, fixtures, and fingerprints;
-- authenticated session receipts linked from finalized handoffs;
-- secret-free `_capturesplat._tcp` Bonjour publication through `/usr/bin/dns-sd`.
-
-This is a partial M1 checkpoint. Capture Splat's bounded sender is implemented, but iPhone
-live transfer is disabled by default and held as an optional experiment after serious
-thermal evidence. The production ingestion path is local Capture Splat finalization,
-Manual Export, and explicit World Studio package opening. The progressive evidence
-inspector and software-only reconstruction-worker lifecycle are present, but no production
-reconstruction runtime is bundled or selected by default.
+- Manual Export is the production iPhone ingestion path; live transfer is optional.
+- The recorded Room Walkthrough evidence has 168 matched authoritative RGB-D cameras, a
+  6,831-frame trajectory, accepted metric registration, and a 156,969-point metric seed.
+- The classified ARKit mesh has 172,716 vertices and 300,000 triangles, but its report says
+  `truncated: true`; it cannot become collision authority.
+- The previously named standalone review package is not currently reverified on disk.
+  Recover or reproduce a self-contained checksum-bound package before deriving collision.
+- Spirula remains an external GPL process. Its Gaussian output is appearance only.
+- Rapier is the frozen parity baseline while the solver-neutral Newton path is built.
 
 ## Required Sequence
 
-1. Preserve the production manual-export path:
-   - reopen finalized Capture Splat packages without a live-session dependency;
-   - keep source hashes, cameras, RGB-D, masks, mesh, quality, and provenance intact;
-   - make replay and manual import converge on the same proposal-only evidence model.
-2. Keep live transport optional and isolated:
-   - preserve the implemented durable write-before-enqueue, bounded queues, ACK/resume,
-     retry, and reconciliation behavior;
-   - never enable it by default on iPhone or make it an M1 dependency;
-   - require a separate device-class thermal gate before future promotion.
-3. Close the remaining progressive evidence gates:
-   - keep the implemented RGB, camera, quality, optional depth/confidence/mask inspector;
-   - add mesh or other geometry only through an explicit checksum-bound contract;
-   - validate a reviewed external reconstruction worker through the implemented lifecycle;
-   - keep every output proposal-only and separate from the loaded world.
-4. Preserve the isolated worker lifecycle:
-   - keep capabilities, start/stop/retry, requested budgets, input/output hashes, and logs;
-   - do not vendor i3dgs, LingBot, Isaac, CUDA, or reconstruction dependencies into the receiver;
-   - require separate quality and promotion gates before any output gains additional authority.
-5. Validate production package continuity:
-   - two manually exported captures reopen deterministically after app restart;
-   - bounded memory and storage;
-   - successful local finalization and strict manifests;
-   - deterministic worker inputs and proposal outputs.
+1. Freeze the Room-01 input revision:
+   - recover or reproduce the exact self-contained Capture Splat v0.3 package;
+   - verify source-frame, COLMAP, RGB-D, trajectory, mesh, seed, and transform hashes;
+   - measure actual registered-image and registered-RGB-D overlap counts;
+   - never silently substitute similarly named recovery artifacts.
+2. Advance appearance and metric geometry in parallel:
+   - run pinned external Spirula and record a provider job/receipt plus finite output;
+   - review fixed source cameras in Spark while retaining visual-only authority;
+   - export a complete or proven coverage-preserving metric mesh;
+   - preserve the original truncated mesh unchanged as source evidence.
+3. Derive a collision candidate offline:
+   - use topology-preserving simplification with a declared triangle budget;
+   - fail on truncation, non-finite or degenerate geometry, missing floor/wall/ceiling/opening
+     coverage, or lost doorway clearance;
+   - create no artificial fallback floor.
+4. Complete the bounded M2 product slice:
+   - supervise the external job and validate its exact receipt;
+   - publish appearance, metric, collision, navigation, semantic, and physics roles separately;
+   - reopen the immutable Room-01 revision through the packaged Electron path;
+   - show revision, source, loaded-via path, roles, authority, and provenance.
+5. Pass M3 using the frozen Rapier baseline:
+   - run `spawn -> doorway -> no-go avoidance -> return to spawn or dock -> reset`;
+   - bind deterministic state, contact, route, sensor, and outcome evidence.
+6. Build M5 in separate PRs:
+   - introduce the solver-neutral `SimulationClient`;
+   - add the supervised Python worker and layered OpenUSD compilation;
+   - prove Room-01 load/spawn/contact/reset on macOS CPU;
+   - run the same fixture on pinned Linux/NVIDIA before product cutover.
+7. Pass M6 with the same immutable World/Asset/Robot/Sensor/Task versions across standalone
+   Newton, Isaac Lab, and ROS 2 frame, clock, control, and sensor contracts.
+8. Run M6A immediately after M6:
+   - execute `spawn -> takeoff -> hover -> doorway or corridor -> avoid -> land -> reset`;
+   - record the UAV clearance envelope, controls, contacts, sensors, seed, and outcome;
+   - make no outdoor, live-flight, deployment, or general UAV-readiness claim.
+
+## Non-Blocking Parallel Rails
+
+Continue Bonsai viewpoint quality, native equirectangular, cross-vendor Vulkan, capacity,
+timing, PPISP, and derived-output experiments as separately scheduled work. A hold gates only
+its named claim. It does not stop Room-01 unless the exact Room-01 artifact fails its own
+finite-value, coordinate, visual-observation, metric, collision, storage, or runtime gate.
 
 ## Constraints
 
-- Capture Splat remains local-first and authoritative for accepted evidence.
-- Use the active contracts under `/contracts/live-session/v0.1`; never import the archived
-  single-schema draft from this blueprint.
-- Preserve World Studio's six modes and current Spark + Three.js + Rapier behavior while
-  M1 is active. Do not begin the Newton cutover inside a sender or pairing PR.
-- Streamed output remains proposal-only. It is not reconstruction, collision, measurement,
-  semantic, navigation, or physics authority.
-- Keep generated captures, models, logs, and worker outputs outside Git.
-- Do not vendor external reconstruction or simulator repositories.
+- Gaussian appearance never becomes metric, collision, navigation, or physics authority.
+- Newton consumes only separately validated metric/OpenUSD collision layers.
+- Do not mutate the original capture, sparse model, truncated mesh, or trained Gaussian.
+- Do not vendor Spirula, Newton, Isaac, CUDA, or other external runtimes into an incompatible
+  shipped boundary.
+- Keep generated captures, models, logs, packages, and run evidence outside Git.
+- Before each output-producing run, verify the declared external-volume UUIDs, no Time Machine
+  destination, and at least 20 GiB actual APFS free space. A missed floor holds that run only.
+- Preserve World Studio's six modes and explicit proposal/verified/external-validation states.
 
 ## Required Evidence
 
-- Positive and negative protocol tests for authentication, expiry, replay, corruption,
-  traversal, duplicate conflict, resume, and finalization.
-- Strict manual-export and replay evidence that resolve to the same immutable frame,
-  camera, quality, and sidecar records.
-- iPhone thermal, writer-drop, and finalization reports with live transfer disabled.
-- QR, Bonjour, TLS, interruption, and queue evidence only when proposing live transport
-  promotion for a specific device class.
-- Desktop receiver persistence and restart tests.
-- Browser/Electron UI tests showing proposal labels and no loaded-world replacement.
-- Byte-identical mirrored contracts.
-- A concise migration note and reproducible validation report.
-
-## After M1
-
-The next physics work is the
-[gated Newton migration](r2s2r-newton-2026-07-29/NEWTON_MIGRATION_MILESTONES.md): freeze
-Rapier-specific growth, preserve parity fixtures, introduce a solver-neutral client, add
-the supervised worker, validate local CPU and remote NVIDIA runs, cut over, and remove
-Rapier. Keep that work in separate, reviewable PRs.
+- Exact hashes, frame/unit/axis contracts, transforms, and source provenance.
+- Self-contained package parity plus a World Studio consumer receipt.
+- Complete-source coverage and collision-validation reports, including doorway clearance.
+- Fixed-camera Spirula/Spark visual review without granting metric authority.
+- Byte-identical canonical publish/reopen through the packaged desktop path.
+- Deterministic route, contact, reset, and task-outcome evidence.
+- Layered OpenUSD plus Newton capability and run receipts.
+- M6 adapter residuals and M6A UAV episode evidence bound to the same immutable versions.
