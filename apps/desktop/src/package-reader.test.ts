@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -616,28 +616,41 @@ end_header
     const captureManifestRef = await fileReference(root, "capture.json");
     const camerasRef = await fileReference(root, "colmap/cameras.txt");
     const imagesRef = await fileReference(root, "colmap/images.txt");
+    const packageRefs = {
+      points: await fileReference(root, "exports/points.ply"),
+      gaussian: await fileReference(root, "renders/splat.ply"),
+      collisionMesh: await fileReference(root, "exports/collision_mesh.obj"),
+      transforms: await fileReference(root, "colmap/transforms.json"),
+      navigationMesh: await fileReference(root, "metric/navigation_mesh.ply"),
+      measurementPoints: await fileReference(root, "metric/measurement_points.ply"),
+      meshReport: await fileReference(root, "metric/navigation_mesh_report.json"),
+      roomSemantics: await fileReference(root, "metric/room_semantics.json"),
+      cameraTrajectory: await fileReference(root, "metric/camera_trajectory.jsonl"),
+      renderSourceQa: await fileReference(root, "quality/render_source_qa.json"),
+      plyStats: await fileReference(root, "quality/ply_stats.json"),
+    };
     await writeJson(root, "capture-splat.world-studio.json", {
       schema: "capture_splat.world_studio_handoff.v0.3",
       status: "visual_evidence_with_3dgs_proposal",
       source_frames: sourceFrames,
       frames: sourceFrames,
       assets: {
-        points: "exports/points.ply",
-        gaussian: "renders/splat.ply",
+        points: packageRefs.points,
+        gaussian: packageRefs.gaussian,
+        collision_mesh: packageRefs.collisionMesh,
         capture_manifest: captureManifestRef,
-        transforms: "colmap/transforms.json",
+        transforms: packageRefs.transforms,
         colmap_sparse: {
           "cameras.txt": camerasRef,
           "images.txt": imagesRef
         },
-        navigation_mesh: "metric/navigation_mesh.ply",
-        measurement_points: "metric/measurement_points.ply",
-        mesh_report: "metric/navigation_mesh_report.json",
-        room_semantics: "metric/room_semantics.json",
-        camera_trajectory: "metric/camera_trajectory.jsonl",
-        render_source_qa: "quality/render_source_qa.json",
-        ply_stats: "quality/ply_stats.json",
-        spz: "exports/scene.spz"
+        navigation_mesh: packageRefs.navigationMesh,
+        measurement_points: packageRefs.measurementPoints,
+        mesh_report: packageRefs.meshReport,
+        room_semantics: packageRefs.roomSemantics,
+        camera_trajectory: packageRefs.cameraTrajectory,
+        render_source_qa: packageRefs.renderSourceQa,
+        ply_stats: packageRefs.plyStats
       },
       metric_registration: {
         schema: "capture_splat.metric_registration.v0.1",
@@ -662,7 +675,17 @@ end_header
         schema: "capture_splat.capture_manifest_assets.v0.1",
         verification: "source_destination_size_and_sha256",
         complete: true,
-        decision: "ready"
+        decision: "ready",
+        assets: [],
+        reference_count: 0,
+        unique_asset_count: 0,
+        duplicate_reference_count: 0,
+        verified_asset_count: 0,
+        copied: 0,
+        existing: 0,
+        copied_paths: [],
+        missing: [],
+        conflicts: []
       },
       artifacts: [
         { kind: "mesh", path: "exports/collision_mesh.obj" }
@@ -710,6 +733,14 @@ end_header
       source_frame_set: { count: 2 },
       evidence: { sfm: { registered_image_count: 2, registered_rgbd_overlap_count: 0 } },
       authority: { trainer_consumption_claim: false, training_execution_authority: false }
+    });
+    expect(payload.captureSplatConsumerReceipt).toMatchObject({
+      schema: "world_studio.capture_splat_consumer_receipt.v0.1",
+      decision: "ready",
+      authority: "package_integrity_evidence_only",
+      authenticity: "not_established",
+      closure: { declared_reference_file_count: 16, verified_reference_file_count: 16 },
+      tree: { status: "complete", file_count: 17, includes_receipt: false }
     });
     expect(mediaFrames.source_kind).toBe("capture_splat.world_studio_handoff");
     expect(mediaFrames.frames).toHaveLength(2);
@@ -777,6 +808,11 @@ end_header
     await writeFile(join(root, "colmap/images.txt"), Buffer.concat([originalImages, Buffer.from("# stale manifest hash\n")]));
     const staleAsset = await readLocalPackage(root);
     expect(staleAsset.captureSplatTrainingDataset).toBeUndefined();
+    const staleFrames = JSON.parse(staleAsset.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ frame_camera?: unknown }>;
+    };
+    expect(staleFrames.frames?.[0]?.frame_camera).toBeDefined();
+    expect(staleFrames.frames?.[1]?.frame_camera).toBeUndefined();
     await writeFile(join(root, "colmap/images.txt"), originalImages);
 
     const hexadecimalPose = Buffer.from(originalImages.toString("utf8").replace("1 1 0 0 0 0 0 0 1 frame_000001.png", "1 0x1 0 0 0 0 0 0 1 frame_000001.png"));
@@ -795,6 +831,10 @@ end_header
     await writeJson(root, "capture-splat.world-studio.json", invalidUtf8Manifest);
     const invalidUtf8Payload = await readLocalPackage(root);
     expect(invalidUtf8Payload.captureSplatTrainingDataset).toBeUndefined();
+    const invalidUtf8Frames = JSON.parse(invalidUtf8Payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ frame_camera?: unknown }>;
+    };
+    expect(invalidUtf8Frames.frames?.[1]?.frame_camera).toBeUndefined();
     await writeFile(join(root, "colmap/images.txt"), originalImages);
 
     const bomImages = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), originalImages]);
@@ -845,7 +885,8 @@ end_header
     };
     await writeJson(root, "capture-splat.world-studio.json", canonicalCapturePaths);
     const canonicalCapturePathsPayload = await readLocalPackage(root);
-    expect(canonicalCapturePathsPayload.captureSplatTrainingDataset?.evidence.sfm.registered_rgbd_overlap_count).toBe(1);
+    expect(canonicalCapturePathsPayload.captureSplatTrainingDataset).toBeUndefined();
+    expect(canonicalCapturePathsPayload.captureSplatConsumerReceipt?.decision).toBe("hold");
 
     await writeJson(root, "capture.json", { schema: "capture_splat.v0.1", frames: null });
     const nullFrames = structuredClone(original);
@@ -958,6 +999,7 @@ end_header
 
     const payload = await readLocalPackage(root);
 
+    expect(payload.captureSplatConsumerReceipt).toBeUndefined();
     expect(payload.captureSplatQuality).toMatchObject({
       renderSourceDecision: "unavailable",
       weakFrameCount: 0
@@ -967,6 +1009,81 @@ end_header
       expect.objectContaining({ code: "invalid_capture_splat_render_source_qa" }),
       expect.objectContaining({ code: "invalid_capture_splat_ply_stats" })
     ]));
+  });
+
+  it("gates basename fallbacks for malformed or unknown Capture Splat manifests", async () => {
+    for (const [name, manifest] of [
+      ["malformed", "{ nope"],
+      ["unknown", `${JSON.stringify({ schema: "capture_splat.world_studio_handoff.v9" })}\n`],
+    ] as const) {
+      const root = await makePackage(`capture-splat-${name}-manifest`);
+      await writeFile(join(root, "capture-splat.world-studio.json"), manifest);
+      await writeFile(join(root, "splat.ply"), "ply\nformat ascii 1.0\nend_header\n");
+      await writeFile(join(root, "collision_mesh.obj"), "o unverified\n");
+
+      const payload = await readLocalPackage(root);
+
+      expect(payload.captureSplatConsumerReceipt?.decision).toBe("hold");
+      expect(payload.gaussianPly).toBeUndefined();
+      expect(payload.objMesh).toBeUndefined();
+      expect(payload.packageIssues).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_capture_splat_consumer_receipt" })
+      ]));
+    }
+  });
+
+  it("fails closed when the v0.3 marker is a symlink, non-regular, oversized, or unreadable", async () => {
+    const assertHeld = async (root: string) => {
+      await writeFile(join(root, "splat.ply"), "ply\nformat ascii 1.0\nend_header\n");
+      const payload = await readLocalPackage(root);
+      expect(payload.packageKind).toBe("capture-splat-local-folder");
+      expect(payload.captureSplatConsumerReceipt?.decision).toBe("hold");
+      expect(payload.gaussianPly).toBeUndefined();
+      expect(payload.packageIssues).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_capture_splat_consumer_receipt" })
+      ]));
+      return payload;
+    };
+
+    const linked = await makePackage("capture-splat-linked-marker");
+    await writeFile(join(linked, "marker-target.json"), "{}\n");
+    await symlink("marker-target.json", join(linked, "capture-splat.world-studio.json"));
+    const linkedPayload = await assertHeld(linked);
+    expect(linkedPayload.captureSplatConsumerReceipt?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "symlink", artifact: "capture-splat.world-studio.json" })
+    ]));
+
+    const nonRegular = await makePackage("capture-splat-directory-marker");
+    await mkdir(join(nonRegular, "capture-splat.world-studio.json"));
+    const nonRegularPayload = await assertHeld(nonRegular);
+    expect(nonRegularPayload.captureSplatConsumerReceipt?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "non_regular_file", artifact: "capture-splat.world-studio.json" })
+    ]));
+
+    const oversized = await makePackage("capture-splat-oversized-marker");
+    await writeFile(join(oversized, "capture-splat.world-studio.json"), "");
+    await truncate(join(oversized, "capture-splat.world-studio.json"), 64 * 1024 * 1024 + 1);
+    const oversizedPayload = await assertHeld(oversized);
+    expect(oversizedPayload.captureSplatConsumerReceipt?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "bounds_exceeded", artifact: "capture-splat.world-studio.json" })
+    ]));
+
+    const unreadable = await makePackage("capture-splat-unreadable-marker");
+    await writeFile(join(unreadable, "capture-splat.world-studio.json"), "{}\n");
+    await chmod(join(unreadable, "capture-splat.world-studio.json"), 0o000);
+    const unreadablePayload = await assertHeld(unreadable);
+    expect(unreadablePayload.captureSplatConsumerReceipt?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "mutable_file", artifact: "capture-splat.world-studio.json" })
+    ]));
+
+    const selectedCleaned = await makePackage("capture-splat-selected-cleaned-marker");
+    const cleanedPath = join(selectedCleaned, "world-studio-cleaned-room.ply");
+    await writeFile(cleanedPath, "ply\nformat ascii 1.0\ncomment World Studio cleaned ordinary PLY export\nend_header\n");
+    await writeFile(join(selectedCleaned, "capture-splat.world-studio.json"), "{ malformed\n");
+    const selectedCleanedPayload = await readLocalPackage(cleanedPath);
+    expect(selectedCleanedPayload.packageKind).toBe("capture-splat-local-folder");
+    expect(selectedCleanedPayload.captureSplatConsumerReceipt?.decision).toBe("hold");
+    expect(selectedCleanedPayload.pointsPly).toBeUndefined();
   });
 
   it("maps COLMAP frame cameras through the handoff dataparser transform", async () => {
@@ -1013,6 +1130,48 @@ end_header
     });
     expect(payload.pointsPly?.text).toContain("12 4 6");
     expect(payload.worldUp).toEqual([0, 0, 1]);
+  });
+
+  it("fails closed on ambiguous camera aliases and conflicting exact camera records", async () => {
+    const root = await makePackage("capture-splat-ambiguous-camera-alias");
+    for (const directory of ["a", "b", "rgb", "colmap"]) await mkdir(join(root, directory), { recursive: true });
+    for (const relativePath of ["a/frame.png", "b/frame.png", "rgb/frame.png"]) {
+      await writeFile(join(root, relativePath), onePixelPng);
+    }
+    await writeFile(join(root, "colmap/cameras.txt"), "1 PINHOLE 8 6 8 6 4 3\n");
+    await writeFile(join(root, "colmap/images.txt"), "1 1 0 0 0 0 0 0 1 a/frame.png\n\n2 1 0 0 0 -1 0 0 1 b/frame.png\n\n");
+    await writeJson(root, "colmap/transforms.json", {
+      w: 8,
+      h: 6,
+      fl_x: 8,
+      fl_y: 6,
+      cx: 4,
+      cy: 3,
+      frames: [{
+        file_path: "a/frame.png",
+        transform_matrix: [[1, 0, 0, 9], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+      }]
+    });
+    await writeJson(root, "capture-splat.world-studio.json", {
+      schema: "capture_splat.world_studio_handoff.v0.1",
+      source_frames: ["a/frame.png", "b/frame.png", "rgb/frame.png"],
+      assets: {
+        transforms: "colmap/transforms.json",
+        colmap_sparse: {
+          "cameras.txt": "colmap/cameras.txt",
+          "images.txt": "colmap/images.txt"
+        }
+      }
+    });
+
+    const payload = await readLocalPackage(root);
+    const mediaFrames = JSON.parse(payload.budoMediaFrames?.text ?? "{}") as {
+      frames?: Array<{ frame_camera?: unknown }>;
+    };
+
+    expect(mediaFrames.frames?.[0]?.frame_camera).toBeUndefined();
+    expect(mediaFrames.frames?.[1]?.frame_camera).toBeDefined();
+    expect(mediaFrames.frames?.[2]?.frame_camera).toBeUndefined();
   });
 
   it("keeps generic JSON folders external and proposal-scoped", async () => {

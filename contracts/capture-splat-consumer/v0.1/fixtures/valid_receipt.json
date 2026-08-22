@@ -1,0 +1,60 @@
+{
+  "schema": "world_studio.capture_splat_consumer_receipt.v0.1",
+  "consumer": {
+    "name": "world-studio",
+    "verifier": "capture-splat-package-v0.1"
+  },
+  "handoff": {
+    "schema": "capture_splat.world_studio_handoff.v0.3",
+    "manifest": {
+      "path": "capture-splat.world-studio.json",
+      "size_bytes": 1024,
+      "checksum": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  },
+  "inventory": {
+    "schema": "capture_splat.capture_manifest_assets.v0.1",
+    "verification": "source_destination_size_and_sha256",
+    "declared_reference_count": 2,
+    "declared_unique_asset_count": 2,
+    "declared_duplicate_reference_count": 0,
+    "declared_verified_asset_count": 2,
+    "recomputed_reference_count": 2,
+    "recomputed_unique_asset_count": 2,
+    "recomputed_duplicate_reference_count": 0
+  },
+  "closure": {
+    "source_frame_count": 1,
+    "declared_reference_file_count": 3,
+    "declared_reference_bytes": 384,
+    "verified_reference_file_count": 3,
+    "missing_file_count": 0,
+    "metadata_mismatch_count": 0,
+    "conflicting_declaration_count": 0,
+    "unreferenced_file_count": 0,
+    "symlink_count": 0,
+    "non_regular_file_count": 0,
+    "mutable_file_count": 0
+  },
+  "tree": {
+    "status": "complete",
+    "algorithm": "sha256_utf8_nfc_path_nul_size_nul_sha256_lf_v1",
+    "scope": "all_regular_files_under_package_root",
+    "file_count": 4,
+    "size_bytes": 1408,
+    "checksum": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "includes_handoff_manifest": true,
+    "includes_receipt": false
+  },
+  "verification": {
+    "content": "sha256_stream_1mib_stable_stat_v1",
+    "paths": "capture_splat_portable_relative_path_v1",
+    "references": "capture_splat_world_studio_handoff_v0.3_v1"
+  },
+  "issue_count": 0,
+  "issues_truncated": false,
+  "issues": [],
+  "decision": "ready",
+  "authority": "package_integrity_evidence_only",
+  "authenticity": "not_established"
+}

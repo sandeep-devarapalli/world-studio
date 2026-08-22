@@ -1,8 +1,11 @@
 import { buildGaussianPreviewPointCloudPly, buildPointCloudPreviewPly } from "@world-studio/artifacts";
 import { validateCaptureSplatTrainingDataset, type AuthorityStatus, type CaptureSplatMetricHandoff, type CaptureSplatQualityHandoff, type CaptureSplatTrainingDatasetV1, type FrameCamera, type LocalPackageInsight, type LocalPackageIssue, type LocalWorldPackageBinaryFile, type LocalWorldPackagePayload, type LocalWorldPackageTextFile, type WorldAssetManifestEntry } from "@world-studio/world-core";
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { TextDecoder } from "node:util";
+import { verifyCaptureSplatConsumerPackage, type CaptureSplatConsumerVerification } from "./capture-splat-consumer-receipt.js";
 import { verifyCaptureSplatMeasuredEvidence } from "./capture-splat-measured-evidence.js";
 
 const maxTextBytes = 64 * 1024 * 1024;
@@ -45,6 +48,18 @@ interface CaptureFramePreview {
   sizeBytes: number;
 }
 
+interface FrameCameraIndex {
+  exact: Map<string, FrameCamera>;
+  ambiguousExact: Set<string>;
+  aliases: Map<string, { sourcePath: string; camera: FrameCamera }>;
+  ambiguousAliases: Set<string>;
+}
+
+interface StableManifestMarker {
+  file: LocalWorldPackageTextFile;
+  identity: string;
+}
+
 export async function readLocalPackage(inputPath: string): Promise<LocalWorldPackagePayload> {
   const selectedPath = path.resolve(inputPath);
   const selectedInfo = await stat(selectedPath);
@@ -55,46 +70,79 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     ? await readOptionalText(sourceRoot, selectedFile, packageIssues)
     : undefined;
   const selectedCleanedPly = isWorldStudioCleanedPly(selectedTextPly) ? selectedTextPly : undefined;
+  const captureSplatMarkerPresent = await packageEntryPresent(sourceRoot, captureSplatManifestPath);
+  const standaloneCleanedPly = selectedCleanedPly && !captureSplatMarkerPresent ? selectedCleanedPly : undefined;
   const selectedGaussianPly = selectedFile && isPlyFileName(selectedFile) && !selectedCleanedPly ? selectedFile : undefined;
-  const payloadSourcePath = selectedCleanedPly ? selectedPath : sourceRoot;
-  const cleanedFolderCandidates = selectedCleanedPly ? [] : await findCleanedPlyCandidates(sourceRoot);
-  const captureSplatManifest = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, captureSplatManifestPath, packageIssues);
-  const parsedCaptureSplatManifest = captureSplatManifest
+  const payloadSourcePath = standaloneCleanedPly ? selectedPath : sourceRoot;
+  const cleanedFolderCandidates = standaloneCleanedPly ? [] : await findCleanedPlyCandidates(sourceRoot);
+  const stableCaptureSplatMarker = captureSplatMarkerPresent
+    ? await readStableManifestMarker(sourceRoot, captureSplatManifestPath)
+    : undefined;
+  let captureSplatManifest = stableCaptureSplatMarker?.file;
+  const initialCaptureSplatManifest = captureSplatManifest
     ? parseJsonRecord(captureSplatManifest.text, captureSplatManifest.relativePath, packageIssues)
     : undefined;
-  const captureSplatTrainingDataset = parsedCaptureSplatManifest
-    ? await readCaptureSplatTrainingDataset(sourceRoot, parsedCaptureSplatManifest, packageIssues)
+  const captureSplatSchema = initialCaptureSplatManifest?.schema;
+  const legacyCaptureSplatSchema = captureSplatSchema === "capture_splat.world_studio_handoff.v0.1"
+    || captureSplatSchema === "capture_splat.world_studio_handoff.v0.2";
+  const supportedLegacyCaptureSplatManifest = legacyCaptureSplatSchema
+    && stableCaptureSplatMarker !== undefined
+    && await manifestMarkerIdentityMatches(sourceRoot, captureSplatManifestPath, stableCaptureSplatMarker.identity);
+  const captureSplatConsumerVerification = captureSplatMarkerPresent && !supportedLegacyCaptureSplatManifest
+    ? await verifyCaptureSplatConsumerPackage(sourceRoot)
     : undefined;
-  const captureSplatRefs = parsedCaptureSplatManifest ? extractCaptureSplatManifestRefs(parsedCaptureSplatManifest) : emptyCaptureSplatRefs();
+  if (captureSplatConsumerVerification) {
+    const verifiedManifestBytes = await captureSplatConsumerVerification.readVerifiedFile(captureSplatManifestPath, maxTextBytes);
+    captureSplatManifest = verifiedManifestBytes && captureSplatConsumerVerification.manifestText !== undefined
+      ? {
+          relativePath: captureSplatManifestPath,
+          text: captureSplatConsumerVerification.manifestText,
+          sizeBytes: verifiedManifestBytes.byteLength,
+          checksum: checksumBytes(verifiedManifestBytes),
+        }
+      : undefined;
+  }
+  const parsedCaptureSplatManifest = captureSplatConsumerVerification
+    ? captureSplatConsumerVerification.verifiedPaths.has(captureSplatManifestPath)
+      ? captureSplatConsumerVerification.manifest
+      : undefined
+    : initialCaptureSplatManifest;
+  const verifiedCaptureSplatPaths = captureSplatConsumerVerification?.verifiedPaths;
+  const captureSplatTrainingDataset = parsedCaptureSplatManifest
+    ? await readCaptureSplatTrainingDataset(sourceRoot, parsedCaptureSplatManifest, packageIssues, captureSplatConsumerVerification)
+    : undefined;
+  const captureSplatRefs = parsedCaptureSplatManifest
+    ? filterCaptureSplatRefs(extractCaptureSplatManifestRefs(parsedCaptureSplatManifest), verifiedCaptureSplatPaths)
+    : emptyCaptureSplatRefs();
   const captureSplatPointsTransform = parsedCaptureSplatManifest ? captureSplatPointTransform(parsedCaptureSplatManifest) : undefined;
-  const sceneFile = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "scene.json", packageIssues);
-  const sourcePointsPly = selectedCleanedPly
-    ?? await readFirstPointCloud(sourceRoot, uniquePaths([...captureSplatRefs.pointsPlyPaths, "points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates]), packageIssues, captureSplatPointsTransform);
+  const sceneFile = standaloneCleanedPly || !isAllowedPackagePath("scene.json", verifiedCaptureSplatPaths) ? undefined : await readOptionalText(sourceRoot, "scene.json", packageIssues, captureSplatConsumerVerification);
+  const sourcePointsPly = standaloneCleanedPly
+    ?? await readFirstPointCloud(sourceRoot, allowedPackagePaths(uniquePaths([...captureSplatRefs.pointsPlyPaths, "points.ply", "point_cloud.ply", "cloud.ply", ...cleanedFolderCandidates]), verifiedCaptureSplatPaths), packageIssues, captureSplatPointsTransform, captureSplatConsumerVerification);
   const cleanedPointPly = isWorldStudioCleanedPly(sourcePointsPly);
   const selectedGaussianPlyPaths = selectedGaussianPly ? [selectedGaussianPly] : [];
-  const gaussianPly = selectedCleanedPly ? undefined : await readFirstBinary(sourceRoot, uniquePaths([...selectedGaussianPlyPaths, ...captureSplatRefs.gaussianPlyPaths, "gaussians.ply", "splats.ply", "splat.ply"]), packageIssues);
+  const gaussianPly = standaloneCleanedPly ? undefined : await readFirstBinary(sourceRoot, allowedPackagePaths(uniquePaths([...selectedGaussianPlyPaths, ...captureSplatRefs.gaussianPlyPaths, "gaussians.ply", "splats.ply", "splat.ply"]), verifiedCaptureSplatPaths), packageIssues, captureSplatConsumerVerification);
   const generatedPointsPly = !sourcePointsPly && gaussianPly
-    ? await readGaussianPreviewPointCloud(sourceRoot, gaussianPly.relativePath, packageIssues)
+    ? await readGaussianPreviewPointCloud(sourceRoot, gaussianPly.relativePath, packageIssues, captureSplatConsumerVerification)
     : undefined;
   const pointsPly = sourcePointsPly ?? generatedPointsPly;
-  const objMesh = selectedCleanedPly ? undefined : await readFirstText(sourceRoot, uniquePaths([...captureSplatRefs.objMeshPaths, "collision_mesh.obj", "mesh.obj", "model.obj"]), packageIssues);
+  const objMesh = standaloneCleanedPly ? undefined : await readFirstText(sourceRoot, allowedPackagePaths(uniquePaths([...captureSplatRefs.objMeshPaths, "collision_mesh.obj", "mesh.obj", "model.obj"]), verifiedCaptureSplatPaths), packageIssues, captureSplatConsumerVerification);
   const captureSplatMetric = parsedCaptureSplatManifest
-    ? await readCaptureSplatMetricHandoff(sourceRoot, parsedCaptureSplatManifest, captureSplatRefs, packageIssues)
+    ? await readCaptureSplatMetricHandoff(sourceRoot, parsedCaptureSplatManifest, captureSplatRefs, packageIssues, captureSplatConsumerVerification)
     : undefined;
   const captureSplatQuality = parsedCaptureSplatManifest
-    ? await readCaptureSplatQualityHandoff(sourceRoot, captureSplatRefs, gaussianPly?.relativePath, packageIssues)
+    ? await readCaptureSplatQualityHandoff(sourceRoot, captureSplatRefs, gaussianPly?.relativePath, packageIssues, captureSplatConsumerVerification)
     : undefined;
-  const sourceBudoMediaFrames = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues);
-  const captureSplatManifestFrames = sourceBudoMediaFrames || selectedCleanedPly
+  const sourceBudoMediaFrames = standaloneCleanedPly || !isAllowedPackagePath("budo.media_frames.v0.8.json", verifiedCaptureSplatPaths) ? undefined : await readOptionalText(sourceRoot, "budo.media_frames.v0.8.json", packageIssues, captureSplatConsumerVerification);
+  const captureSplatManifestFrames = sourceBudoMediaFrames || standaloneCleanedPly
     ? undefined
     : parsedCaptureSplatManifest
-      ? await readCaptureFrameManifestFromManifest(sourceRoot, parsedCaptureSplatManifest, packageIssues)
-      : await readCaptureFrameManifestFromPaths(sourceRoot, captureSplatRefs.framePaths, packageIssues);
-  const generatedCaptureFrames = sourceBudoMediaFrames || captureSplatManifestFrames || selectedCleanedPly ? undefined : await readCaptureFrameManifest(sourceRoot, packageIssues);
+      ? await readCaptureFrameManifestFromManifest(sourceRoot, parsedCaptureSplatManifest, packageIssues, verifiedCaptureSplatPaths, captureSplatConsumerVerification)
+      : await readCaptureFrameManifestFromPaths(sourceRoot, captureSplatRefs.framePaths, packageIssues, captureSplatConsumerVerification);
+  const generatedCaptureFrames = sourceBudoMediaFrames || captureSplatManifestFrames || standaloneCleanedPly || captureSplatConsumerVerification ? undefined : await readCaptureFrameManifest(sourceRoot, packageIssues);
   const budoMediaFrames = sourceBudoMediaFrames ?? captureSplatManifestFrames ?? generatedCaptureFrames;
-  const articleFigureViews = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "budo.article_figure_3d_views.v0.1.json", packageIssues);
-  const verifiedExport = selectedCleanedPly ? undefined : await readOptionalText(sourceRoot, "verified_export/manifest.json", packageIssues);
-  const jsonManifests = selectedCleanedPly ? [] : await readPackageJsonManifests(sourceRoot, packageIssues);
+  const articleFigureViews = standaloneCleanedPly || !isAllowedPackagePath("budo.article_figure_3d_views.v0.1.json", verifiedCaptureSplatPaths) ? undefined : await readOptionalText(sourceRoot, "budo.article_figure_3d_views.v0.1.json", packageIssues, captureSplatConsumerVerification);
+  const verifiedExport = standaloneCleanedPly || !isAllowedPackagePath("verified_export/manifest.json", verifiedCaptureSplatPaths) ? undefined : await readOptionalText(sourceRoot, "verified_export/manifest.json", packageIssues, captureSplatConsumerVerification);
+  const jsonManifests = standaloneCleanedPly ? [] : await readPackageJsonManifests(sourceRoot, packageIssues, verifiedCaptureSplatPaths, captureSplatConsumerVerification);
   const parsedSceneJson = sceneFile ? parseJsonRecord(sceneFile.text, sceneFile.relativePath, packageIssues) : undefined;
   const sceneJson = parsedSceneJson && isSceneManifestRecord(parsedSceneJson) ? parsedSceneJson : undefined;
   if (sceneFile && parsedSceneJson && !sceneJson) {
@@ -142,7 +190,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     verifiedExport,
     ...jsonManifests
   ]);
-  const hasCaptureSplatPackage = Boolean(captureSplatManifest || captureSplatManifestFrames || generatedCaptureFrames);
+  const hasCaptureSplatPackage = Boolean(captureSplatMarkerPresent || captureSplatManifest || captureSplatManifestFrames || generatedCaptureFrames);
 
   const packageKind = hasCaptureSplatPackage
     ? "capture-splat-local-folder"
@@ -171,10 +219,26 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     sceneFile,
     verifiedExport
   });
+  if (captureSplatConsumerVerification?.receipt.decision === "hold") {
+    pushIssue(packageIssues, {
+      artifact: captureSplatManifestPath,
+      code: "invalid_capture_splat_consumer_receipt",
+      message: `Capture Splat package integrity is held with ${captureSplatConsumerVerification.receipt.issue_count} bounded issue(s).`,
+      severity: "error",
+      title: "Capture Splat package integrity held"
+    });
+  }
+  if (
+    supportedLegacyCaptureSplatManifest
+    && stableCaptureSplatMarker
+    && !await manifestMarkerIdentityMatches(sourceRoot, captureSplatManifestPath, stableCaptureSplatMarker.identity)
+  ) {
+    throw new Error("Capture Splat legacy handoff changed while the package was being read.");
+  }
 
   return {
     kind: "world-studio.local-package",
-    name: selectedCleanedPly ? path.basename(payloadSourcePath, path.extname(payloadSourcePath)) : path.basename(sourceRoot),
+    name: standaloneCleanedPly ? path.basename(payloadSourcePath, path.extname(payloadSourcePath)) : path.basename(sourceRoot),
     sourcePath: payloadSourcePath,
     loadedVia: "electron-picker",
     sourceKind:
@@ -203,6 +267,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     captureSplatMetric,
     captureSplatQuality,
     captureSplatTrainingDataset,
+    captureSplatConsumerReceipt: captureSplatConsumerVerification?.receipt,
     ...extractHandoffSceneHints(parsedCaptureSplatManifest),
     packageInsights: buildPackageInsights({
       articleFigureViews,
@@ -242,6 +307,71 @@ function classifyAuthority(packageKind: string): AuthorityStatus {
   return "visual_evidence";
 }
 
+async function packageEntryPresent(root: string, relativePath: string): Promise<boolean> {
+  try {
+    await lstat(resolveInside(root, relativePath));
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ENOENT";
+  }
+}
+
+async function readStableManifestMarker(root: string, relativePath: string): Promise<StableManifestMarker | undefined> {
+  const filePath = resolveInside(root, relativePath);
+  let handle;
+  try {
+    const before = await lstat(filePath, { bigint: true });
+    if (before.isSymbolicLink() || !before.isFile() || before.size > BigInt(maxTextBytes)) return undefined;
+    handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const opened = await handle.stat({ bigint: true });
+    if (stableFileIdentity(opened) !== stableFileIdentity(before)) return undefined;
+    const chunks: Buffer[] = [];
+    let sizeBytes = 0;
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, null);
+      if (bytesRead === 0) break;
+      sizeBytes += bytesRead;
+      if (sizeBytes > maxTextBytes) return undefined;
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    }
+    const openedAfter = await handle.stat({ bigint: true });
+    const after = await lstat(filePath, { bigint: true });
+    if (
+      sizeBytes !== Number(before.size)
+      || stableFileIdentity(openedAfter) !== stableFileIdentity(before)
+      || stableFileIdentity(after) !== stableFileIdentity(before)
+    ) return undefined;
+    const bytes = Buffer.concat(chunks, sizeBytes);
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    return {
+      file: { relativePath, text, sizeBytes, checksum: checksumBytes(bytes) },
+      identity: stableFileIdentity(before),
+    };
+  } catch {
+    return undefined;
+  } finally {
+    try {
+      await handle?.close();
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+async function manifestMarkerIdentityMatches(root: string, relativePath: string, identity: string): Promise<boolean> {
+  try {
+    const info = await lstat(resolveInside(root, relativePath), { bigint: true });
+    return !info.isSymbolicLink() && info.isFile() && stableFileIdentity(info) === identity;
+  } catch {
+    return false;
+  }
+}
+
+function stableFileIdentity(info: { dev: bigint; ino: bigint; size: bigint; mode: bigint; mtimeNs: bigint; ctimeNs: bigint }): string {
+  return `${info.dev}:${info.ino}:${info.size}:${info.mode}:${info.mtimeNs}:${info.ctimeNs}`;
+}
+
 async function findCleanedPlyCandidates(root: string): Promise<string[]> {
   try {
     const entries = await readdir(root, { withFileTypes: true });
@@ -269,31 +399,22 @@ function isWorldStudioCleanedPly(file?: LocalWorldPackageTextFile): boolean {
     || file.text.slice(0, 4096).includes("World Studio cleaned ordinary PLY export");
 }
 
-async function readFirstText(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile | undefined> {
+async function readFirstText(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[], verification?: CaptureSplatConsumerVerification): Promise<LocalWorldPackageTextFile | undefined> {
   for (const relativePath of relativePaths) {
-    const file = await readOptionalText(root, relativePath, packageIssues);
+    const file = await readOptionalText(root, relativePath, packageIssues, verification);
     if (file) return file;
   }
   return undefined;
 }
 
-async function readFirstPointCloud(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[], transform?: number[][]): Promise<LocalWorldPackageTextFile | undefined> {
+async function readFirstPointCloud(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[], transform?: number[][], verification?: CaptureSplatConsumerVerification): Promise<LocalWorldPackageTextFile | undefined> {
   for (const relativePath of relativePaths) {
     const filePath = resolveInside(root, relativePath);
     try {
-      const info = await stat(filePath);
-      if (!info.isFile()) continue;
-      if (info.size > maxBinaryBytes) {
-        pushIssue(packageIssues, {
-          artifact: relativePath,
-          code: "file_too_large",
-          message: `${relativePath} is ${info.size} bytes; World Studio reads point-cloud assets up to ${maxBinaryBytes} bytes in this desktop bridge.`,
-          severity: "error",
-          title: "File too large"
-        });
-        continue;
-      }
-      const bytes = await readFile(filePath);
+      const bytes = verification
+        ? await verification.readVerifiedFile(relativePath, maxBinaryBytes)
+        : await readBoundedRegularFile(filePath, relativePath, maxBinaryBytes, "point-cloud assets", packageIssues);
+      if (!bytes) continue;
       const headerText = bytes.subarray(0, 32 * 1024).toString("utf8");
       const text = headerText.includes("format ascii 1.0") && !transform
         ? bytes.toString("utf8")
@@ -313,10 +434,38 @@ async function readFirstPointCloud(root: string, relativePaths: string[], packag
   return undefined;
 }
 
-async function readOptionalText(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile | undefined> {
+async function readBoundedRegularFile(
+  filePath: string,
+  relativePath: string,
+  byteLimit: number,
+  assetKind: string,
+  packageIssues?: LocalPackageIssue[],
+): Promise<Buffer | undefined> {
+  const info = await lstat(filePath);
+  if (info.isSymbolicLink() || !info.isFile()) return undefined;
+  if (info.size > byteLimit) {
+    pushIssue(packageIssues, {
+      artifact: relativePath,
+      code: "file_too_large",
+      message: `${relativePath} is ${info.size} bytes; World Studio reads ${assetKind} up to ${byteLimit} bytes in this desktop bridge.`,
+      severity: "error",
+      title: "File too large"
+    });
+    return undefined;
+  }
+  return readFile(filePath);
+}
+
+async function readOptionalText(root: string, relativePath: string, packageIssues?: LocalPackageIssue[], verification?: CaptureSplatConsumerVerification): Promise<LocalWorldPackageTextFile | undefined> {
   const filePath = resolveInside(root, relativePath);
   try {
-    const info = await stat(filePath);
+    if (verification) {
+      const bytes = await verification.readVerifiedFile(relativePath, maxTextBytes);
+      if (!bytes) return undefined;
+      return { relativePath, text: bytes.toString("utf8"), sizeBytes: bytes.byteLength, checksum: checksumBytes(bytes) };
+    }
+    const info = await lstat(filePath);
+    if (info.isSymbolicLink()) return undefined;
     if (!info.isFile()) return undefined;
     if (info.size > maxTextBytes) {
       pushIssue(packageIssues, {
@@ -333,11 +482,23 @@ async function readOptionalText(root: string, relativePath: string, packageIssue
     return { relativePath, text, sizeBytes: bytes.byteLength, checksum: checksumBytes(bytes) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
+    pushIssue(packageIssues, {
+      artifact: relativePath,
+      code: "unsupported_layout",
+      message: `${relativePath} could not be read as a regular text file.`,
+      severity: "warning",
+      title: "Text file unavailable"
+    });
+    return undefined;
   }
 }
 
-async function readPackageJsonManifests(root: string, packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageTextFile[]> {
+async function readPackageJsonManifests(
+  root: string,
+  packageIssues?: LocalPackageIssue[],
+  allowedPaths?: ReadonlySet<string>,
+  verification?: CaptureSplatConsumerVerification,
+): Promise<LocalWorldPackageTextFile[]> {
   const candidates = new Set<string>();
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (entry.isFile() && entry.name.endsWith(".json")) candidates.add(entry.name);
@@ -354,23 +515,35 @@ async function readPackageJsonManifests(root: string, packageIssues?: LocalPacka
 
   const out: LocalWorldPackageTextFile[] = [];
   for (const relativePath of [...candidates].sort()) {
-    const file = await readOptionalText(root, relativePath, packageIssues);
+    if (!isAllowedPackagePath(relativePath, allowedPaths)) continue;
+    const file = await readOptionalText(root, relativePath, packageIssues, verification);
     if (file) out.push(file);
   }
   return out;
 }
 
-async function readFirstBinary(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[]) {
+async function readFirstBinary(root: string, relativePaths: string[], packageIssues?: LocalPackageIssue[], verification?: CaptureSplatConsumerVerification) {
   for (const relativePath of relativePaths) {
-    const file = await readOptionalBinary(root, relativePath, packageIssues);
+    const file = await readOptionalBinary(root, relativePath, packageIssues, verification);
     if (file) return file;
   }
   return undefined;
 }
 
-async function readOptionalBinary(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]): Promise<LocalWorldPackageBinaryFile | undefined> {
+async function readOptionalBinary(root: string, relativePath: string, packageIssues?: LocalPackageIssue[], verification?: CaptureSplatConsumerVerification): Promise<LocalWorldPackageBinaryFile | undefined> {
   const filePath = resolveInside(root, relativePath);
   try {
+    if (verification) {
+      const bytes = await verification.readVerifiedFile(relativePath, maxBinaryBytes);
+      if (!bytes) return undefined;
+      return {
+        relativePath,
+        dataUrl: `data:application/octet-stream;base64,${bytes.toString("base64")}`,
+        headerText: bytes.subarray(0, 32 * 1024).toString("utf8"),
+        sizeBytes: bytes.byteLength,
+        checksum: checksumBytes(bytes)
+      };
+    }
     const info = await stat(filePath);
     if (!info.isFile()) return undefined;
     if (info.size > maxBinaryBytes) {
@@ -401,15 +574,16 @@ async function readCaptureSplatMetricHandoff(
   root: string,
   manifest: Record<string, unknown>,
   refs: CaptureSplatManifestRefs,
-  packageIssues: LocalPackageIssue[]
+  packageIssues: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<CaptureSplatMetricHandoff | undefined> {
   const registration = isRecord(manifest.metric_registration) ? manifest.metric_registration : undefined;
   const eligibility = isRecord(manifest.walk_eligibility) ? manifest.walk_eligibility : undefined;
-  const navigationMesh = await readFirstBinary(root, refs.navigationMeshPaths, packageIssues);
-  const measurementPoints = await readFirstBinary(root, refs.measurementPointPaths, packageIssues);
-  const meshReport = await readFirstText(root, refs.meshReportPaths, packageIssues);
-  const roomSemantics = await readFirstText(root, refs.roomSemanticsPaths, packageIssues);
-  const cameraTrajectory = await readFirstText(root, refs.cameraTrajectoryPaths, packageIssues);
+  const navigationMesh = await readFirstBinary(root, refs.navigationMeshPaths, packageIssues, verification);
+  const measurementPoints = await readFirstBinary(root, refs.measurementPointPaths, packageIssues, verification);
+  const meshReport = await readFirstText(root, refs.meshReportPaths, packageIssues, verification);
+  const roomSemantics = await readFirstText(root, refs.roomSemanticsPaths, packageIssues, verification);
+  const cameraTrajectory = await readFirstText(root, refs.cameraTrajectoryPaths, packageIssues, verification);
   if (!registration && !eligibility && !navigationMesh && !measurementPoints && !meshReport && !roomSemantics && !cameraTrajectory) {
     return undefined;
   }
@@ -441,10 +615,11 @@ async function readCaptureSplatQualityHandoff(
   root: string,
   refs: CaptureSplatManifestRefs,
   gaussianRelativePath: string | undefined,
-  packageIssues: LocalPackageIssue[]
+  packageIssues: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<CaptureSplatQualityHandoff | undefined> {
-  const renderSourceQa = await readFirstText(root, refs.renderSourceQaPaths, packageIssues);
-  const plyStats = await readFirstText(root, refs.plyStatsPaths, packageIssues);
+  const renderSourceQa = await readFirstText(root, refs.renderSourceQaPaths, packageIssues, verification);
+  const plyStats = await readFirstText(root, refs.plyStatsPaths, packageIssues, verification);
   if (!renderSourceQa && !plyStats) return undefined;
   const parsedQa = renderSourceQa
     ? parseJsonRecord(renderSourceQa.text, renderSourceQa.relativePath, packageIssues)
@@ -529,11 +704,15 @@ function validPlyStats(
 async function readGaussianPreviewPointCloud(
   root: string,
   gaussianRelativePath: string,
-  packageIssues?: LocalPackageIssue[]
+  packageIssues?: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<LocalWorldPackageTextFile | undefined> {
   const filePath = resolveInside(root, gaussianRelativePath);
   try {
-    const bytes = await readFile(filePath);
+    const bytes = verification
+      ? await verification.readVerifiedFile(gaussianRelativePath, maxBinaryBytes)
+      : await readFile(filePath);
+    if (!bytes) return undefined;
     const text = buildGaussianPreviewPointCloudPly(bytes, { maxPoints: maxGaussianPreviewPoints });
     const textBytes = Buffer.from(text, "utf8");
     return {
@@ -568,13 +747,14 @@ async function readCaptureFrameManifest(
 async function readCaptureFrameManifestFromPaths(
   root: string,
   framePaths: string[],
-  packageIssues?: LocalPackageIssue[]
+  packageIssues?: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<LocalWorldPackageTextFile | undefined> {
   if (!framePaths.length) return undefined;
   const frames = [];
   const imagePaths = uniquePaths(framePaths).filter((relativePath) => imageExtensions.has(path.extname(relativePath).toLowerCase()));
   for (const relativePath of sampleFramesEvenly(imagePaths, maxCapturePreviewFrames)) {
-    const frame = await readImagePreviewFile(root, relativePath, packageIssues);
+    const frame = await readImagePreviewFile(root, relativePath, packageIssues, verification);
     if (frame) frames.push(frame);
   }
   if (!frames.length) return undefined;
@@ -584,22 +764,24 @@ async function readCaptureFrameManifestFromPaths(
 async function readCaptureFrameManifestFromManifest(
   root: string,
   manifest: Record<string, unknown>,
-  packageIssues?: LocalPackageIssue[]
+  packageIssues?: LocalPackageIssue[],
+  allowedPaths?: ReadonlySet<string>,
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<LocalWorldPackageTextFile | undefined> {
   const assets = isRecord(manifest.assets) ? manifest.assets : {};
   const refs = extractCaptureSplatManifestRefs(manifest);
-  const frameCameras = await readCaptureSplatFrameCameras(root, manifest, refs, packageIssues);
+  const frameCameras = await readCaptureSplatFrameCameras(root, manifest, refs, packageIssues, verification);
   const entries = collectFrameEntries(manifest.source_frames, manifest.sourceFrames, manifest.frames, manifest.rgb_frames, manifest.images, assets.source_frames, assets.sourceFrames, assets.frames, assets.rgb);
   const frames: CaptureFramePreview[] = [];
-  for (const entry of sampleFramesEvenly(entries, maxCapturePreviewFrames)) {
-    const frame = await readImagePreviewFile(root, entry.relativePath, packageIssues);
+  for (const entry of sampleFramesEvenly(entries.filter((value) => isAllowedPackagePath(value.relativePath, allowedPaths)), maxCapturePreviewFrames)) {
+    const frame = await readImagePreviewFile(root, entry.relativePath, packageIssues, verification);
     if (frame) {
       const frameCamera = frameCameraFromRecord(firstRecordValue(entry.camera)) ?? lookupFrameCamera(frameCameras, entry.relativePath);
-      const renderFrame = entry.renderPath ? await readImagePreviewFile(root, entry.renderPath, packageIssues) : undefined;
+      const renderFrame = entry.renderPath && isAllowedPackagePath(entry.renderPath, allowedPaths) ? await readImagePreviewFile(root, entry.renderPath, packageIssues, verification) : undefined;
       frames.push({ ...frame, camera: entry.camera, frameCamera, renderDataUrl: renderFrame?.dataUrl, renderPath: renderFrame?.relativePath });
     }
   }
-  if (!frames.length) return readCaptureFrameManifestFromPaths(root, refs.framePaths, packageIssues);
+  if (!frames.length) return readCaptureFrameManifestFromPaths(root, refs.framePaths, packageIssues, verification);
   return createCaptureFrameManifest(frames, "capture_splat.world_studio_handoff");
 }
 
@@ -636,12 +818,13 @@ async function readCaptureSplatFrameCameras(
   root: string,
   manifest: Record<string, unknown>,
   refs: CaptureSplatManifestRefs,
-  packageIssues?: LocalPackageIssue[]
-): Promise<Map<string, FrameCamera>> {
-  const cameras = new Map<string, FrameCamera>();
+  packageIssues?: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
+): Promise<FrameCameraIndex> {
+  const cameras: FrameCameraIndex = { exact: new Map(), ambiguousExact: new Set(), aliases: new Map(), ambiguousAliases: new Set() };
   for (const relativePath of refs.cameraPosePaths) {
     if (path.basename(relativePath) !== "transforms.json") continue;
-    const text = await readRelativeUtf8(root, relativePath, packageIssues);
+    const text = await readRelativeUtf8(root, relativePath, packageIssues, verification);
     if (!text) continue;
     for (const [key, camera] of parseTransformsFrameCameras(text)) {
       setFrameCameraAliases(cameras, key, camera);
@@ -653,8 +836,8 @@ async function readCaptureSplatFrameCameras(
   const camerasPath = firstPathValue(sparse["cameras.txt"], sparse.cameras, assets.cameras);
   const imagesPath = firstPathValue(sparse["images.txt"], sparse.images, assets.images_txt);
   if (camerasPath && imagesPath) {
-    const camerasText = await readRelativeUtf8(root, camerasPath, packageIssues);
-    const imagesText = await readRelativeUtf8(root, imagesPath, packageIssues);
+    const camerasText = await readRelativeUtf8(root, camerasPath, packageIssues, verification);
+    const imagesText = await readRelativeUtf8(root, imagesPath, packageIssues, verification);
     if (camerasText && imagesText) {
       const worldTransform = captureSplatDataparserTransform(manifest);
       for (const [key, camera] of parseColmapFrameCameras(camerasText, imagesText, worldTransform)) {
@@ -748,8 +931,12 @@ function matrix4FromFlat(value: unknown): number[][] | undefined {
   return [values.slice(0, 4), values.slice(4, 8), values.slice(8, 12), values.slice(12, 16)];
 }
 
-async function readRelativeUtf8(root: string, relativePath: string, packageIssues?: LocalPackageIssue[]): Promise<string | undefined> {
+async function readRelativeUtf8(root: string, relativePath: string, packageIssues?: LocalPackageIssue[], verification?: CaptureSplatConsumerVerification): Promise<string | undefined> {
   try {
+    if (verification) {
+      const bytes = await verification.readVerifiedFile(relativePath, maxTextBytes);
+      return bytes ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes) : undefined;
+    }
     return await readFile(resolveInside(root, relativePath), "utf8");
   } catch {
     pushIssue(packageIssues, {
@@ -763,16 +950,58 @@ async function readRelativeUtf8(root: string, relativePath: string, packageIssue
   }
 }
 
-function lookupFrameCamera(cameras: Map<string, FrameCamera>, relativePath: string): FrameCamera | undefined {
+function lookupFrameCamera(cameras: FrameCameraIndex, relativePath: string): FrameCamera | undefined {
   const normalized = relativePath.replace(/\\/g, "/");
-  return cameras.get(normalized) ?? cameras.get(path.basename(normalized)) ?? cameras.get(path.basename(normalized, path.extname(normalized)));
+  return cameras.exact.get(normalized)
+    ?? cameras.aliases.get(path.basename(normalized))?.camera
+    ?? cameras.aliases.get(path.basename(normalized, path.extname(normalized)))?.camera;
 }
 
-function setFrameCameraAliases(cameras: Map<string, FrameCamera>, relativePath: string, camera: FrameCamera): void {
+function setFrameCameraAliases(cameras: FrameCameraIndex, relativePath: string, camera: FrameCamera): void {
   const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
-  cameras.set(normalized, camera);
-  cameras.set(path.basename(normalized), camera);
-  cameras.set(path.basename(normalized, path.extname(normalized)), camera);
+  const existingExact = cameras.exact.get(normalized);
+  const exactConflict = cameras.ambiguousExact.has(normalized)
+    || (existingExact !== undefined && frameCameraSignature(existingExact) !== frameCameraSignature(camera));
+  if (exactConflict) {
+    cameras.exact.delete(normalized);
+    cameras.ambiguousExact.add(normalized);
+  } else if (!existingExact) {
+    cameras.exact.set(normalized, camera);
+  }
+  const aliases = new Set([path.basename(normalized), path.basename(normalized, path.extname(normalized))]);
+  for (const alias of aliases) {
+    if (exactConflict) {
+      cameras.aliases.delete(alias);
+      cameras.ambiguousAliases.add(alias);
+      continue;
+    }
+    if (cameras.ambiguousAliases.has(alias)) continue;
+    const existing = cameras.aliases.get(alias);
+    if (existing && existing.sourcePath !== normalized) {
+      cameras.aliases.delete(alias);
+      cameras.ambiguousAliases.add(alias);
+    } else if (existing && frameCameraSignature(existing.camera) !== frameCameraSignature(camera)) {
+      cameras.aliases.delete(alias);
+      cameras.ambiguousAliases.add(alias);
+    } else {
+      cameras.aliases.set(alias, { sourcePath: normalized, camera });
+    }
+  }
+}
+
+function frameCameraSignature(camera: FrameCamera): string {
+  return JSON.stringify([
+    camera.width,
+    camera.height,
+    camera.fx,
+    camera.fy,
+    camera.cx,
+    camera.cy,
+    camera.translation,
+    camera.rotation,
+    camera.coordinateFrame ?? null,
+    camera.authority ?? null,
+  ]);
 }
 
 function parseTransformsFrameCameras(text: string): Array<[string, FrameCamera]> {
@@ -1055,10 +1284,24 @@ function emptyCaptureSplatRefs(): CaptureSplatManifestRefs {
   };
 }
 
+function filterCaptureSplatRefs(refs: CaptureSplatManifestRefs, allowedPaths?: ReadonlySet<string>): CaptureSplatManifestRefs {
+  if (!allowedPaths) return refs;
+  return Object.fromEntries(Object.entries(refs).map(([key, paths]) => [key, (paths as string[]).filter((relativePath: string) => allowedPaths.has(relativePath))])) as unknown as CaptureSplatManifestRefs;
+}
+
+function allowedPackagePaths(paths: string[], allowedPaths?: ReadonlySet<string>): string[] {
+  return allowedPaths ? paths.filter((relativePath) => allowedPaths.has(relativePath)) : paths;
+}
+
+function isAllowedPackagePath(relativePath: string, allowedPaths?: ReadonlySet<string>): boolean {
+  return !allowedPaths || allowedPaths.has(relativePath);
+}
+
 async function readCaptureSplatTrainingDataset(
   root: string,
   manifest: Record<string, unknown>,
-  packageIssues: LocalPackageIssue[]
+  packageIssues: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<CaptureSplatTrainingDatasetV1 | undefined> {
   if (manifest.schema !== "capture_splat.world_studio_handoff.v0.3") return undefined;
   try {
@@ -1083,7 +1326,7 @@ async function readCaptureSplatTrainingDataset(
     if (`sha256:${digest.digest("hex")}` !== dataset.source_frame_set.digest) {
       throw new Error("training_dataset source frame digest differs from source_frames.");
     }
-    await verifyCaptureSplatMeasuredEvidence(root, manifest, dataset);
+    await verifyCaptureSplatMeasuredEvidence(root, manifest, dataset, verification);
     return dataset;
   } catch (error) {
     pushIssue(packageIssues, {
@@ -1236,10 +1479,24 @@ async function readCaptureFrameFiles(
 async function readImagePreviewFile(
   root: string,
   relativePath: string,
-  packageIssues?: LocalPackageIssue[]
+  packageIssues?: LocalPackageIssue[],
+  verification?: CaptureSplatConsumerVerification,
 ): Promise<CaptureFramePreview | undefined> {
   const filePath = resolveInside(root, relativePath);
   try {
+    if (verification) {
+      const bytes = await verification.readVerifiedFile(relativePath, maxCapturePreviewImageBytes);
+      if (!bytes) return undefined;
+      const mimeType = imageMimeType(relativePath);
+      return {
+        relativePath,
+        displayName: path.basename(relativePath, path.extname(relativePath)),
+        mimeType,
+        sizeBytes: bytes.byteLength,
+        checksum: checksumBytes(bytes),
+        dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`
+      };
+    }
     const info = await stat(filePath);
     if (!info.isFile()) return undefined;
     if (info.size > maxCapturePreviewImageBytes) {
