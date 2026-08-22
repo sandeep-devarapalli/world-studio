@@ -155,8 +155,9 @@ or runtime gate.
   replay now passes exact native Spark 2.1 load, orbit, inward zoom, diagnostics, source
   immutability, teardown, and manual inspection; functional and manual reports hash to
   `a6b03e82...6d0410b` and `bde803c8...60e15a`. Functional visualization is promoted. Visible
-  blur, smearing, and peripheral floaters keep release and visual quality held; performance,
-  metric, collision, navigation, and physics also remain held.
+  blur, smearing, and peripheral floaters keep release and visual quality held; the bound
+  fixed-camera review hashes to `ae6ba23a...d335c5`. Performance, metric, collision,
+  navigation, and physics also remain held.
 - The checksum-bound Lego known-pose adapter, external Spirula 7,000-step result, and finite
   99,996-splat SH3 PLY passed candidate Spark 2.1 load, orbit, and inward zoom at revision
   `cb0a93d`. The run result hashes to `a16f0d23...a7323d4`, the r4 functional report to

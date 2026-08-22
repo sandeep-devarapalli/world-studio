@@ -298,7 +298,9 @@ storage gates passed. Functional and manual-review report SHA-256 values are
 `a6b03e825e9cec7849c1d4fe3f81d6558b6677119ec12dd7ea36f7b356d0410b` and
 `bde803c8551151dcbe943dae0360841ff55e191289a03a94cfd875c4fd60e15a`.
 Functional visualization is promoted; visible blur, smearing, and peripheral floaters keep
-visual quality and candidate release held.
+visual quality and candidate release held. A two-pair manual review bound to the all-eight
+metrics confirms large-structure retention but material edge, texture, and thin-detail loss;
+its SHA-256 is `ae6ba23a6aaa1be42c6a2e43d2bebdfcd034322b37c6cbeb3a16b64122d335c5`.
 
 ### Measured Lego known-pose ladder and Spark gate - 2026-08-21
 

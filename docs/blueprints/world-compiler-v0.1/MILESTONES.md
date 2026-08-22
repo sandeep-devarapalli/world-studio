@@ -94,7 +94,8 @@ the r4 functional and bound manual reports hash to `598b3d74...70f06a3` and
 `7b4ab201...5fe61c7`. Current-candidate Playroom preparation also returned exact unchanged
 bytes in report `31b53e38...8f0181c`. The fresh provenance-bound Playroom UI replay and manual
 review now pass functional visibility, orbit, and inward zoom in reports
-`a6b03e82...6d0410b` and `bde803c8...60e15a`; visual quality and candidate release remain held.
+`a6b03e82...6d0410b` and `bde803c8...60e15a`; fixed-camera quality review
+`ae6ba23a...d335c5` keeps visual quality and candidate release held.
 
 The independent iPhone HLOC-to-Spirula-to-Spark lane promoted 300/300-image registration and
 functional visibility/orbit/zoom. Its SfM, Spirula, Spark, and manual evidence hash to
