@@ -1,5 +1,9 @@
 # World Compiler Milestones
 
+Milestones may advance through bounded, dependency-complete slices. Optional live transport
+and held vendor, capacity, equirectangular, timing, or unrestricted-view claims do not block a
+separately validated Room-01 artifact. A hold constrains only the claim or promotion it measures.
+
 ## M0 Live Evidence Foundation
 
 Outcome: merge and close the replay/receiver Phase 1 foundation.
@@ -78,6 +82,11 @@ Acceptance:
 - Trainer execution, Spark loading, and canonical Asset publication remain explicit later
   gates rather than side effects of validating these records.
 
+Immediate delivery slice: the packaged Electron path supervises the external provider receipt,
+publishes, reopens, and visibly identifies one immutable Room-01 revision with exact artifact
+bytes and separate authority roles. This does not waive the remaining general editor, migration,
+or cross-platform gates.
+
 Current evidence note (non-normative, 2026-08-21): checksum-bound Playroom and Lego PLYs have
 passed candidate Spark 2.1 functional visualization gates. The Lego lane used supplied camera
 poses and therefore did not validate SfM. Its result report hashes to `a16f0d23...a7323d4`, and
@@ -94,20 +103,38 @@ same-camera capture/reconstruction quality improvement. This does not change M2 
 publish a canonical Asset, or grant metric, collision, navigation, physics, performance,
 quality, or general capacity authority.
 
-## M3 Indoor Navigation And First Deployment Twin - R3
+## M3 Room-01 Metric/Collision World And First Deployment Twin - R3
 
-Outcome: one validated indoor mobile robot or vacuum world tied to a physical site revision.
+Outcome: publish one immutable Room-01 World with registered Spirula appearance, validated
+metric geometry, separately derived collision/navigation layers, and a reproducible
+reference-mobile-robot route.
 
 Acceptance:
 
-- Metric floor, walls, openings, occupancy, free space, spawn, and route gates pass.
-- Collision is derived from validated metric geometry, not Gaussian appearance.
-- The same frame, units, robot, sensor, route, and task definitions drive local and
-  robot-facing runs.
-- A vacuum demonstration completes zones, avoids a no-go area, returns to dock, and records
-  reproducible real/sim route evidence.
+- Exact source, camera, depth, trajectory, mesh, registration, transform, and artifact hashes
+  and provenance are bound; similarly named recovery artifacts are not silently substituted.
+- Spirula output is finite, camera/transform-bound, Spark-loadable, and reviewed at fixed source
+  cameras while remaining visual-only.
+- The collision source is complete or proves coverage preservation. A source marked
+  `truncated: true` fails closed.
+- Floor, walls, ceiling/overhangs, doorway/openings, occupancy, and free space pass continuity
+  and clearance gates.
+- The simplified collider is finite, nondegenerate, within its declared triangle budget,
+  preserves doorway clearance, uses no artificial fallback floor, and remains separate from
+  Gaussian appearance.
+- The packaged application publishes and reopens the exact immutable World while displaying
+  revision, roles, authority, and provenance.
+- A reference mobile robot reproducibly completes
+  `spawn -> doorway -> no-go avoidance -> return to spawn or dock -> reset` under the frozen
+  Rapier parity baseline.
 - The Deployment Twin binds the exact World, site revision, robot, task, evidence, and
   freshness status.
+
+Current evidence note (non-normative, 2026-08-22): accepted registration for 168 authoritative
+RGB-D cameras and the 156,969-point metric seed are complete, and registered evidence-mesh
+overlap has been reviewed. The current 300,000-triangle source is correctly held because its
+report says `truncated: true`. The next product gate is a recovered or reproduced self-contained
+package plus complete or coverage-preserving mesh, not another generic visual benchmark.
 
 ## M4 Physics Asset Factory - A0-A4
 
@@ -140,6 +167,9 @@ Acceptance:
   contact, device, timestep, seed, and source-version evidence.
 - Layered OpenUSD compilation preserves frames, units, visual/collision separation, and
   provenance.
+- Room-01 is the first OpenUSD/Newton fixture. The visual Gaussian is referenced separately;
+  Newton consumes only the validated metric collision layer. Local macOS CPU
+  load/spawn/contact/reset evidence precedes remote Linux/NVIDIA parity.
 - Spawn, movement, contacts, props, sensors, reset, and deterministic Episode fixtures pass
   the declared parity thresholds.
 - Simulate, Pilot, and Episode cut over to Newton, then Rapier code and dependencies are
@@ -147,8 +177,8 @@ Acceptance:
 
 ## M6 Newton/Isaac Lab/ROS Sensor Conformance - R4
 
-Outcome: one promoted World/Asset/Robot/Task set behaves consistently across standalone
-Newton and external robot-learning adapters.
+Outcome: the promoted Room-01 World and M3 reference robot behave consistently across
+standalone Newton and external robot-learning adapters.
 
 Acceptance:
 
@@ -160,6 +190,27 @@ Acceptance:
 - CPU/CUDA and standalone/adapter residual reports include unsupported features and
   prohibited uses.
 - A scripted route produces comparable state, contact, sensor, and pose evidence.
+- Passing this Room-01 conformance set unlocks M6A. M7-M9 are not prerequisites for the
+  bounded indoor-UAV pilot.
+
+## M6A Indoor UAV Room-01 Pilot
+
+Outcome: one bounded indoor-UAV training/evaluation episode uses the promoted Room-01 World
+immediately after M6.
+
+Acceptance:
+
+- An immutable UAV profile declares its body and rotor-clearance envelope, mass, inertia,
+  actuator limits, frames, units, and source authority.
+- Camera, depth or LiDAR, and IMU definitions are versioned and pass the M6 frame, timing, and
+  noise contracts.
+- Metric corridor, doorway, ceiling/overhang, and obstacle clearance are validated against the
+  collision layer.
+- A deterministic `spawn -> takeoff -> hover -> doorway or corridor -> avoid -> land -> reset`
+  episode records poses, controls, contacts, sensors, seed, and outcome.
+- Standalone Newton and the selected Isaac Lab/ROS adapters consume the same immutable World,
+  Asset, Robot, Sensor, and Task versions.
+- The result grants no live-flight, outdoor, wind, deployment, or general UAV readiness claim.
 
 ## M7 Real2Sim Promise And Rigid Calibration - P5/P6
 
@@ -213,11 +264,12 @@ score.
 
 Order:
 
-1. Indoor UAV.
+1. Indoor UAV expansion beyond the bounded Room-01 M6A pilot.
 2. Outdoor UAV.
 3. Vehicles and autonomous driving.
 4. Rigid and articulated manipulation.
 5. Deformable, contact-rich, and coupled multiphysics tasks.
 
 Each embodiment requires its own sensors, collision/contact model, task profile, safety
-envelope, physical evidence, solver capability report, and real/sim validation.
+envelope, physical evidence, solver capability report, and real/sim validation. M6A evidence
+does not transfer outside its Room-01 task envelope.
