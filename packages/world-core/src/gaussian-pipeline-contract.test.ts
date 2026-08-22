@@ -28,17 +28,19 @@ const schemaFiles = [
 ] as const;
 const fixtureFiles = [
   "fixtures/valid_capture_training_dataset.json",
+  "fixtures/valid_capture_training_dataset_measured.json",
   "fixtures/valid_training_job.json",
   "fixtures/valid_asset.json",
   "fixtures/valid_benchmark_report.json",
 ] as const;
 const fingerprints: Record<(typeof schemaFiles)[number] | (typeof fixtureFiles)[number], string> = {
-  "schemas/capture_splat.training_dataset.v0.1.schema.json": "291caf26153e8b1e7f3b368965f1fffc6bebc66045354dfe6b0dac55599a78f4",
+  "schemas/capture_splat.training_dataset.v0.1.schema.json": "e47d63397d9423551195eed60fb8a3feb5991bded3ca0a3510bb355fa06754a9",
   "schemas/world_studio.gaussian_pipeline_defs.v0.1.schema.json": "c3481dbefc98299169dd2924a7aaba671b3815e06f9dc5c325e4c2ffb2d7c120",
   "schemas/world_studio.gaussian_training_job.v0.1.schema.json": "9de7fa8a2d755b3e1eb387d92e94ace09cd9187d6dbc6a462f51b059b05294e4",
   "schemas/world_studio.gaussian_asset.v0.1.schema.json": "cc2d8ce6b581857ecc296d2dd96ff45674254f8d9ee10da862911f02533aaa20",
   "schemas/world_studio.gaussian_benchmark_report.v0.1.schema.json": "d5e2d7489b039c0d8c4301331572c84f06a7947e5324f53232f6acfae7173d0a",
   "fixtures/valid_capture_training_dataset.json": "b778cc92e0b59ea699f10513c07bd4ca3addc18df4163b778ac8fffae2e325c6",
+  "fixtures/valid_capture_training_dataset_measured.json": "591632bcb3ea32adf40c35095d16caebdbe139e692f87bee3b6dcfd8005d63a7",
   "fixtures/valid_training_job.json": "222d5c48f2aeec61336061c1a403d4e6f56a22a7fb6132f66d5fb948e25cae62",
   "fixtures/valid_asset.json": "2cc333e8adb75a61f4cb15fb732a9bef5ea6241e28af039a79146268152c0195",
   "fixtures/valid_benchmark_report.json": "032ebc5bf1234b5f2b13851d90ae08aadcb38c5fad1995ef3f5afb8032cba2ff",
@@ -67,6 +69,7 @@ describe("Gaussian pipeline schemas", () => {
     for (const name of schemaFiles) ajv.addSchema(json(name));
     const pairs = [
       ["fixtures/valid_capture_training_dataset.json", "urn:world-studio:schema:capture_splat.training_dataset.v0.1"],
+      ["fixtures/valid_capture_training_dataset_measured.json", "urn:world-studio:schema:capture_splat.training_dataset.v0.1"],
       ["fixtures/valid_training_job.json", "urn:world-studio:schema:world_studio.gaussian_training_job.v0.1"],
       ["fixtures/valid_asset.json", "urn:world-studio:schema:world_studio.gaussian_asset.v0.1"],
       ["fixtures/valid_benchmark_report.json", "urn:world-studio:schema:world_studio.gaussian_benchmark_report.v0.1"],
@@ -83,7 +86,7 @@ describe("Gaussian pipeline schemas", () => {
 });
 
 describe("Gaussian pipeline runtime contracts", () => {
-  it("validates the additive Capture Splat v0.3 training dataset without granting authority", () => {
+  it("keeps legacy Capture Splat v0.3 training evidence compatible without granting authority", () => {
     const dataset = fixture<Record<string, unknown>>("fixtures/valid_capture_training_dataset.json");
     expect(validateCaptureSplatTrainingDataset(dataset)).toMatchObject({
       capture_profile: "video_3dgs_max",
@@ -110,6 +113,64 @@ describe("Gaussian pipeline runtime contracts", () => {
     evidence.depth = { referenced_frame_count: 1, available_frame_count: 2 };
     expect(() => validateCaptureSplatTrainingDataset({ ...dataset, evidence })).toThrow(/cannot exceed/);
     expect(() => validateCaptureSplatTrainingDataset({ ...dataset, capture_profile: "../video" })).toThrow(/must be an identifier/);
+  });
+
+  it("validates measured Capture Splat registration and RGB-D overlap as one exact evidence group", () => {
+    const dataset = fixture<Record<string, unknown>>("fixtures/valid_capture_training_dataset_measured.json");
+    expect(validateCaptureSplatTrainingDataset(dataset)).toMatchObject({
+      evidence: {
+        sfm: {
+          registered_image_count: 2,
+          registered_image_parse_status: "complete",
+          registered_rgbd_overlap_count: 1,
+          registered_rgbd_overlap: {
+            available: true,
+            depth_bearing_capture_frame_count: 1,
+            matched_count: 1,
+            unmatched_registered_image_count: 1,
+          },
+        },
+      },
+      authority: { metric_authority: false, collision_authority: false },
+    });
+
+    const partialGroup = clone(dataset);
+    const partialSfm = (partialGroup.evidence as Record<string, unknown>).sfm as Record<string, unknown>;
+    delete partialSfm.registered_rgbd_overlap_count;
+    expect(() => validateCaptureSplatTrainingDataset(partialGroup)).toThrow(/must contain exactly/);
+
+    const excessRegistered = clone(dataset);
+    const excessSfm = (excessRegistered.evidence as Record<string, unknown>).sfm as Record<string, unknown>;
+    excessSfm.registered_image_count = 3;
+    (excessSfm.registered_rgbd_overlap as Record<string, unknown>).unmatched_registered_image_count = 2;
+    expect(() => validateCaptureSplatTrainingDataset(excessRegistered)).toThrow(/cannot exceed the source frame count/);
+
+    const mismatchedOverlap = clone(dataset);
+    ((mismatchedOverlap.evidence as Record<string, unknown>).sfm as Record<string, unknown>).registered_rgbd_overlap_count = 2;
+    expect(() => validateCaptureSplatTrainingDataset(mismatchedOverlap)).toThrow(/must agree with overlap evidence/);
+
+    const partial = clone(dataset);
+    const partialSfmEvidence = (partial.evidence as Record<string, unknown>).sfm as Record<string, unknown>;
+    partialSfmEvidence.registered_image_parse_status = "partial";
+    partialSfmEvidence.registered_image_invalid_record_count = 1;
+    partialSfmEvidence.registered_rgbd_overlap_count = null;
+    partialSfmEvidence.registered_rgbd_overlap = {
+      available: false,
+      reason: "colmap_images_parse_incomplete",
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+      depth_bearing_capture_frame_count: 0,
+      matched_count: 0,
+      ambiguous_basename_count: 0,
+      unmatched_registered_image_count: 2,
+    };
+    expect(validateCaptureSplatTrainingDataset(partial)).toMatchObject({
+      evidence: { sfm: { registered_image_parse_status: "partial", registered_rgbd_overlap_count: null } },
+    });
+
+    const unreconciled = clone(dataset);
+    const unreconciledOverlap = (((unreconciled.evidence as Record<string, unknown>).sfm as Record<string, unknown>).registered_rgbd_overlap as Record<string, unknown>);
+    unreconciledOverlap.unmatched_registered_image_count = 0;
+    expect(() => validateCaptureSplatTrainingDataset(unreconciled)).toThrow(/must reconcile registered_image_count/);
   });
 
   it("round-trips and binds the canonical fixtures", () => {

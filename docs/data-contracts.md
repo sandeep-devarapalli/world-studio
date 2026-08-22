@@ -299,6 +299,8 @@ serialized delivery encoding. A mixed-precision job may validly export a float32
 
 For v0.3, the package reader validates the complete `training_dataset` shape and recomputes
 its canonical digest from the handoff's relative frame paths, sizes, and SHA-256 identities.
+It accepts the exact legacy SfM evidence or the exact measured registration/RGB-D overlap
+group; partial measured groups and unreconciled counts fail closed without granting authority.
 Invalid or unbound metadata is withheld and reported as a package error. This metadata check
 does not rehash every image byte, create a Gaussian training job, or claim trainer execution.
 
