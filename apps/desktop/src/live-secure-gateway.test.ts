@@ -564,7 +564,8 @@ describe("LiveSecureGateway", () => {
     const identity = await identityStore.loadOrCreate();
     const pairingStore = new PairingStore(path.join(root, "pairing"));
     const device = deviceIdentity();
-    const issuedAt = new Date();
+    let currentNow = new Date("2026-08-22T00:00:00.000Z");
+    const issuedAt = currentNow;
     const grantId = `csg_${Buffer.alloc(16, 63).toString("base64url")}`;
     await pairingStore.registerDevice({
       deviceId: device.deviceId,
@@ -578,7 +579,7 @@ describe("LiveSecureGateway", () => {
         scopes: [...LIVE_PAIRING_PERMISSIONS],
         issuedAt: issuedAt.toISOString(),
         notBefore: issuedAt.toISOString(),
-        expiresAt: new Date(issuedAt.getTime() + 1_000).toISOString()
+        expiresAt: new Date(issuedAt.getTime() + 100).toISOString()
       }
     });
     const gateway = new LiveSecureGateway({
@@ -587,7 +588,7 @@ describe("LiveSecureGateway", () => {
       pairingStore,
       bonjour: fakeBonjour(),
       listInterfaces: () => [loopbackInterface],
-      now: () => new Date(),
+      now: () => new Date(currentNow),
       desktopName: "World Studio Expiry Test Mac",
       port: 0,
       listenerLeaseMs: 60_000,
@@ -602,6 +603,9 @@ describe("LiveSecureGateway", () => {
       interfaceId: loopbackInterface.id,
       grantId
     })).state).toBe("secure_listening");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect((await gateway.status()).state).toBe("secure_listening");
+    currentNow = new Date(issuedAt.getTime() + 101);
     await waitForSecureStop(gateway);
     expect(updates.at(-1)).toMatchObject({
       state: "loopback_only",

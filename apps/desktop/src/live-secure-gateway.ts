@@ -837,8 +837,9 @@ export class LiveSecureGateway {
 
   private startGrantTimer(expiresAt: string): void {
     this.clearTimer("grant");
-    const remaining = Date.parse(expiresAt) - this.validNow().getTime();
-    const schedule = (remainingMs: number): void => {
+    const expiresAtMs = Date.parse(expiresAt);
+    const schedule = (): void => {
+      const remainingMs = expiresAtMs - this.validNow().getTime();
       if (remainingMs <= 0) {
         void this.failClosed("Pairing grant expired.");
         return;
@@ -846,12 +847,11 @@ export class LiveSecureGateway {
       const delay = Math.min(remainingMs, 2_147_000_000);
       this.grantTimer = setTimeout(() => {
         this.grantTimer = null;
-        if (remainingMs > delay) schedule(remainingMs - delay);
-        else void this.failClosed("Pairing grant expired.");
+        schedule();
       }, delay);
       this.grantTimer.unref();
     };
-    schedule(remaining);
+    schedule();
   }
 
   private clearTimer(kind: "pairing" | "lease" | "grant"): void {
