@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:world-studio:schema:world_studio.capture_splat_consumer_receipt.v0.1",
+  "title": "World Studio Capture Splat Consumer Receipt v0.1",
+  "$comment": "capture_splat_portable_relative_path_v1 intentionally fails closed on non-ASCII paths in this verifier revision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "consumer", "handoff", "inventory", "closure", "tree", "verification", "issue_count", "issues_truncated", "issues", "decision", "authority", "authenticity"],
+  "properties": {
+    "schema": { "const": "world_studio.capture_splat_consumer_receipt.v0.1" },
+    "consumer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "verifier"],
+      "properties": {
+        "name": { "const": "world-studio" },
+        "verifier": { "const": "capture-splat-package-v0.1" }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "manifest"],
+      "properties": {
+        "schema": { "const": "capture_splat.world_studio_handoff.v0.3" },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "size_bytes", "checksum"],
+          "properties": {
+            "path": { "const": "capture-splat.world-studio.json" },
+            "size_bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+            "checksum": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "verification", "declared_reference_count", "declared_unique_asset_count", "declared_duplicate_reference_count", "declared_verified_asset_count", "recomputed_reference_count", "recomputed_unique_asset_count", "recomputed_duplicate_reference_count"],
+      "properties": {
+        "schema": { "const": "capture_splat.capture_manifest_assets.v0.1" },
+        "verification": { "const": "source_destination_size_and_sha256" },
+        "declared_reference_count": { "$ref": "#/$defs/count" },
+        "declared_unique_asset_count": { "$ref": "#/$defs/count" },
+        "declared_duplicate_reference_count": { "$ref": "#/$defs/count" },
+        "declared_verified_asset_count": { "$ref": "#/$defs/count" },
+        "recomputed_reference_count": { "$ref": "#/$defs/count" },
+        "recomputed_unique_asset_count": { "$ref": "#/$defs/count" },
+        "recomputed_duplicate_reference_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_frame_count", "declared_reference_file_count", "declared_reference_bytes", "verified_reference_file_count", "missing_file_count", "metadata_mismatch_count", "conflicting_declaration_count", "unreferenced_file_count", "symlink_count", "non_regular_file_count", "mutable_file_count"],
+      "properties": {
+        "source_frame_count": { "$ref": "#/$defs/frame_count" },
+        "declared_reference_file_count": { "$ref": "#/$defs/count" },
+        "declared_reference_bytes": { "$ref": "#/$defs/bytes" },
+        "verified_reference_file_count": { "$ref": "#/$defs/count" },
+        "missing_file_count": { "$ref": "#/$defs/unbounded_count" },
+        "metadata_mismatch_count": { "$ref": "#/$defs/unbounded_count" },
+        "conflicting_declaration_count": { "$ref": "#/$defs/unbounded_count" },
+        "unreferenced_file_count": { "$ref": "#/$defs/unbounded_count" },
+        "symlink_count": { "$ref": "#/$defs/unbounded_count" },
+        "non_regular_file_count": { "$ref": "#/$defs/unbounded_count" },
+        "mutable_file_count": { "$ref": "#/$defs/unbounded_count" }
+      }
+    },
+    "tree": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "algorithm", "scope", "file_count", "size_bytes", "checksum", "includes_handoff_manifest", "includes_receipt"],
+          "properties": {
+            "status": { "const": "complete" },
+            "algorithm": { "const": "sha256_utf8_nfc_path_nul_size_nul_sha256_lf_v1" },
+            "scope": { "const": "all_regular_files_under_package_root" },
+            "file_count": { "$ref": "#/$defs/tree_count" },
+            "size_bytes": { "$ref": "#/$defs/bytes" },
+            "checksum": { "$ref": "#/$defs/sha256" },
+            "includes_handoff_manifest": { "const": true },
+            "includes_receipt": { "const": false }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "algorithm", "scope", "file_count", "size_bytes", "includes_handoff_manifest", "includes_receipt"],
+          "properties": {
+            "status": { "const": "incomplete" },
+            "algorithm": { "const": "sha256_utf8_nfc_path_nul_size_nul_sha256_lf_v1" },
+            "scope": { "const": "all_regular_files_under_package_root" },
+            "file_count": { "$ref": "#/$defs/tree_count" },
+            "size_bytes": { "$ref": "#/$defs/bytes" },
+            "includes_handoff_manifest": { "const": true },
+            "includes_receipt": { "const": false }
+          }
+        }
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content", "paths", "references"],
+      "properties": {
+        "content": { "const": "sha256_stream_1mib_stable_stat_v1" },
+        "paths": { "const": "capture_splat_portable_relative_path_v1" },
+        "references": { "const": "capture_splat_world_studio_handoff_v0.3_v1" }
+      }
+    },
+    "issue_count": { "type": "integer", "minimum": 0 },
+    "issues_truncated": { "type": "boolean" },
+    "issues": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "enum": ["bounds_exceeded", "conflicting_declaration", "invalid_capture_inventory", "invalid_capture_manifest", "invalid_handoff_manifest", "invalid_path", "invalid_reference", "inventory_mismatch", "metadata_mismatch", "missing_file", "mutable_file", "non_regular_file", "symlink", "unreferenced_file"] },
+          "artifact": { "$ref": "#/$defs/path" },
+          "message": { "type": "string", "minLength": 1, "maxLength": 512 }
+        }
+      }
+    },
+    "decision": { "enum": ["ready", "hold"] },
+    "authority": { "const": "package_integrity_evidence_only" },
+    "authenticity": { "const": "not_established" }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0, "maximum": 200000 },
+    "frame_count": { "type": "integer", "minimum": 0, "maximum": 100000 },
+    "unbounded_count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "tree_count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "bytes": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "path": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\).+$" }
+  }
+}

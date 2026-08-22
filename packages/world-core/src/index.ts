@@ -1,8 +1,10 @@
 import type { CaptureSplatTrainingDatasetV1 } from "./gaussian-pipeline-contract.js";
+import type { CaptureSplatConsumerReceiptV1 } from "./capture-splat-consumer-receipt-contract.js";
 
 export type StudioMode = "view" | "edit" | "simulate" | "pilot" | "sensors" | "episode";
 
 export * from "./gaussian-pipeline-contract.js";
+export * from "./capture-splat-consumer-receipt-contract.js";
 export * from "./world-graph-contract.js";
 
 export type RenderMode = "splat" | "points" | "mesh" | "semantic" | "depth";
@@ -515,6 +517,7 @@ export interface LocalPackageIssue {
     | "file_too_large"
     | "invalid_capture_splat_ply_stats"
     | "invalid_capture_splat_render_source_qa"
+    | "invalid_capture_splat_consumer_receipt"
     | "invalid_capture_splat_training_dataset"
     | "malformed_json"
     | "missing_primary_artifact"
@@ -554,6 +557,7 @@ export interface LocalWorldPackagePayload {
   captureSplatMetric?: CaptureSplatMetricHandoff;
   captureSplatQuality?: CaptureSplatQualityHandoff;
   captureSplatTrainingDataset?: CaptureSplatTrainingDatasetV1;
+  captureSplatConsumerReceipt?: CaptureSplatConsumerReceiptV1;
 }
 
 export interface CaptureSplatQualityHandoff {
