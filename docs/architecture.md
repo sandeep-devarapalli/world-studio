@@ -156,6 +156,15 @@ editor integration. It does not migrate either historical World v0.1 shape, mate
 It also changes no reconstruction worker, renderer, simulation, physics, Capture Splat, or
 iPhone behavior.
 
+The pure Node Capture Splat hybrid compiler is the first focused producer-to-store path.
+It requires a ready v0.3 consumer receipt, the exact receipt-verified Spirula Gaussian,
+and checksum-cross-bound held TSDF, hybrid-surface, and collider reports. It stages only
+verified bytes into a fresh canonical source directory and delegates the immutable commit
+to `CanonicalWorldPackageStore`. The resulting World is visually, metrically, and
+collision-ready only at `held`; it is not loaded by the current package reader, renderer,
+Rapier, OpenUSD, or Newton paths. Desktop orchestration and every authority-promotion gate
+remain later slices.
+
 Delta v0.1 is a forward grammar, not an editor executor. Commit-time transition validation
 currently materializes artifact edits, World asset membership, and World `manual_edit`
 transforms only. Intents without a snapshot-backed state carrier, evidence-owned transforms,
