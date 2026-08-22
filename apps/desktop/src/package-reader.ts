@@ -3,6 +3,7 @@ import { validateCaptureSplatTrainingDataset, type AuthorityStatus, type Capture
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { verifyCaptureSplatMeasuredEvidence } from "./capture-splat-measured-evidence.js";
 
 const maxTextBytes = 64 * 1024 * 1024;
 const maxBinaryBytes = 384 * 1024 * 1024;
@@ -62,7 +63,7 @@ export async function readLocalPackage(inputPath: string): Promise<LocalWorldPac
     ? parseJsonRecord(captureSplatManifest.text, captureSplatManifest.relativePath, packageIssues)
     : undefined;
   const captureSplatTrainingDataset = parsedCaptureSplatManifest
-    ? readCaptureSplatTrainingDataset(parsedCaptureSplatManifest, packageIssues)
+    ? await readCaptureSplatTrainingDataset(sourceRoot, parsedCaptureSplatManifest, packageIssues)
     : undefined;
   const captureSplatRefs = parsedCaptureSplatManifest ? extractCaptureSplatManifestRefs(parsedCaptureSplatManifest) : emptyCaptureSplatRefs();
   const captureSplatPointsTransform = parsedCaptureSplatManifest ? captureSplatPointTransform(parsedCaptureSplatManifest) : undefined;
@@ -1054,10 +1055,11 @@ function emptyCaptureSplatRefs(): CaptureSplatManifestRefs {
   };
 }
 
-function readCaptureSplatTrainingDataset(
+async function readCaptureSplatTrainingDataset(
+  root: string,
   manifest: Record<string, unknown>,
   packageIssues: LocalPackageIssue[]
-): CaptureSplatTrainingDatasetV1 | undefined {
+): Promise<CaptureSplatTrainingDatasetV1 | undefined> {
   if (manifest.schema !== "capture_splat.world_studio_handoff.v0.3") return undefined;
   try {
     const dataset = validateCaptureSplatTrainingDataset(manifest.training_dataset);
@@ -1081,6 +1083,7 @@ function readCaptureSplatTrainingDataset(
     if (`sha256:${digest.digest("hex")}` !== dataset.source_frame_set.digest) {
       throw new Error("training_dataset source frame digest differs from source_frames.");
     }
+    await verifyCaptureSplatMeasuredEvidence(root, manifest, dataset);
     return dataset;
   } catch (error) {
     pushIssue(packageIssues, {
