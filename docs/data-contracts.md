@@ -84,6 +84,21 @@ aggregate references, and 262,144 content directories.
 Historical v0.1 migration, `hide` and `annotate` state carriers, Site revisions, edit
 execution, and authority promotion remain later M2 checkpoints.
 
+The bounded Capture Splat hybrid importer compiles one checksum-closed handoff v0.3,
+one held `capture_splat.rgbd_tsdf_report.v0.1`, one held
+`capture_splat.hybrid_structural_surface.v0.1`, and one held
+`capture_splat.hybrid_collider_candidate.v0.1` into the existing World v0.2 graph. It
+streams and rehashes the receipt-verified Spirula Gaussian, TSDF mesh, hybrid surface,
+and collider candidate; verifies their cross-report identities, ARKit-world metre frame,
+and hybrid PLY topology; then publishes through `CanonicalWorldPackageStore`.
+
+The Gaussian is `visual_splat` with held visual readiness, the TSDF and hybrid surface are
+`metric_mesh` with held metric readiness, and the collider is `collision_mesh` with held
+collision readiness. Navigation, semantics, articulation, and physics remain unavailable.
+This adds no World schema version: producer reports remain immutable evidence artifacts,
+and no imported file receives measurement, collision-use, navigation, OpenUSD, Newton,
+Rapier, deployment, or quality authority.
+
 ## Capture Splat Live Session
 
 World Studio mirrors the Capture Splat-owned schemas and fixtures byte-for-byte:
