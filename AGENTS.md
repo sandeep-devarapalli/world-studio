@@ -33,8 +33,10 @@
 - The active 3DGS lanes are NeRF Synthetic Lego for deterministic smoke, original-3DGS
   Deep Blending Playroom for the completed real-scene control, Mip-NeRF 360 Bonsai
   `images_2` for the pinned 360 quality lane, and the private Capture Splat fixture as a
-  separate capture-to-world lane. Keep every other OneDrive dataset cloud-only unless a
-  named gate requires it, and preserve dataset license and checksum evidence.
+  separate capture-to-world lane. Use Lego and Playroom as the standard trainer/renderer
+  controls; keep Capture Splat as the real iPhone capture-to-SfM lane. Keep every other
+  OneDrive dataset cloud-only unless a named gate requires it, and preserve dataset license
+  and checksum evidence.
 - Benchmarks gate claims and promotion, not candidate asset formation or the Room-01
   metric/physics path. Keep held results explicit while continuing separately authorized
   world-compilation work.
