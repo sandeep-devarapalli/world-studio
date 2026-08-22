@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./collision-candidate": "./src/collision-candidate.ts"
+    "./collision-candidate": "./src/collision-candidate.ts",
+    "./reduced-collider": "./src/reduced-collider.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

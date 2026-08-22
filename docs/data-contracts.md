@@ -343,6 +343,25 @@ controller; it does not change the handoff's collision or navigation authority.
 Truncated capture meshes remain available for visual evidence but cannot create
 Walk colliders or synthetic fallback floors.
 
+Capture Splat reduced colliders use the held producer contracts
+`capture_splat.reduced_collider_benchmark.v0.1`,
+`capture_splat.reduced_hybrid_collider.v0.1`, and
+`capture_splat.collision_probe.v0.1`. The dedicated consumer requires a
+caller-supplied benchmark SHA-256 trust anchor, streams and stable-stat verifies
+all four regular files, and accepts only the exact binary little-endian face
+layout containing `semantic_classification`, `semantic_support`, and
+`source_face_index`. Known classes require support `4`; unknown `255` remains
+collision-solid but cannot qualify a floor, target, portal, or route.
+
+`world_studio.reduced_collider_walk_validation.v0.1` records the frozen Rapier
+baseline (`1 m/unit`, 60 Hz, radius `0.22 m`, half-height `0.50 m`, controller
+offset `0.02 m`, speed `1.2 m/s`, eye height `1.6 m`) and three deterministic
+telemetry repetitions. It is a validation receipt, not the product Walk input.
+The current four-file package omits source mesh bytes, replayable probe vectors,
+and a portal/route contract, so source parity, continuous floor, doorway, full
+episode reset, physical validation, and every authority lane remain held. A
+controller-pose restore is reported separately and never promoted as full reset.
+
 ## Article / 3D Sidecar Views
 
 World Studio keeps compatibility with:

@@ -165,6 +165,14 @@ collision-ready only at `held`; it is not loaded by the current package reader, 
 Rapier, OpenUSD, or Newton paths. Desktop orchestration and every authority-promotion gate
 remain later slices.
 
+The reduced-collider validation slice stays outside that canonical load path. A dedicated
+desktop verifier consumes the checksum-bound Capture Splat reducer bundle and a dedicated
+web harness exercises the frozen Rapier character-controller baseline. Unknown or partially
+supported triangles remain conservative collision solids and cannot qualify spawn or route
+evidence. The harness does not enable Simulate or Walk, publish collision authority, or wire
+the candidate into OpenUSD or Newton. Missing source replay geometry and portal/route evidence
+keep the current Room-01 receipt held.
+
 Delta v0.1 is a forward grammar, not an editor executor. Commit-time transition validation
 currently materializes artifact edits, World asset membership, and World `manual_edit`
 transforms only. Intents without a snapshot-backed state carrier, evidence-owned transforms,
