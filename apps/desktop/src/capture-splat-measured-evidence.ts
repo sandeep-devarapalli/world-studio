@@ -7,12 +7,19 @@ import { TextDecoder } from "node:util";
 
 type FileReference = { path: string; sizeBytes: number; checksum: string };
 
+interface VerifiedFileReader {
+  readVerifiedFile(relativePath: string, byteLimit: number): Promise<Buffer | undefined>;
+  verifyVerifiedFile(relativePath: string, byteLimit: number): Promise<boolean>;
+}
+
 const maxEvidenceTextBytes = 64 * 1024 * 1024;
+const maxEvidenceFileBytes = Math.floor(1.5 * 1024 ** 3);
 
 export async function verifyCaptureSplatMeasuredEvidence(
   root: string,
   manifest: Record<string, unknown>,
   dataset: CaptureSplatTrainingDatasetV1,
+  verifiedFileReader?: VerifiedFileReader,
 ): Promise<void> {
   const evidence = dataset.evidence.sfm;
   if (!("registered_image_count" in evidence)) return;
@@ -26,10 +33,20 @@ export async function verifyCaptureSplatMeasuredEvidence(
   if (captureRef) requireSelfContainedInventory(manifest.capture_manifest_assets);
   equal(dataset.evidence.capture_manifest.available, Boolean(captureRef), "capture_manifest availability");
   equal(dataset.evidence.capture_manifest.asset, captureRef ? "capture_manifest" : null, "capture_manifest asset");
-  const camerasText = await verifiedText(packageRoot, camerasRef);
-  const imagesText = await verifiedText(packageRoot, imagesRef);
-  const pointsAvailable = pointsRef ? (await verifyFile(packageRoot, pointsRef), true) : false;
-  const captureText = await verifiedText(packageRoot, captureRef);
+  const camerasText = await verifiedText(packageRoot, camerasRef, verifiedFileReader);
+  const imagesText = await verifiedText(packageRoot, imagesRef, verifiedFileReader);
+  let pointsAvailable = false;
+  if (pointsRef) {
+    if (verifiedFileReader) {
+      if (!await verifiedFileReader.verifyVerifiedFile(pointsRef.path, maxEvidenceFileBytes)) {
+        throw new Error("Capture Splat measured evidence is not receipt-verified.");
+      }
+    } else {
+      await verifyFile(packageRoot, pointsRef);
+    }
+    pointsAvailable = true;
+  }
+  const captureText = await verifiedText(packageRoot, captureRef, verifiedFileReader);
 
   const cameras = parseCameras(camerasText);
   equal(evidence.available, camerasText !== undefined && imagesText !== undefined, "SfM availability");
@@ -45,7 +62,7 @@ export async function verifyCaptureSplatMeasuredEvidence(
   equal(evidence.registered_image_invalid_record_count, registered.invalidRecords, "registered_image_invalid_record_count");
   equal(evidence.registered_image_name_digest, imagesText === undefined ? null : nameSetDigest(registered.names), "registered_image_name_digest");
 
-  const overlap = await registeredRgbdOverlap(packageRoot, registered, captureText, Boolean(camerasRef || imagesRef || pointsRef));
+  const overlap = await registeredRgbdOverlap(packageRoot, registered, captureText, Boolean(camerasRef || imagesRef || pointsRef), verifiedFileReader);
   equal(evidence.registered_rgbd_overlap, overlap, "registered_rgbd_overlap");
   equal(evidence.registered_rgbd_overlap_count, overlap.available ? overlap.matched_count : null, "registered_rgbd_overlap_count");
 }
@@ -112,6 +129,7 @@ async function registeredRgbdOverlap(
   registered: ReturnType<typeof parseRegisteredImages>,
   captureText: string | undefined,
   sparseDeclared: boolean,
+  verifiedFileReader?: VerifiedFileReader,
 ): Promise<Record<string, unknown>> {
   const matching = "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1";
   const unavailable = (reason: string) => ({
@@ -148,7 +166,7 @@ async function registeredRgbdOverlap(
     if (rejected || typeof rgb !== "string" || typeof frame.depth !== "string") continue;
     const canonicalRgb = canonicalCapturePath(rgb);
     const canonicalDepth = canonicalCapturePath(frame.depth);
-    if (canonicalRgb && canonicalDepth && await confinedFileExists(root, canonicalRgb) && await confinedFileExists(root, canonicalDepth)) {
+    if (canonicalRgb && canonicalDepth && await confinedFileExists(root, canonicalRgb, verifiedFileReader) && await confinedFileExists(root, canonicalDepth, verifiedFileReader)) {
       captureNames.push(baseName(rgb));
     }
   }
@@ -185,11 +203,17 @@ function sortUtf8(values: string[]): string[] {
   return [...values].sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
 }
 
-async function verifiedText(root: string, reference: FileReference | undefined): Promise<string | undefined> {
+async function verifiedText(root: string, reference: FileReference | undefined, verifiedFileReader?: VerifiedFileReader): Promise<string | undefined> {
   if (!reference) return undefined;
   if (reference.sizeBytes > maxEvidenceTextBytes) throw new Error("Capture Splat measured evidence text exceeds the 64 MiB limit.");
-  const chunks = await verifyFile(root, reference, true);
-  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks));
+  const bytes = verifiedFileReader
+    ? await verifiedFileReader.readVerifiedFile(reference.path, maxEvidenceTextBytes)
+    : Buffer.concat(await verifyFile(root, reference, true));
+  if (!bytes) throw new Error("Capture Splat measured evidence is not receipt-verified.");
+  if (bytes.byteLength !== reference.sizeBytes || `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== reference.checksum) {
+    throw new Error("Capture Splat measured evidence differs from its handoff declaration.");
+  }
+  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 }
 
 async function verifyFile(root: string, reference: FileReference, retainBytes = false): Promise<Buffer[]> {
@@ -221,7 +245,8 @@ async function verifyFile(root: string, reference: FileReference, retainBytes = 
   }
 }
 
-async function confinedFileExists(root: string, relativePath: string): Promise<boolean> {
+async function confinedFileExists(root: string, relativePath: string, verifiedFileReader?: VerifiedFileReader): Promise<boolean> {
+  if (verifiedFileReader) return verifiedFileReader.verifyVerifiedFile(relativePath, maxEvidenceFileBytes);
   try {
     const absolutePath = resolveInside(root, relativePath);
     const resolved = await realpath(absolutePath);
