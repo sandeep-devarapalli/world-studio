@@ -564,7 +564,8 @@ describe("LiveSecureGateway", () => {
     const identity = await identityStore.loadOrCreate();
     const pairingStore = new PairingStore(path.join(root, "pairing"));
     const device = deviceIdentity();
-    const issuedAt = new Date();
+    let currentNow = new Date("2026-08-22T00:00:00.000Z");
+    const issuedAt = currentNow;
     const grantId = `csg_${Buffer.alloc(16, 63).toString("base64url")}`;
     await pairingStore.registerDevice({
       deviceId: device.deviceId,
@@ -578,7 +579,7 @@ describe("LiveSecureGateway", () => {
         scopes: [...LIVE_PAIRING_PERMISSIONS],
         issuedAt: issuedAt.toISOString(),
         notBefore: issuedAt.toISOString(),
-        expiresAt: new Date(issuedAt.getTime() + 1_000).toISOString()
+        expiresAt: new Date(issuedAt.getTime() + 100).toISOString()
       }
     });
     const gateway = new LiveSecureGateway({
@@ -587,7 +588,7 @@ describe("LiveSecureGateway", () => {
       pairingStore,
       bonjour: fakeBonjour(),
       listInterfaces: () => [loopbackInterface],
-      now: () => new Date(),
+      now: () => new Date(currentNow),
       desktopName: "World Studio Expiry Test Mac",
       port: 0,
       listenerLeaseMs: 60_000,
@@ -595,15 +596,20 @@ describe("LiveSecureGateway", () => {
       allowLoopbackForTests: true
     });
     gateways.push(gateway);
-    const updates: Array<Awaited<ReturnType<LiveSecureGateway["status"]>>> = [];
-    gateway.subscribe((snapshot) => updates.push(snapshot));
+    const expired = new Promise<Awaited<ReturnType<LiveSecureGateway["status"]>>>((resolve) => {
+      gateway.subscribe((snapshot) => {
+        if (snapshot.error === "Pairing grant expired.") resolve(snapshot);
+      });
+    });
 
     expect((await gateway.startPairedReceiver({
       interfaceId: loopbackInterface.id,
       grantId
     })).state).toBe("secure_listening");
-    await waitForSecureStop(gateway);
-    expect(updates.at(-1)).toMatchObject({
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect((await gateway.status()).state).toBe("secure_listening");
+    currentNow = new Date(issuedAt.getTime() + 101);
+    expect(await withTimeout(expired, 3_000)).toMatchObject({
       state: "loopback_only",
       secureListening: null,
       error: "Pairing grant expired."
@@ -1609,15 +1615,6 @@ async function waitForState(
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for gateway state ${state}.`);
-}
-
-async function waitForSecureStop(gateway: LiveSecureGateway): Promise<void> {
-  const deadline = Date.now() + 3_000;
-  while (Date.now() < deadline) {
-    if ((await gateway.status()).secureListening === null) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error("Timed out waiting for the secure listener to stop.");
 }
 
 async function waitForReceiverState(
