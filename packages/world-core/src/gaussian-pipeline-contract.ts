@@ -34,6 +34,48 @@ export type GaussianClaimId =
   | "built_in_preprocessing"
   | "depth_normal_mesh_skybox";
 
+type CaptureSplatRegisteredRgbdOverlapV1 =
+  | {
+      available: true;
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1";
+      depth_bearing_capture_frame_count: number;
+      matched_count: number;
+      matched_name_digest: string;
+      ambiguous_basename_count: number;
+      unmatched_registered_image_count: number;
+    }
+  | {
+      available: false;
+      reason:
+        | "colmap_images_unavailable"
+        | "colmap_images_parse_incomplete"
+        | "capture_manifest_unavailable"
+        | "capture_frames_invalid";
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1";
+      depth_bearing_capture_frame_count: number;
+      matched_count: number;
+      ambiguous_basename_count: number;
+      unmatched_registered_image_count: number;
+    };
+
+interface CaptureSplatSfmEvidenceV1 {
+  available: boolean;
+  camera_count: number;
+  camera_models: string[];
+  registered_images_available: boolean;
+  sparse_points_available: boolean;
+  asset: "colmap_sparse" | null;
+}
+
+interface CaptureSplatMeasuredSfmEvidenceV1 extends CaptureSplatSfmEvidenceV1 {
+  registered_image_count: number;
+  registered_image_parse_status: "complete" | "partial" | "unavailable";
+  registered_image_invalid_record_count: number;
+  registered_image_name_digest: string | null;
+  registered_rgbd_overlap_count: number | null;
+  registered_rgbd_overlap: CaptureSplatRegisteredRgbdOverlapV1;
+}
+
 export interface CaptureSplatTrainingDatasetV1 {
   schema: typeof CAPTURE_SPLAT_TRAINING_DATASET_SCHEMA;
   capture_profile: string;
@@ -57,14 +99,7 @@ export interface CaptureSplatTrainingDatasetV1 {
   };
   evidence: {
     capture_manifest: { available: boolean; asset: "capture_manifest" | null };
-    sfm: {
-      available: boolean;
-      camera_count: number;
-      camera_models: string[];
-      registered_images_available: boolean;
-      sparse_points_available: boolean;
-      asset: "colmap_sparse" | null;
-    };
+    sfm: CaptureSplatSfmEvidenceV1 | CaptureSplatMeasuredSfmEvidenceV1;
     depth: { referenced_frame_count: number; available_frame_count: number };
     confidence: { referenced_frame_count: number; available_frame_count: number };
     masks: { referenced_frame_count: number; available_frame_count: number };
@@ -314,6 +349,7 @@ export function validateCaptureSplatTrainingDataset(value: unknown): CaptureSpla
   const frameSet = record(dataset.source_frame_set, "Capture Splat source_frame_set");
   exactKeys(frameSet, ["count", "digest", "canonicalization"], "Capture Splat source_frame_set");
   literal(frameSet.canonicalization, "utf8_relative_path_nul_size_nul_sha256_lf_v1", "Capture Splat source_frame_set canonicalization");
+  const sourceFrameCount = integer(frameSet.count, "Capture Splat source frame count", 1);
 
   const projection = record(dataset.projection, "Capture Splat projection");
   exactKeys(projection, ["mode", "source_is_equirectangular", "training_images_are_projected_pinhole", "native_equirectangular", "rig_evidence"], "Capture Splat projection");
@@ -350,14 +386,10 @@ export function validateCaptureSplatTrainingDataset(value: unknown): CaptureSpla
   const captureManifestAsset = nullableLiteral(captureManifest.asset, "capture_manifest", "Capture Splat capture_manifest asset");
   if (captureManifestAvailable !== (captureManifestAsset !== null)) fail("Capture Splat capture_manifest availability and asset must agree.");
 
-  const sfm = record(evidence.sfm, "Capture Splat SfM evidence");
-  exactKeys(sfm, ["available", "camera_count", "camera_models", "registered_images_available", "sparse_points_available", "asset"], "Capture Splat SfM evidence");
-  const cameraModels = array(sfm.camera_models, "Capture Splat camera_models", 0, 64).map((item, index) => {
-    const model = string(item, `Capture Splat camera_models[${index}]`, 64);
-    if (!/^[A-Z0-9_]+$/.test(model)) fail(`Capture Splat camera_models[${index}] is invalid.`);
-    return model;
-  });
-  unique(cameraModels, "Capture Splat camera_models");
+  const sfm = validateCaptureSplatSfmEvidence(evidence.sfm);
+  if ("registered_image_count" in sfm && sfm.registered_image_count > sourceFrameCount) {
+    fail("Capture Splat registered_image_count cannot exceed the source frame count.");
+  }
 
   const mesh = record(evidence.mesh, "Capture Splat mesh evidence");
   exactKeys(mesh, ["available", "asset", "report_available", "report_asset"], "Capture Splat mesh evidence");
@@ -382,7 +414,7 @@ export function validateCaptureSplatTrainingDataset(value: unknown): CaptureSpla
     schema: CAPTURE_SPLAT_TRAINING_DATASET_SCHEMA,
     capture_profile: identifier(dataset.capture_profile, "Capture Splat capture_profile"),
     source_frame_set: {
-      count: integer(frameSet.count, "Capture Splat source frame count", 1),
+      count: sourceFrameCount,
       digest: sha256(frameSet.digest, "Capture Splat source frame digest"),
       canonicalization: "utf8_relative_path_nul_size_nul_sha256_lf_v1",
     },
@@ -401,14 +433,7 @@ export function validateCaptureSplatTrainingDataset(value: unknown): CaptureSpla
     },
     evidence: {
       capture_manifest: { available: captureManifestAvailable, asset: captureManifestAsset },
-      sfm: {
-        available: boolean(sfm.available, "Capture Splat SfM available"),
-        camera_count: integer(sfm.camera_count, "Capture Splat SfM camera_count", 0),
-        camera_models: cameraModels,
-        registered_images_available: boolean(sfm.registered_images_available, "Capture Splat registered_images_available"),
-        sparse_points_available: boolean(sfm.sparse_points_available, "Capture Splat sparse_points_available"),
-        asset: nullableLiteral(sfm.asset, "colmap_sparse", "Capture Splat SfM asset"),
-      },
+      sfm,
       depth: validateFrameEvidence(evidence.depth, "Capture Splat depth evidence"),
       confidence: validateFrameEvidence(evidence.confidence, "Capture Splat confidence evidence"),
       masks: validateFrameEvidence(evidence.masks, "Capture Splat masks evidence"),
@@ -883,6 +908,160 @@ function validateFrameEvidence(value: unknown, label: string): { referenced_fram
   const availableFrameCount = integer(evidence.available_frame_count, `${label} available_frame_count`, 0);
   if (availableFrameCount > referencedFrameCount) fail(`${label} available_frame_count cannot exceed referenced_frame_count.`);
   return { referenced_frame_count: referencedFrameCount, available_frame_count: availableFrameCount };
+}
+
+function validateCaptureSplatSfmEvidence(value: unknown): CaptureSplatSfmEvidenceV1 | CaptureSplatMeasuredSfmEvidenceV1 {
+  const label = "Capture Splat SfM evidence";
+  const sfm = record(value, label);
+  const baseKeys = ["available", "camera_count", "camera_models", "registered_images_available", "sparse_points_available", "asset"] as const;
+  const measuredKeys = [
+    "registered_image_count",
+    "registered_image_parse_status",
+    "registered_image_invalid_record_count",
+    "registered_image_name_digest",
+    "registered_rgbd_overlap_count",
+    "registered_rgbd_overlap",
+  ] as const;
+  const measured = measuredKeys.some((key) => Object.prototype.hasOwnProperty.call(sfm, key));
+  exactKeys(sfm, measured ? [...baseKeys, ...measuredKeys] : baseKeys, label);
+
+  const cameraModels = array(sfm.camera_models, "Capture Splat camera_models", 0, 64).map((item, index) => {
+    const model = string(item, `Capture Splat camera_models[${index}]`, 64);
+    if (!/^[A-Z0-9_]+$/.test(model)) fail(`Capture Splat camera_models[${index}] is invalid.`);
+    return model;
+  });
+  unique(cameraModels, "Capture Splat camera_models");
+  const result: CaptureSplatSfmEvidenceV1 = {
+    available: boolean(sfm.available, "Capture Splat SfM available"),
+    camera_count: integer(sfm.camera_count, "Capture Splat SfM camera_count", 0),
+    camera_models: cameraModels,
+    registered_images_available: boolean(sfm.registered_images_available, "Capture Splat registered_images_available"),
+    sparse_points_available: boolean(sfm.sparse_points_available, "Capture Splat sparse_points_available"),
+    asset: nullableLiteral(sfm.asset, "colmap_sparse", "Capture Splat SfM asset"),
+  };
+  if (!measured) return result;
+
+  const registeredImageCount = integer(sfm.registered_image_count, "Capture Splat registered_image_count", 0);
+  const parseStatus = oneOf(
+    sfm.registered_image_parse_status,
+    ["complete", "partial", "unavailable"] as const,
+    "Capture Splat registered_image_parse_status",
+  );
+  const invalidRecordCount = integer(
+    sfm.registered_image_invalid_record_count,
+    "Capture Splat registered_image_invalid_record_count",
+    0,
+  );
+  const imageNameDigest = sfm.registered_image_name_digest === null
+    ? null
+    : sha256(sfm.registered_image_name_digest, "Capture Splat registered_image_name_digest");
+  if (result.registered_images_available) {
+    if (parseStatus === "unavailable" || imageNameDigest === null) {
+      fail("Capture Splat available registered images require a parse result and name digest.");
+    }
+  } else if (parseStatus !== "unavailable" || registeredImageCount !== 0 || invalidRecordCount !== 0 || imageNameDigest !== null) {
+    fail("Capture Splat unavailable registered images require unavailable zero-count evidence.");
+  }
+  if ((parseStatus === "complete" && invalidRecordCount !== 0) || (parseStatus === "partial" && invalidRecordCount === 0)) {
+    fail("Capture Splat registered image parse status must agree with invalid_record_count.");
+  }
+
+  const overlap = validateCaptureSplatRegisteredRgbdOverlap(
+    sfm.registered_rgbd_overlap,
+    registeredImageCount,
+    parseStatus,
+    result.registered_images_available,
+  );
+  const overlapCount = sfm.registered_rgbd_overlap_count === null
+    ? null
+    : integer(sfm.registered_rgbd_overlap_count, "Capture Splat registered_rgbd_overlap_count", 0);
+  if ((overlap.available && overlapCount !== overlap.matched_count) || (!overlap.available && overlapCount !== null)) {
+    fail("Capture Splat registered_rgbd_overlap_count must agree with overlap evidence.");
+  }
+
+  return {
+    ...result,
+    registered_image_count: registeredImageCount,
+    registered_image_parse_status: parseStatus,
+    registered_image_invalid_record_count: invalidRecordCount,
+    registered_image_name_digest: imageNameDigest,
+    registered_rgbd_overlap_count: overlapCount,
+    registered_rgbd_overlap: overlap,
+  };
+}
+
+function validateCaptureSplatRegisteredRgbdOverlap(
+  value: unknown,
+  registeredImageCount: number,
+  parseStatus: "complete" | "partial" | "unavailable",
+  registeredImagesAvailable: boolean,
+): CaptureSplatRegisteredRgbdOverlapV1 {
+  const label = "Capture Splat registered_rgbd_overlap";
+  const overlap = record(value, label);
+  const available = boolean(overlap.available, `${label} available`);
+  exactKeys(
+    overlap,
+    available
+      ? ["available", "matching", "depth_bearing_capture_frame_count", "matched_count", "matched_name_digest", "ambiguous_basename_count", "unmatched_registered_image_count"]
+      : ["available", "reason", "matching", "depth_bearing_capture_frame_count", "matched_count", "ambiguous_basename_count", "unmatched_registered_image_count"],
+    label,
+  );
+  literal(
+    overlap.matching,
+    "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+    `${label} matching`,
+  );
+  const depthBearingCount = integer(overlap.depth_bearing_capture_frame_count, `${label} depth_bearing_capture_frame_count`, 0);
+  const matchedCount = integer(overlap.matched_count, `${label} matched_count`, 0);
+  const ambiguousCount = integer(overlap.ambiguous_basename_count, `${label} ambiguous_basename_count`, 0);
+  const unmatchedCount = integer(overlap.unmatched_registered_image_count, `${label} unmatched_registered_image_count`, 0);
+  if (matchedCount + unmatchedCount !== registeredImageCount) {
+    fail("Capture Splat RGB-D matched and unmatched counts must reconcile registered_image_count.");
+  }
+
+  if (available) {
+    if (parseStatus !== "complete" || !registeredImagesAvailable) {
+      fail("Capture Splat RGB-D overlap is available only for completely parsed registered images.");
+    }
+    if (matchedCount > depthBearingCount) {
+      fail("Capture Splat RGB-D matched_count cannot exceed depth-bearing capture frames.");
+    }
+    return {
+      available: true,
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+      depth_bearing_capture_frame_count: depthBearingCount,
+      matched_count: matchedCount,
+      matched_name_digest: sha256(overlap.matched_name_digest, `${label} matched_name_digest`),
+      ambiguous_basename_count: ambiguousCount,
+      unmatched_registered_image_count: unmatchedCount,
+    };
+  }
+
+  const reason = oneOf(
+    overlap.reason,
+    ["colmap_images_unavailable", "colmap_images_parse_incomplete", "capture_manifest_unavailable", "capture_frames_invalid"] as const,
+    `${label} reason`,
+  );
+  if (depthBearingCount !== 0 || matchedCount !== 0 || ambiguousCount !== 0) {
+    fail("Unavailable Capture Splat RGB-D overlap must have zero capture and match counts.");
+  }
+  const reasonMatchesEvidence =
+    (reason === "colmap_images_unavailable" && !registeredImagesAvailable && parseStatus === "unavailable")
+    || (reason === "colmap_images_parse_incomplete" && parseStatus !== "complete")
+    || ((reason === "capture_manifest_unavailable" || reason === "capture_frames_invalid")
+      && registeredImagesAvailable && parseStatus === "complete");
+  if (!reasonMatchesEvidence) {
+    fail("Capture Splat RGB-D overlap reason must agree with registered image evidence.");
+  }
+  return {
+    available: false,
+    reason,
+    matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+    depth_bearing_capture_frame_count: depthBearingCount,
+    matched_count: matchedCount,
+    ambiguous_basename_count: ambiguousCount,
+    unmatched_registered_image_count: unmatchedCount,
+  };
 }
 
 function referenceIdentity(value: unknown, label: string, idKey: "job_id" | "fixture_id"): { id: string; manifest_sha256: string } {

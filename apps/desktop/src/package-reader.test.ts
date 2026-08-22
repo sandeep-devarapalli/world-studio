@@ -46,7 +46,21 @@ function captureTrainingDataset(frames: Array<{ rgb_path: string; size_bytes: nu
         available: true,
         camera_count: 1,
         camera_models: ["PINHOLE"],
+        registered_image_count: frames.length,
+        registered_image_invalid_record_count: 0,
+        registered_image_name_digest: `sha256:${"d".repeat(64)}`,
+        registered_image_parse_status: "complete",
         registered_images_available: true,
+        registered_rgbd_overlap: {
+          ambiguous_basename_count: 0,
+          available: true,
+          depth_bearing_capture_frame_count: 0,
+          matched_count: 0,
+          matched_name_digest: `sha256:${"e".repeat(64)}`,
+          matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+          unmatched_registered_image_count: frames.length,
+        },
+        registered_rgbd_overlap_count: 0,
         sparse_points_available: false,
         asset: "colmap_sparse",
       },
@@ -677,6 +691,7 @@ end_header
     expect(payload.captureSplatTrainingDataset).toMatchObject({
       schema: "capture_splat.training_dataset.v0.1",
       source_frame_set: { count: 2 },
+      evidence: { sfm: { registered_image_count: 2, registered_rgbd_overlap_count: 0 } },
       authority: { trainer_consumption_claim: false, training_execution_authority: false }
     });
     expect(mediaFrames.source_kind).toBe("capture_splat.world_studio_handoff");

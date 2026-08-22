@@ -205,7 +205,56 @@
       ],
       "type": "object"
     },
+    "registeredRgbdOverlap": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ambiguous_basename_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            "available": { "const": true },
+            "depth_bearing_capture_frame_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            "matched_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            "matched_name_digest": { "$ref": "#/$defs/sha256" },
+            "matching": { "const": "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1" },
+            "unmatched_registered_image_count": { "$ref": "#/$defs/nonNegativeSafeInteger" }
+          },
+          "required": [
+            "available", "matching", "depth_bearing_capture_frame_count", "matched_count",
+            "matched_name_digest", "ambiguous_basename_count", "unmatched_registered_image_count"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ambiguous_basename_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            "available": { "const": false },
+            "depth_bearing_capture_frame_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            "matched_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            "matching": { "const": "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1" },
+            "reason": {
+              "enum": [
+                "colmap_images_unavailable", "colmap_images_parse_incomplete",
+                "capture_manifest_unavailable", "capture_frames_invalid"
+              ]
+            },
+            "unmatched_registered_image_count": { "$ref": "#/$defs/nonNegativeSafeInteger" }
+          },
+          "required": [
+            "available", "reason", "matching", "depth_bearing_capture_frame_count",
+            "matched_count", "ambiguous_basename_count", "unmatched_registered_image_count"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "sfmEvidence": {
+      "oneOf": [
+        { "$ref": "#/$defs/sfmEvidenceLegacy" },
+        { "$ref": "#/$defs/sfmEvidenceMeasured" }
+      ]
+    },
+    "sfmEvidenceLegacy": {
       "additionalProperties": false,
       "properties": {
         "asset": { "enum": ["colmap_sparse", null] },
@@ -222,6 +271,46 @@
       },
       "required": [
         "available", "camera_count", "camera_models", "registered_images_available",
+        "sparse_points_available", "asset"
+      ],
+      "type": "object"
+    },
+    "sfmEvidenceMeasured": {
+      "additionalProperties": false,
+      "properties": {
+        "asset": { "enum": ["colmap_sparse", null] },
+        "available": { "type": "boolean" },
+        "camera_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "camera_models": {
+          "items": { "maxLength": 64, "pattern": "^[A-Z0-9_]+$", "type": "string" },
+          "maxItems": 64,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "registered_image_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "registered_image_invalid_record_count": { "$ref": "#/$defs/nonNegativeSafeInteger" },
+        "registered_image_name_digest": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "registered_image_parse_status": { "enum": ["complete", "partial", "unavailable"] },
+        "registered_images_available": { "type": "boolean" },
+        "registered_rgbd_overlap": { "$ref": "#/$defs/registeredRgbdOverlap" },
+        "registered_rgbd_overlap_count": {
+          "oneOf": [
+            { "$ref": "#/$defs/nonNegativeSafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "sparse_points_available": { "type": "boolean" }
+      },
+      "required": [
+        "available", "camera_count", "camera_models", "registered_images_available",
+        "registered_image_count", "registered_image_parse_status",
+        "registered_image_invalid_record_count", "registered_image_name_digest",
+        "registered_rgbd_overlap_count", "registered_rgbd_overlap",
         "sparse_points_available", "asset"
       ],
       "type": "object"

@@ -1,0 +1,74 @@
+{
+  "authority": {
+    "capture_evidence_only": true,
+    "collision_authority": false,
+    "metric_authority": false,
+    "quality_claim": false,
+    "trainer_consumption_claim": false,
+    "training_execution_authority": false
+  },
+  "capture_profile": "video_3dgs_max",
+  "evidence": {
+    "capture_manifest": {
+      "asset": "capture_manifest",
+      "available": true
+    },
+    "confidence": {
+      "available_frame_count": 1,
+      "referenced_frame_count": 1
+    },
+    "depth": {
+      "available_frame_count": 1,
+      "referenced_frame_count": 2
+    },
+    "masks": {
+      "available_frame_count": 2,
+      "referenced_frame_count": 2
+    },
+    "mesh": {
+      "asset": "navigation_mesh",
+      "available": true,
+      "report_asset": "mesh_report",
+      "report_available": true
+    },
+    "sfm": {
+      "asset": "colmap_sparse",
+      "available": true,
+      "camera_count": 2,
+      "camera_models": ["OPENCV", "PINHOLE"],
+      "registered_image_count": 2,
+      "registered_image_invalid_record_count": 0,
+      "registered_image_name_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "registered_image_parse_status": "complete",
+      "registered_images_available": true,
+      "registered_rgbd_overlap": {
+        "ambiguous_basename_count": 0,
+        "available": true,
+        "depth_bearing_capture_frame_count": 1,
+        "matched_count": 1,
+        "matched_name_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "matching": "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+        "unmatched_registered_image_count": 1
+      },
+      "registered_rgbd_overlap_count": 1,
+      "sparse_points_available": true
+    }
+  },
+  "projection": {
+    "mode": "projected_pinhole_from_equirectangular",
+    "native_equirectangular": false,
+    "rig_evidence": {
+      "available": true,
+      "checksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "schema": "capture_splat.equirectangular_rig.v0.1"
+    },
+    "source_is_equirectangular": true,
+    "training_images_are_projected_pinhole": true
+  },
+  "schema": "capture_splat.training_dataset.v0.1",
+  "source_frame_set": {
+    "canonicalization": "utf8_relative_path_nul_size_nul_sha256_lf_v1",
+    "count": 2,
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}
