@@ -9,15 +9,43 @@ outcomes and acceptance gates.
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
 | M1 Authenticated LAN And Progressive World | Manual-import and replay-first progressive evidence, optional paired TLS transport, and isolated worker lifecycle | partial; iPhone live transport held by thermal evidence |
-| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial |
-| M3 Indoor Navigation And First Deployment Twin - R3 | Validated metric floor, collision/free space, spawn/route gates, vacuum demonstration | evidence-blocked |
+| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial; Room-01 packaged publish/reopen path is immediate |
+| M3 Room-01 Metric/Collision World And First Deployment Twin - R3 | Registered appearance and metric evidence, complete collision/free space, and a reproducible reference-robot route | active; accepted registration exists, complete collision source open |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
-| M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal | planned |
-| M6 Newton/Isaac Lab/ROS Sensor Conformance - R4 | OpenUSD compiler, Newton backend parity, robot/sensor/clock conformance | planned |
+| M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal; Room-01 is the first fixture | planned |
+| M6 Newton/Isaac Lab/ROS Sensor Conformance - R4 | OpenUSD compiler, Newton backend parity, robot/sensor/clock conformance on Room-01 | planned |
+| M6A Indoor UAV Room-01 Pilot | Bounded takeoff, hover, doorway/corridor, avoidance, landing, and reset episode | planned; starts after M6 without waiting for M7-M9 |
 | M7 Real2Sim Promise And Rigid Calibration - P5/P6 | Matched open-loop trials and held-out task dynamics that improve over defaults | planned |
 | M8 Predictive Eval Studio - P7 | Variations, failure regions, critical-failure recall, and useful policy ranking | planned |
 | M9 Deployment Operations And Continuous R2S2R - P8 | Site revisions, impact analysis, shadow/canary, rollback, and freshness | planned |
-| M10 Expanded Embodiments And Multiphysics | Indoor/outdoor UAVs, vehicles, articulated manipulation, then deformables and coupled physics | planned |
+| M10 Expanded Embodiments And Multiphysics | Expansion beyond M6A: broader indoor and outdoor UAVs, vehicles, articulated manipulation, deformables, and coupled physics | planned |
+
+## Immediate Product Slice: Room-01
+
+The current Room Walkthrough evidence records 168 matched authoritative RGB-D cameras, a
+6,831-frame trajectory, accepted metric registration, a 156,969-point metric seed, and a
+finite classified ARKit mesh with 172,716 vertices and 300,000 triangles. The mesh report is
+`truncated: true`; it remains evidence and cannot become collision authority. The previously
+named standalone review package is not currently reverified on disk, so implementation starts
+by recovering or reproducing a self-contained checksum-bound package without silently
+substituting similarly named artifacts.
+
+Room-01 crosses the roadmap in one bounded sequence:
+
+1. Freeze the exact source manifest and run external Spirula appearance work in parallel with
+   complete or proven coverage-preserving metric-mesh export.
+2. M2 publishes and reopens one immutable World whose appearance, metric, collision,
+   navigation, semantic, and physics roles remain separate.
+3. M3 derives a bounded collider, validates floor/wall/ceiling/opening continuity and doorway
+   clearance, and runs a reproducible reference-mobile-robot route.
+4. M5 compiles the same World into layered OpenUSD and executes it in Newton.
+5. M6 proves standalone Newton, Isaac Lab, and ROS frame, sensor, and route conformance.
+6. M6A runs the bounded indoor-UAV episode in the promoted Room-01 World.
+
+Standard-dataset, equirectangular, capacity, timing, and cross-vendor benchmarks continue as
+parallel claim-validation rails. A hold there does not stop Room-01 unless the exact Room-01
+artifact fails its finite-value, coordinate, visual-observation, metric, collision, storage,
+or runtime gate.
 
 ## Current Implementation Tracks
 
@@ -70,6 +98,10 @@ outcomes and acceptance gates.
   assets preserve unregistered trainer gauge as unknown units with null axes until a separate
   metric registration is accepted. Job quantization describes training storage; asset
   quantization independently describes serialized delivery encoding.
+- The immediate M2 delivery slice supervises one external Room-01 trainer receipt, publishes
+  its visual-only Gaussian Asset beside separately registered metric layers, and reopens the
+  exact immutable World through the packaged desktop path. General editor breadth continues
+  in parallel and does not block this bounded slice.
 - The package reader validates additive Capture Splat handoff v0.3 `training_dataset`
   metadata and rebinds its canonical digest to `source_frames`; the result remains capture
   evidence and cannot create or execute a training job.
@@ -79,10 +111,11 @@ outcomes and acceptance gates.
 - Continue `docs/3dgs_walkthrough_measurement_plan.md`.
 - Harden Spark + Three.js viewing, worker-backed parsing, fixed-camera parity, and LoD.
 - Keep Gaussian appearance out of measurement and collision authority.
-- Spark remains pinned at 2.1.0. The initial benchmark allowlist is NeRF Synthetic Lego,
-  original-3DGS Deep Blending Playroom, and one local 122-frame iPhone capture. Lego and
-  Playroom are available only for private local technical validation while dataset-byte rights
-  remain under review; all other OneDrive assets remain cloud-only.
+- Spark remains pinned at 2.1.0. The standard matrix is NeRF Synthetic Lego for deterministic
+  smoke, original-3DGS Deep Blending Playroom as the completed real-scene control, and complete
+  Mip-NeRF 360 Bonsai `images_2` as the active 360 quality lane. Capture Splat and Room-01 stay
+  separate iPhone capture-to-world lanes. Dataset rights, hashes, and source completeness remain
+  explicit; all unrelated OneDrive assets remain cloud-only.
 - Pinned Spirula Playroom outputs retain arbitrary COLMAP/SfM gauge and are visual-only;
   they cannot support measurement, collision, navigation, or physics until registered to
   separately validated metric geometry. Its mixed training storage does not imply compressed
@@ -118,6 +151,8 @@ outcomes and acceptance gates.
 - Rapier remains the active implementation while Newton parity fixtures are built. New
   product physics work targets the solver-neutral client and Newton worker instead of
   deepening Rapier-specific coupling.
+- Room-01 is the frozen first parity fixture. M6A begins after its M6 conformance set passes;
+  M7-M9 are not prerequisites for that bounded indoor-UAV pilot.
 - Newton is the only intended long-term product physics backend. It must pass local CPU,
   remote NVIDIA, collision, Episode, and task-outcome gates before cutover. Rapier is then
   removed rather than retained as a silent fallback.
@@ -139,6 +174,9 @@ outcomes and acceptance gates.
 ## Evidence-Dependent Work
 
 The following work cannot be promoted by code or visual inspection alone:
+
+Each item holds only its associated claim or promotion. It does not impose a global stop on
+unrelated candidate formation or separately gated Room-01 work.
 
 - physical floor/wall and collision continuity;
 - point-to-point measurement promotion;

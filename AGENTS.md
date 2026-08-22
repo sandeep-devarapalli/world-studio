@@ -30,20 +30,27 @@
 - Treat training-storage quantization and serialized-asset encoding as separate facts. A
   mixed-precision training job may export float32 PLY (`quantization: none`); never label the
   delivery artifact compressed without inspecting its serialized properties.
-- The active 3DGS benchmark allowlist is NeRF Synthetic Lego, original-3DGS Deep Blending
-  Playroom, and private Capture Splat fixture `capture-splat:2026-08-09T060230Z` with 122
-  accepted RGB-D frames. Lego remains metadata-first.
-  Playroom is checksum-validated against all 229 members of the GraphDeco-INRIA-distributed
-  T&T+DB archive and may be used only for private local technical validation while dataset
-  rights remain under review; do not substitute Bonsai. Keep every other OneDrive dataset
-  cloud-only unless the user explicitly changes the allowlist.
+- The active 3DGS lanes are NeRF Synthetic Lego for deterministic smoke, original-3DGS
+  Deep Blending Playroom for the completed real-scene control, Mip-NeRF 360 Bonsai
+  `images_2` for the pinned 360 quality lane, and the private Capture Splat fixture as a
+  separate capture-to-world lane. Keep every other OneDrive dataset cloud-only unless a
+  named gate requires it, and preserve dataset license and checksum evidence.
+- Benchmarks gate claims and promotion, not candidate asset formation or the Room-01
+  metric/physics path. Keep held results explicit while continuing separately authorized
+  world-compilation work.
+- Room-01 is the active physics-ready vertical slice: Gaussian appearance stays visual-only,
+  while registered metric geometry supplies scale, collision, navigation, and Newton/OpenUSD
+  inputs through separate acceptance gates.
+- The first bounded indoor-UAV pilot is M6A immediately after Room-01 passes M6 conformance.
+  It does not wait for M7-M9 and grants no outdoor or general UAV readiness.
 - Performance and capability claims must bind exact dataset bytes, hardware, commands,
   repetitions, raw results, noise controls, quality gates, and a `promote|hold|reject`
   decision. Hold cross-vendor Vulkan, 10M SH3 in 8GB, native equirectangular, and every
   other unmeasured claim.
 - Hold production Spark load claims until measured on the named hardware. Require at least
   20 GiB free before output-producing ladder, packaging, or Spark benchmark runs; do not
-  delete datasets or Time Machine snapshots to force the gate.
+  delete datasets or Time Machine snapshots to force the gate. A missed floor holds that run,
+  not unrelated roadmap work.
 - Use the design tokens and component classes in `packages/design-system`; do not create a
   separate visual language.
 - Destructive operations must be undoable and disabled when not applicable.
