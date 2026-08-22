@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,9 @@ function captureTrainingDataset(frames: Array<{ rgb_path: string; size_bytes: nu
     digest.update(frame.checksum, "ascii");
     digest.update("\n");
   }
+  const registeredNames = frames.map((frame) => frame.rgb_path.replace(/\\/g, "/").split("/").at(-1)!).sort();
+  const registeredNameDigest = createHash("sha256");
+  for (const name of registeredNames) registeredNameDigest.update(`${name}\n`, "utf8");
   return {
     schema: "capture_splat.training_dataset.v0.1",
     capture_profile: "room_interior",
@@ -48,7 +51,7 @@ function captureTrainingDataset(frames: Array<{ rgb_path: string; size_bytes: nu
         camera_models: ["PINHOLE"],
         registered_image_count: frames.length,
         registered_image_invalid_record_count: 0,
-        registered_image_name_digest: `sha256:${"d".repeat(64)}`,
+        registered_image_name_digest: `sha256:${registeredNameDigest.digest("hex")}`,
         registered_image_parse_status: "complete",
         registered_images_available: true,
         registered_rgbd_overlap: {
@@ -56,7 +59,7 @@ function captureTrainingDataset(frames: Array<{ rgb_path: string; size_bytes: nu
           available: true,
           depth_bearing_capture_frame_count: 0,
           matched_count: 0,
-          matched_name_digest: `sha256:${"e".repeat(64)}`,
+          matched_name_digest: sha256(new Uint8Array()),
           matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
           unmatched_registered_image_count: frames.length,
         },
@@ -95,6 +98,11 @@ async function writeJson(root: string, relativePath: string, value: unknown) {
   const filePath = join(root, relativePath);
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function fileReference(root: string, relativePath: string) {
+  const bytes = await readFile(join(root, relativePath));
+  return { path: relativePath, size_bytes: bytes.byteLength, checksum: sha256(bytes) };
 }
 
 afterEach(async () => {
@@ -605,6 +613,9 @@ end_header
         checksum: frameChecksum,
       }
     ];
+    const captureManifestRef = await fileReference(root, "capture.json");
+    const camerasRef = await fileReference(root, "colmap/cameras.txt");
+    const imagesRef = await fileReference(root, "colmap/images.txt");
     await writeJson(root, "capture-splat.world-studio.json", {
       schema: "capture_splat.world_studio_handoff.v0.3",
       status: "visual_evidence_with_3dgs_proposal",
@@ -613,11 +624,11 @@ end_header
       assets: {
         points: "exports/points.ply",
         gaussian: "renders/splat.ply",
-        capture_manifest: "capture.json",
+        capture_manifest: captureManifestRef,
         transforms: "colmap/transforms.json",
         colmap_sparse: {
-          "cameras.txt": "colmap/cameras.txt",
-          "images.txt": "colmap/images.txt"
+          "cameras.txt": camerasRef,
+          "images.txt": imagesRef
         },
         navigation_mesh: "metric/navigation_mesh.ply",
         measurement_points: "metric/measurement_points.ply",
@@ -647,6 +658,12 @@ end_header
       scene_transform: { trainer: "gsplat" },
       initial_camera: { position: [0.5, -0.1, -2], coordinate_frame: "colmap_world", mode: "inside" },
       training_dataset: captureTrainingDataset(sourceFrames),
+      capture_manifest_assets: {
+        schema: "capture_splat.capture_manifest_assets.v0.1",
+        verification: "source_destination_size_and_sha256",
+        complete: true,
+        decision: "ready"
+      },
       artifacts: [
         { kind: "mesh", path: "exports/collision_mesh.obj" }
       ]
@@ -734,6 +751,143 @@ end_header
     expect(payload.captureProfile).toBe("room_interior");
     expect(payload.splatTrainer).toBe("gsplat");
     expect(payload.initialCamera).toEqual({ position: [0.5, -0.1, -2], coordinateFrame: "colmap_world", mode: "inside" });
+
+    const handoffPath = join(root, "capture-splat.world-studio.json");
+    const original = JSON.parse(await readFile(handoffPath, "utf8")) as Record<string, any>;
+    const forgeries: Array<(manifest: Record<string, any>) => void> = [
+      (manifest) => { manifest.training_dataset.evidence.sfm.registered_image_name_digest = `sha256:${"f".repeat(64)}`; },
+      (manifest) => { manifest.training_dataset.evidence.sfm.registered_rgbd_overlap.matched_name_digest = `sha256:${"f".repeat(64)}`; },
+      (manifest) => { manifest.training_dataset.evidence.sfm.registered_rgbd_overlap.depth_bearing_capture_frame_count = 1; },
+      (manifest) => { delete manifest.capture_manifest_assets; },
+      (manifest) => { delete manifest.assets.capture_manifest; },
+    ];
+    for (const forge of forgeries) {
+      const forged = structuredClone(original);
+      forge(forged);
+      await writeJson(root, "capture-splat.world-studio.json", forged);
+      const rejected = await readLocalPackage(root);
+      expect(rejected.captureSplatTrainingDataset).toBeUndefined();
+      expect(rejected.packageIssues).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_capture_splat_training_dataset", severity: "error" })
+      ]));
+    }
+
+    await writeJson(root, "capture-splat.world-studio.json", original);
+    const originalImages = await readFile(join(root, "colmap/images.txt"));
+    await writeFile(join(root, "colmap/images.txt"), Buffer.concat([originalImages, Buffer.from("# stale manifest hash\n")]));
+    const staleAsset = await readLocalPackage(root);
+    expect(staleAsset.captureSplatTrainingDataset).toBeUndefined();
+    await writeFile(join(root, "colmap/images.txt"), originalImages);
+
+    const hexadecimalPose = Buffer.from(originalImages.toString("utf8").replace("1 1 0 0 0 0 0 0 1 frame_000001.png", "1 0x1 0 0 0 0 0 0 1 frame_000001.png"));
+    await writeFile(join(root, "colmap/images.txt"), hexadecimalPose);
+    const hexadecimalManifest = structuredClone(original);
+    hexadecimalManifest.assets.colmap_sparse["images.txt"] = await fileReference(root, "colmap/images.txt");
+    await writeJson(root, "capture-splat.world-studio.json", hexadecimalManifest);
+    const hexadecimalPayload = await readLocalPackage(root);
+    expect(hexadecimalPayload.captureSplatTrainingDataset).toBeUndefined();
+    await writeFile(join(root, "colmap/images.txt"), originalImages);
+
+    const invalidUtf8 = Buffer.concat([originalImages, Buffer.from([0xff])]);
+    await writeFile(join(root, "colmap/images.txt"), invalidUtf8);
+    const invalidUtf8Manifest = structuredClone(original);
+    invalidUtf8Manifest.assets.colmap_sparse["images.txt"] = await fileReference(root, "colmap/images.txt");
+    await writeJson(root, "capture-splat.world-studio.json", invalidUtf8Manifest);
+    const invalidUtf8Payload = await readLocalPackage(root);
+    expect(invalidUtf8Payload.captureSplatTrainingDataset).toBeUndefined();
+    await writeFile(join(root, "colmap/images.txt"), originalImages);
+
+    const bomImages = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), originalImages]);
+    await writeFile(join(root, "colmap/images.txt"), bomImages);
+    const bomManifest = structuredClone(original);
+    bomManifest.assets.colmap_sparse["images.txt"] = await fileReference(root, "colmap/images.txt");
+    await writeJson(root, "capture-splat.world-studio.json", bomManifest);
+    const bomPayload = await readLocalPackage(root);
+    expect(bomPayload.captureSplatTrainingDataset).toBeUndefined();
+    await writeFile(join(root, "colmap/images.txt"), originalImages);
+
+    const subnormalQuaternion = Buffer.from(originalImages.toString("utf8").replace("1 1 0 0 0 0 0 0 1 frame_000001.png", "1 1e-300 0 0 0 0 0 0 1 frame_000001.png"));
+    await writeFile(join(root, "colmap/images.txt"), subnormalQuaternion);
+    const subnormalManifest = structuredClone(original);
+    subnormalManifest.assets.colmap_sparse["images.txt"] = await fileReference(root, "colmap/images.txt");
+    await writeJson(root, "capture-splat.world-studio.json", subnormalManifest);
+    const subnormalPayload = await readLocalPackage(root);
+    expect(subnormalPayload.captureSplatTrainingDataset).toBeUndefined();
+    await writeFile(join(root, "colmap/images.txt"), originalImages);
+
+    const missingDeclaredAsset = structuredClone(original);
+    missingDeclaredAsset.assets.colmap_sparse["points3D.txt"] = {
+      path: "colmap/points3D.txt",
+      size_bytes: 0,
+      checksum: sha256(new Uint8Array())
+    };
+    await writeJson(root, "capture-splat.world-studio.json", missingDeclaredAsset);
+    const missingAsset = await readLocalPackage(root);
+    expect(missingAsset.captureSplatTrainingDataset).toBeUndefined();
+
+    await mkdir(join(root, "depth"), { recursive: true });
+    await writeFile(join(root, "depth", "frame_000001.npy"), new Uint8Array());
+    await writeJson(root, "capture.json", {
+      schema: "capture_splat.v0.1",
+      frames: [{ rgb: "./rgb//frame_000001.png", depth: "./depth//frame_000001.npy" }]
+    });
+    const canonicalCapturePaths = structuredClone(original);
+    canonicalCapturePaths.assets.capture_manifest = await fileReference(root, "capture.json");
+    canonicalCapturePaths.training_dataset.evidence.sfm.registered_rgbd_overlap_count = 1;
+    canonicalCapturePaths.training_dataset.evidence.sfm.registered_rgbd_overlap = {
+      available: true,
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+      depth_bearing_capture_frame_count: 1,
+      matched_count: 1,
+      matched_name_digest: sha256(Buffer.from("frame_000001.png\n")),
+      ambiguous_basename_count: 0,
+      unmatched_registered_image_count: 1
+    };
+    await writeJson(root, "capture-splat.world-studio.json", canonicalCapturePaths);
+    const canonicalCapturePathsPayload = await readLocalPackage(root);
+    expect(canonicalCapturePathsPayload.captureSplatTrainingDataset?.evidence.sfm.registered_rgbd_overlap_count).toBe(1);
+
+    await writeJson(root, "capture.json", { schema: "capture_splat.v0.1", frames: null });
+    const nullFrames = structuredClone(original);
+    nullFrames.assets.capture_manifest = await fileReference(root, "capture.json");
+    nullFrames.training_dataset.evidence.sfm.registered_rgbd_overlap_count = null;
+    nullFrames.training_dataset.evidence.sfm.registered_rgbd_overlap = {
+      available: false,
+      reason: "capture_frames_invalid",
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+      depth_bearing_capture_frame_count: 0,
+      matched_count: 0,
+      ambiguous_basename_count: 0,
+      unmatched_registered_image_count: 2
+    };
+    await writeJson(root, "capture-splat.world-studio.json", nullFrames);
+    const nullFramesPayload = await readLocalPackage(root);
+    expect(nullFramesPayload.captureSplatTrainingDataset?.evidence.sfm.registered_rgbd_overlap).toMatchObject({
+      available: false,
+      reason: "capture_frames_invalid"
+    });
+
+    const noCapture = structuredClone(original);
+    delete noCapture.assets.capture_manifest;
+    delete noCapture.capture_manifest_assets;
+    noCapture.training_dataset.evidence.capture_manifest = { available: false, asset: null };
+    noCapture.training_dataset.evidence.sfm.registered_rgbd_overlap_count = null;
+    noCapture.training_dataset.evidence.sfm.registered_rgbd_overlap = {
+      available: false,
+      reason: "capture_manifest_unavailable",
+      matching: "unique_case_sensitive_rgb_basename_with_same_root_rgb_and_depth_v1",
+      depth_bearing_capture_frame_count: 0,
+      matched_count: 0,
+      ambiguous_basename_count: 0,
+      unmatched_registered_image_count: 2
+    };
+    await writeJson(root, "capture-splat.world-studio.json", noCapture);
+    const noCapturePayload = await readLocalPackage(root);
+    expect(noCapturePayload.captureSplatTrainingDataset?.evidence.sfm.registered_image_count).toBe(2);
+    expect(noCapturePayload.captureSplatTrainingDataset?.evidence.sfm.registered_rgbd_overlap).toMatchObject({
+      available: false,
+      reason: "capture_manifest_unavailable"
+    });
   });
 
   it("fails closed on an unbound Capture Splat v0.3 training dataset", async () => {
