@@ -41,6 +41,9 @@
 - Room-01 is the active physics-ready vertical slice: Gaussian appearance stays visual-only,
   while registered metric geometry supplies scale, collision, navigation, and Newton/OpenUSD
   inputs through separate acceptance gates.
+- A deterministic kinematic controller-pose restore is not a full reset claim. Keep
+  episode/world-state reset held until a bound episode-state contract is restored and
+  verified.
 - The first bounded indoor-UAV pilot is M6A immediately after Room-01 passes M6 conformance.
   It does not wait for M7-M9 and grants no outdoor or general UAV readiness.
 - Performance and capability claims must bind exact dataset bytes, hardware, commands,
