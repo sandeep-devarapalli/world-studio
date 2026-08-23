@@ -362,6 +362,31 @@ and a portal/route contract, so source parity, continuous floor, doorway, full
 episode reset, physical validation, and every authority lane remain held. A
 controller-pose restore is reported separately and never promoted as full reset.
 
+Run a new external four-file reducer bundle with the explicit non-Vitest runner:
+
+```bash
+pnpm validate:reduced-collider -- \
+  --bundle-root /absolute/path/to/reducer-bundle \
+  --benchmark-sha256 sha256:REPLACE_WITH_64_LOWERCASE_HEX \
+  --out /absolute/path/outside-the-bundle/held-receipt.json
+```
+
+The runner derives vertex, face, unknown-face, and semantic counts from the
+checksum-bound reports and candidate bytes; it has no Room-01 count allowlist.
+It calls `validateReducedColliderWalk` exactly once. That one validation retains
+its three internal identical-condition Rapier repetitions. The command fails on
+missing arguments, checksum or authority mismatch, a non-held result, output
+inside the immutable bundle, an existing output file, callback or bundle
+mutation, changed output-parent/file identity, incomplete rails/issues, or
+non-identical determinism digests. Accepted floor, wall, and door rails must
+agree with producer parity, bind to fully supported matching semantic faces,
+and preserve the canonical `0.24m +/- 0.03m` wall/door stop evidence. It
+reserves the mode-`0600` output leaf with
+exclusive no-follow flags before Rapier, then writes and syncs the canonical
+held receipt through that held descriptor. Ordinary `pnpm test` no longer
+contains a conditionally skipped external Room-01 test that can appear to pass
+without executing the bundle.
+
 ## Article / 3D Sidecar Views
 
 World Studio keeps compatibility with:
