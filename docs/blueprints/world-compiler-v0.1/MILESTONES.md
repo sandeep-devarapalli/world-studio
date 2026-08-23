@@ -103,6 +103,15 @@ same-camera capture/reconstruction quality improvement. This does not change M2 
 publish a canonical Asset, or grant metric, collision, navigation, physics, performance,
 quality, or general capacity authority.
 
+The separate 2026-08-23 Room-01 open-door lane produced a finite 1,498,066-splat SH3 PLY of
+371,521,900 bytes after 7,000 Spirula steps. The source PLY hashes to
+`56dc6ab645f099bef670f07516046ce9ddcd65d94c44c007e08f35374bb37bd8`. Spark 2.1
+functional and bound manual reports hash to
+`4e153b9c0b456a7b42a0256915ba218958a7faf20c09c269815d16d6078392c8` and
+`bec934101b91d9a5f6df09fedf6ca3cf2a913a6b30bb5cf5ec2f4bda28158e76`. Exact load and
+inspection are promoted; unrestricted views, named source-camera review, native-360 support,
+robot/drone RGB observations, package authority, and performance remain held.
+
 ## M3 Room-01 Metric/Collision World And First Deployment Twin - R3
 
 Outcome: publish one immutable Room-01 World with registered Spirula appearance, validated
@@ -130,11 +139,29 @@ Acceptance:
 - The Deployment Twin binds the exact World, site revision, robot, task, evidence, and
   freshness status.
 
-Current evidence note (non-normative, 2026-08-22): accepted registration for 168 authoritative
-RGB-D cameras and the 156,969-point metric seed are complete, and registered evidence-mesh
-overlap has been reviewed. The current 300,000-triangle source is correctly held because its
-report says `truncated: true`. The next product gate is a recovered or reproduced self-contained
-package plus complete or coverage-preserving mesh, not another generic visual benchmark.
+Current evidence note (non-normative, 2026-08-23): native SfM registered 411/450 inputs,
+comprising 217/246 video frames and 194/204 authoritative RGB-D frames. Accepted metric
+registration reports `0.455587656 m/unit`, median/p95 residuals of
+`0.029027/0.057314 m`, and a 92,906-point seed. The finite Spirula/Spark appearance candidate
+above satisfies only the visual and functional part of this milestone. Its approximately
+90-degree orientation defect and missing bound source-camera identity remain separate visual
+contract defects.
+
+The capture records one `door_1` crossing, but accepted RGB-D portal membership is
+`side_a/through/side_b = 0/0/204`. The 136,810-vertex, 260,038-face TSDF is not a promotable
+collider: its hybrid candidate has 59.1417% unknown coverage, while the 59,999-face reduction
+has 91.0382% unknown coverage and fails component and replayable-probe rails. Five reducer
+repetitions were byte-identical, with 7.94 s median elapsed time, 611,549,184-byte maximum RSS,
+and zero swaps. Performance remains held because the observations came from one host and
+external USB storage; the benchmark report hashes to
+`5b5b415e151747acc2174b78861d7a4c855261507c084a953e30f1a43e2bb1d2`.
+
+Rapier receipt `0b8cf1b1fca7b0da50f66c7af8df4788a7a22771d05b4166abd065d4333959da`
+accepts parser, checksum, metadata, no-fallback, unknown-region fail-closed, and deterministic
+controller-pose restore checks. Floor, wall, doorway, full episode reset, physical behavior,
+and every collision/navigation/physics authority remain held. The next exact gate is a short
+supplemental reverse doorway RGB-D pass covering side A, threshold, and side B, then a complete
+registered portal/free-space route.
 
 ## M4 Physics Asset Factory - A0-A4
 
@@ -174,6 +201,11 @@ Acceptance:
   the declared parity thresholds.
 - Simulate, Pilot, and Episode cut over to Newton, then Rapier code and dependencies are
   removed with no silent fallback.
+
+Current Room-01 gate (2026-08-23): Newton execution remains blocked until M3 promotes complete
+registered portal/free-space evidence and a collider that passes floor, wall, doorway,
+component, and replayable-probe rails. The held Rapier receipt is diagnostic parity evidence,
+not authorization to start Newton or robot/drone training.
 
 ## M6 Newton/Isaac Lab/ROS Sensor Conformance - R4
 

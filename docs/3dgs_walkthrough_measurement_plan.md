@@ -369,6 +369,53 @@ lane is a separate control and does not revalidate SfM. The next gate is capture
 reconstruction quality improvement with a checksum-bound same-camera before/after comparison,
 not first pipeline execution.
 
+### Room-01 native SfM, Spirula appearance, and portal/collider gate - 2026-08-23
+
+The open-door Room-01 lane exercises the pinned Spirula native SfM candidate rather than the
+older HLOC/COLMAP reconstruction path. It registered 411/450 inputs: 217/246 video frames and
+194/204 authoritative RGB-D frames. ALIKED/LightGlue used Vulkan through MoltenVK, while the
+accurate baseline used CPU double-precision bundle adjustment. This is a same-capture
+product-candidate result, not an all-GPU or speed claim.
+Accepted metric registration reports `0.455587656 m/unit`, with median/p95 residuals of
+`0.029027/0.057314 m`, and produced a 92,906-point metric seed.
+
+At 7,000 steps, external Spirula produced a finite 1,498,066-splat SH3 PLY of 371,521,900
+bytes. The source asset remained unchanged and hashes to
+`56dc6ab645f099bef670f07516046ce9ddcd65d94c44c007e08f35374bb37bd8`. Spark 2.1 passed
+exact load, orbit, inward zoom, inside movement, reset, and teardown. Its functional report
+hashes to `4e153b9c0b456a7b42a0256915ba218958a7faf20c09c269815d16d6078392c8`, and the bound
+manual review hashes to `bec934101b91d9a5f6df09fedf6ca3cf2a913a6b30bb5cf5ec2f4bda28158e76`.
+This promotes finite, inspectable, functional visualization only. Unrestricted-view quality,
+named source-camera review, native-360 support, robot/drone RGB observations, performance,
+and every metric or physics authority remain held. The approximately 90-degree orientation
+error and missing output-index-to-source-camera binding are separate visual contract defects;
+they are not collider evidence.
+
+The trajectory records one `door_1` crossing, but accepted RGB-D portal membership is
+`side_a/through/side_b = 0/0/204`. The TSDF contains 136,810 vertices and 260,038 faces.
+The hybrid candidate leaves 59.1417% unknown; its 59,999-face reduction leaves 91.0382%
+unknown and fails the connected-component and replayable-probe rails. It therefore cannot
+support a floor, wall, doorway, free-space, collision, navigation, or physics claim.
+
+Five reducer repetitions were byte-identical, with 7.94 s median elapsed time,
+611,549,184-byte maximum RSS, and zero swaps. These samples demonstrate deterministic output
+bytes for this fixture, but performance remains held because the run used one host and external
+USB storage. The benchmark report hashes to
+`5b5b415e151747acc2174b78861d7a4c855261507c084a953e30f1a43e2bb1d2`.
+
+The Rapier consumer receipt hashes to
+`0b8cf1b1fca7b0da50f66c7af8df4788a7a22771d05b4166abd065d4333959da`. Parser,
+checksums, metadata, no-fallback behavior, unknown-region fail-closed behavior, and
+controller-pose restore pass. Floor, wall, doorway, full episode reset, physical behavior,
+and all collision/navigation/physics authority remain held. Controller-pose restore is not a
+full reset claim.
+
+Newton remains blocked. The next exact gate is a short supplemental reverse doorway RGB-D
+pass covering side A, threshold, and side B, followed by a complete registered
+portal/free-space route. Only a collider that then passes floor, wall, doorway, component,
+and replayable-probe rails can enter the Rapier parity route and subsequent Newton/OpenUSD
+work.
+
 ## Evidence Gates
 
 - The floor is level and the horizon does not roll in Walk.
@@ -410,13 +457,14 @@ not first pipeline execution.
 | Research and repo audit | Complete | Video inspected; current World Studio and Capture Splat paths audited; Spark, Rapier, Potree, and Apple references reviewed | Preserve findings in code contracts |
 | 3DGS job/asset/benchmark contracts | Implemented; two standard-scene ladders and candidate Spark functional gates passed; production runtime held | Playroom report `a909eb2a...c256c45`; current-candidate preparation regression `31b53e38...8f0181c`; Lego result `a16f0d23...a7323d4`; r4 Spark/manual evidence `598b3d74...70f06a3` / `7b4ab201...5fe61c7` | Review and merge the candidate; retain the standard scenes as controls for same-camera quality comparisons |
 | iPhone HLOC to Spirula to Spark | First end-to-end functional execution complete; package, timing, release, and quality held | SfM validation `1b992660...d9c7d`; Spirula result `d6493854...580d0`; r6 Spark/manual evidence `ace2c758...4cbe9` / `7e55e53a...5a3ba1` | Improve capture and reconstruction quality, then run a checksum-bound same-camera before/after comparison |
-| 1. Capture Splat metric handoff | Complete; physical registration passed | Fresh Room Walkthrough handoff has 168 matched RGB-D cameras, accepted metric registration, a 156,969-point seed, ARKit mesh, and trajectory evidence | Recover or reproduce the exact self-contained package, then export a complete or coverage-preserving mesh without changing source evidence |
-| 1. World Studio metric ingestion | Complete; registered mesh preview accepted | Frame 000001 overlay and mesh-only review place the 60k-face preview over the 7000 splat while Rapier remains at 2 colliders | Keep evidence mesh separate from collision and measurement authority |
-| 2. Walk and Fly cameras | In progress; current room held | Accepted complete fixtures use a Rapier kinematic capsule and triangle collider; the real room keeps Walk disabled because its 300k-face source mesh is non-coverage-preserving truncated | Export a complete or coverage-preserving collision source, then rerun candidate validation |
+| Room-01 native SfM to Spirula to Spark | Functional finite/inspectable candidate promoted; quality and authority held | Native SfM 411/450; 92,906-point registered seed; 1,498,066-splat PLY `56dc6ab...bd8`; Spark/manual reports `4e153b9c...c8` / `bec93410...76` | Fix orientation and native camera identity binding; continue collision work independently |
+| 1. Capture Splat metric handoff | Complete for registration; portal route held | 194/204 RGB-D cameras registered at `0.455587656 m/unit`, median/p95 `0.029027/0.057314 m`; accepted portal membership is `0/0/204` | Capture a short reverse doorway RGB-D supplement spanning side A, threshold, and side B |
+| 1. World Studio metric ingestion | Complete for registered evidence; collision authority held | The 136,810-vertex/260,038-face TSDF is registered; hybrid and reduced candidates retain 59.1417% and 91.0382% unknown coverage | Preserve the metric evidence, compile a complete registered portal/free-space route, then rerun collider rails |
+| 2. Walk and Fly cameras | In progress; current Room-01 Walk held | Rapier parsing and fail-closed behavior pass, but floor, wall, doorway, full reset, physical behavior, and all authority remain held in receipt `0b8cf1b1...9da` | Pass component/probe and doorway/free-space rails before running the reference route; do not start Newton |
 | 3. Surface measurement | Pending | Ground-plane ruler exists; Spark raycasting is enabled | Add metric raycast and annotation export |
 | 4. Large-asset LoD | Pending | Spark 2.1 is installed; large local fixtures are available | Add RAD preparation and paged loading |
-| 5. iPhone walkthrough evidence | In progress | Fresh capture finalized 168 RGB-D keyframes and a 6,831-frame trajectory with finite classified mesh evidence | Activate room-intent guidance and collect RoomPlan semantics |
-| Final validation | Pending | Evidence gates defined above | Pass desktop, mobile, metric, and large-asset gates |
+| 5. iPhone walkthrough evidence | In progress | Open-door capture has one `door_1` trajectory crossing, but its accepted RGB-D set does not bracket the portal | Capture the bounded reverse portal pass and preserve the current immutable capture as evidence |
+| Final validation | Pending | Appearance is finite/inspectable; portal, collider, physics, and robot/drone observation gates remain held | Promote a complete collider and reference route before Newton/OpenUSD or robot/drone episodes |
 
 ## Progress Notes
 

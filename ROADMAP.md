@@ -9,8 +9,8 @@ outcomes and acceptance gates.
 |---|---|---|
 | M0 Live Evidence Foundation | Replay-first Capture Splat sender, strict receiver, resume, reconciliation, and proposal-only UI | completed |
 | M1 Authenticated LAN And Progressive World | Manual-import and replay-first progressive evidence, optional paired TLS transport, and isolated worker lifecycle | partial; iPhone live transport held by thermal evidence |
-| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial; Room-01 packaged publish/reopen path is immediate |
-| M3 Room-01 Metric/Collision World And First Deployment Twin - R3 | Registered appearance and metric evidence, complete collision/free space, and a reproducible reference-robot route | active; accepted registration exists, complete collision source open |
+| M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial; Room-01 visual handoff and Spark functional candidate exist, but the new native revision's canonical publish/reopen remains open |
+| M3 Room-01 Metric/Collision World And First Deployment Twin - R3 | Registered appearance and metric evidence, complete collision/free space, and a reproducible reference-robot route | active and evidence-blocked; registered metric/appearance evidence exists, portal/free-space and collider rails fail closed |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
 | M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal; Room-01 is the first fixture | planned |
 | M6 Newton/Isaac Lab/ROS Sensor Conformance - R4 | OpenUSD compiler, Newton backend parity, robot/sensor/clock conformance on Room-01 | planned |
@@ -22,13 +22,37 @@ outcomes and acceptance gates.
 
 ## Immediate Product Slice: Room-01
 
-The current Room Walkthrough evidence records 168 matched authoritative RGB-D cameras, a
-6,831-frame trajectory, accepted metric registration, a 156,969-point metric seed, and a
-finite classified ARKit mesh with 172,716 vertices and 300,000 triangles. The mesh report is
-`truncated: true`; it remains evidence and cannot become collision authority. The previously
-named standalone review package is not currently reverified on disk, so implementation starts
-by recovering or reproducing a self-contained checksum-bound package without silently
-substituting similarly named artifacts.
+The 2026-08-23 open-door capture is now the active Room-01 checkpoint. Native SfM registered
+411/450 inputs: 217/246 video frames and 194/204 authoritative RGB-D frames. Accepted metric
+registration reports `0.455587656 m/unit`, with median/p95 camera residuals of
+`0.029027/0.057314 m`, and produced a 92,906-point metric seed.
+
+External Spirula training at 7,000 steps produced a finite 1,498,066-splat SH3 PLY of
+371,521,900 bytes, SHA-256
+`56dc6ab645f099bef670f07516046ce9ddcd65d94c44c007e08f35374bb37bd8`. Spark 2.1 exact
+load, orbit, zoom, inside movement, reset, and teardown are promoted as functional and
+finite/inspectable evidence only. The functional report hashes to
+`4e153b9c0b456a7b42a0256915ba218958a7faf20c09c269815d16d6078392c8`; its bound manual
+review hashes to `bec934101b91d9a5f6df09fedf6ca3cf2a913a6b30bb5cf5ec2f4bda28158e76`.
+Unrestricted-view quality, named source-camera review, native-360 support, and robot/drone RGB
+observations remain held.
+
+Physics readiness remains blocked. The capture records one `door_1` crossing, but accepted
+RGB-D portal membership is `side_a/through/side_b = 0/0/204`, so it does not prove a
+registered route through the opening. The TSDF has 136,810 vertices and 260,038 faces. Its
+hybrid candidate is 59.1417% unknown; the 59,999-face reduction is 91.0382% unknown and
+fails the component and replayable-probe rails. Five reducer repetitions were byte-identical
+with 7.94 s median elapsed time, 611,549,184-byte maximum RSS, and zero swaps, but performance
+is held because this is one host on external USB storage. The benchmark report hashes to
+`5b5b415e151747acc2174b78861d7a4c855261507c084a953e30f1a43e2bb1d2`.
+
+The Rapier receipt, SHA-256
+`0b8cf1b1fca7b0da50f66c7af8df4788a7a22771d05b4166abd065d4333959da`, accepts parsing,
+checksums, metadata, no-fallback behavior, unknown-region fail-closed behavior, and
+controller-pose restore. It holds floor, wall, doorway, full episode reset, physical behavior,
+and every collision/navigation/physics authority. Newton therefore remains blocked. The next
+exact gate is a short supplemental reverse doorway RGB-D pass covering side A, threshold, and
+side B, followed by a complete registered portal/free-space route.
 
 Room-01 crosses the roadmap in one bounded sequence:
 
