@@ -41,6 +41,12 @@
 - Room-01 is the active physics-ready vertical slice: Gaussian appearance stays visual-only,
   while registered metric geometry supplies scale, collision, navigation, and Newton/OpenUSD
   inputs through separate acceptance gates.
+- For an interior-only capture, clouding and floaters outside the observed camera volume are
+  expected missing-ray behavior. Grade declared interior views and keep training steps distinct
+  from retained Gaussian count; unsupported exterior views do not block an experimental World.
+- "Both sides" of a doorway means the two spatial sides of one portal, not two physical doors.
+  One-sided evidence may form an experimental proxy only when inferred surfaces are explicit
+  hypotheses, unknown space is no-go, and every collision/navigation/physics authority is false.
 - A deterministic kinematic controller-pose restore is not a full reset claim. Keep
   episode/world-state reset held until a bound episode-state contract is restored and
   verified.

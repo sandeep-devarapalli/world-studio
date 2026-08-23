@@ -111,6 +111,10 @@ functional and bound manual reports hash to
 `bec934101b91d9a5f6df09fedf6ca3cf2a913a6b30bb5cf5ec2f4bda28158e76`. Exact load and
 inspection are promoted; unrestricted views, named source-camera review, native-360 support,
 robot/drone RGB observations, package authority, and performance remain held.
+Exterior clouding and floaters are expected outside this interior-only capture's observed-ray
+volume and do not downgrade the supported interior. `7,000` is the training-step count, not the
+retained Gaussian count; longer rungs may improve supported-view appearance but cannot create
+unobserved metric or collision geometry.
 
 ## M3 Room-01 Metric/Collision World And First Deployment Twin - R3
 
@@ -159,9 +163,11 @@ external USB storage; the benchmark report hashes to
 Rapier receipt `0b8cf1b1fca7b0da50f66c7af8df4788a7a22771d05b4166abd065d4333959da`
 accepts parser, checksum, metadata, no-fallback, unknown-region fail-closed, and deterministic
 controller-pose restore checks. Floor, wall, doorway, full episode reset, physical behavior,
-and every collision/navigation/physics authority remain held. The next exact gate is a short
-supplemental reverse doorway RGB-D pass covering side A, threshold, and side B, then a complete
-registered portal/free-space route.
+and every collision/navigation/physics authority remain held. Side A and side B are the two
+spatial sides of this one portal, not two physical doors. A supplemental reverse pass remains
+useful evidence, but it is not a prerequisite for forming an experimental proxy World: unknown
+space must stay no-go, inferred surfaces must be marked hypotheses, and no proxy may acquire
+collision, navigation, physics, or training authority until the existing M3 rails pass.
 
 ## M4 Physics Asset Factory - A0-A4
 
@@ -202,10 +208,14 @@ Acceptance:
 - Simulate, Pilot, and Episode cut over to Newton, then Rapier code and dependencies are
   removed with no silent fallback.
 
-Current Room-01 gate (2026-08-23): Newton execution remains blocked until M3 promotes complete
-registered portal/free-space evidence and a collider that passes floor, wall, doorway,
-component, and replayable-probe rails. The held Rapier receipt is diagnostic parity evidence,
-not authorization to start Newton or robot/drone training.
+Current Room-01 gate (2026-08-23): experimental Newton execution may start with synthetic or
+hypothesis-tagged proxy layers whose authority is false and whose unknown space is no-go.
+Newton 1.5.0 on Apple M2 Max CPU has passed a bounded synthetic floor/wall contact and exact
+three-repetition reset smoke; receipt SHA-256 is
+`3840bc6e01bf0fcf4b9c83362a2d8a62f29257a20457e12f4d57083000ad6988`.
+Production collision, route episodes, robot/drone training, and product cutover remain blocked
+until M3 promotes registered free space and a collider that passes floor, wall, doorway,
+component, physical, and replayable-probe rails.
 
 ## M6 Newton/Isaac Lab/ROS Sensor Conformance - R4
 
