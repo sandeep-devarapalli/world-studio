@@ -45,10 +45,11 @@ accepted metric registration, or registered evidence-mesh review.
 5. Pass M3 using the frozen Rapier baseline:
    - run `spawn -> doorway -> no-go avoidance -> return to spawn or dock -> reset`;
    - bind deterministic state, contact, route, sensor, and outcome evidence.
-6. Build M5 in separate PRs:
+6. Build the non-authoritative M5 foundation in parallel with M3 promotion, in separate PRs:
    - introduce the solver-neutral `SimulationClient`;
    - add the supervised Python worker and layered OpenUSD compilation;
-   - prove Room-01 load/spawn/contact/reset on macOS CPU;
+   - prove a synthetic load/spawn/contact/reset fixture on macOS CPU, then exercise a
+     hypothesis-tagged Room-01 proxy with unknown space as no-go;
    - run the same fixture on pinned Linux/NVIDIA before product cutover.
 7. Pass M6 with the same immutable World/Asset/Robot/Sensor/Task versions across standalone
    Newton, Isaac Lab, and ROS 2 frame, clock, control, and sensor contracts.
@@ -68,6 +69,8 @@ finite-value, coordinate, visual-observation, metric, collision, storage, or run
 
 - Gaussian appearance never becomes metric, collision, navigation, or physics authority.
 - Newton consumes only separately validated metric/OpenUSD collision layers.
+- Experimental Room-01 completion may fill bounded gaps only as explicit hypotheses with all
+  collision/navigation/physics authority false; it cannot authorize robot or drone training.
 - Do not mutate the original capture, sparse model, truncated mesh, or trained Gaussian.
 - Do not vendor Spirula, Newton, Isaac, CUDA, or other external runtimes into an incompatible
   shipped boundary.

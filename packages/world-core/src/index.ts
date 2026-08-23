@@ -6,6 +6,7 @@ export type StudioMode = "view" | "edit" | "simulate" | "pilot" | "sensors" | "e
 export * from "./gaussian-pipeline-contract.js";
 export * from "./capture-splat-consumer-receipt-contract.js";
 export * from "./world-graph-contract.js";
+export * from "./physics-smoke-cell.js";
 
 export type RenderMode = "splat" | "points" | "mesh" | "semantic" | "depth";
 
