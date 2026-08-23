@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:live-e2e": "pnpm --filter @world-studio/desktop build && node scripts/validate-live-session-e2e.mjs",
     "test:ui": "playwright test",
+    "validate:reduced-collider": "vite build --config scripts/reduced-collider-runner.vite.config.mjs && node scripts/dist/reduced-collider-held-runner/validate-reduced-collider-held.mjs",
     "validate:blueprint": "node scripts/validate-world-compiler-blueprint.mjs",
     "clone:upstreams": "node scripts/clone-upstreams.mjs",
     "typecheck": "pnpm -r typecheck",
