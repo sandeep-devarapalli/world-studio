@@ -169,6 +169,14 @@ useful evidence, but it is not a prerequisite for forming an experimental proxy 
 space must stay no-go, inferred surfaces must be marked hypotheses, and no proxy may acquire
 collision, navigation, physics, or training authority until the existing M3 rails pass.
 
+The first such experimental proxy now binds seven RoomPlan wall proposals, nine inflated
+object boxes, an inferred floor, an unknown-side guard at `door_1`, and a guard over the
+unvalidated `door_0` proposal. Three Newton CPU repetitions made identical physical guard
+contact and exact resets. Receipt SHA-256 is
+`20eb471532dbef1ab1a8aa7a52e2017c0a6b19829890fc626b9e02cbe3ba9357`.
+This promotes only conservative experimental contact/reset execution; the Gaussian is unused
+for collision and every Room-01 authority remains false.
+
 ## M4 Physics Asset Factory - A0-A4
 
 Outcome: reusable objectized assets with registered visual, metric, collision, semantic,
@@ -213,6 +221,10 @@ hypothesis-tagged proxy layers whose authority is false and whose unknown space 
 Newton 1.5.0 on Apple M2 Max CPU has passed a bounded synthetic floor/wall contact and exact
 three-repetition reset smoke; receipt SHA-256 is
 `3840bc6e01bf0fcf4b9c83362a2d8a62f29257a20457e12f4d57083000ad6988`.
+The subsequent Room-01 proposal proxy also passed three identical guard-contact/reset runs;
+receipt SHA-256 is
+`20eb471532dbef1ab1a8aa7a52e2017c0a6b19829890fc626b9e02cbe3ba9357`, with USD import still
+held because the pinned environment did not include `pxr`.
 Production collision, route episodes, robot/drone training, and product cutover remain blocked
 until M3 promotes registered free space and a collider that passes floor, wall, doorway,
 component, physical, and replayable-probe rails.
