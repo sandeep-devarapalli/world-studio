@@ -2,7 +2,9 @@
 
 ## Decision
 
-Newton is the target World Studio physics runtime. It is not a browser dependency.
+Newton is the default World Studio OpenUSD/general physics runtime. SuperDex is a separate
+contact-rich specialist; neither engine is a browser dependency. This document specifies the
+Newton side of the shared capability-routed boundary.
 
 ```mermaid
 flowchart LR
@@ -11,10 +13,12 @@ flowchart LR
     C --> D["Electron worker supervisor"]
     D --> E["Local Newton worker on macOS CPU"]
     D --> F["Remote Newton worker on Linux NVIDIA"]
+    D --> L["SuperDex contact worker"]
     F --> G["Isaac Lab Newton adapter"]
     C --> H["Optional Isaac RTX, Isaac Sim, and ROS 2 adapters"]
     E --> I["Ordered state, contacts, sensors, and episodes"]
     F --> I
+    L --> I
     I --> J["World Studio simulation client"]
     J --> K["Spark and Three.js presentation"]
 ```
@@ -26,6 +30,7 @@ flowchart LR
 | Capture Splat | Immutable source evidence, metric priors, calibration-trial recordings, and deployment recaptures |
 | World Studio | World and asset versions, task/eval/deployment records, authority, and promotion |
 | Newton worker | Dynamics, contacts, joints, physical state, physics sensors, and deterministic stepping |
+| SuperDex worker | Contact-rich dynamics, dense force distributions, tactile/contact observations, and supported deformables |
 | Spark and Three.js | Visual/Gaussian rendering, editing, overlays, picking, and interpolated display |
 | Isaac Lab Newton | Parallel policy training and batch evaluation |
 | Isaac/ROS adapters | Separately validated rendering, sensors, robot interfaces, and conformance |
@@ -40,7 +45,7 @@ IPC. The web renderer receives a solver-neutral `SimulationClient` API.
 
 Every worker session reports:
 
-- Newton, Warp, MuJoCo, MuJoCo Warp, Python, OS, driver, and device versions;
+- backend, adapter, Python, OS, driver, device, and all backend dependency versions;
 - solver-profile ID and immutable configuration hash;
 - source World, Asset, Robot, Sensor, and Task hashes;
 - coordinate frame, units, gravity, timestep, substeps, seed, and determinism mode;
@@ -57,7 +62,7 @@ mutate the canonical World Package.
 
 First parity profile for rigid and articulated mobile robots:
 
-- Newton 1.4.0 baseline;
+- Newton 1.5.0 baseline;
 - `SolverMuJoCo`;
 - `use_mujoco_cpu=true` on macOS;
 - MuJoCo Warp on supported Linux/NVIDIA workers;

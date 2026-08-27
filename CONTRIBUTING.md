@@ -43,15 +43,16 @@ Preserve the current and target runtime boundaries:
 - **Three.js** provides scene, camera, and editor composition.
 - **Rapier** currently provides local rigid-body and collision simulation. It is the
   feature-frozen parity baseline for the approved migration.
-- **Newton** is the target physics runtime through a supervised worker. It is not yet an
-  implemented product dependency.
+- **Newton** is the default OpenUSD/general physics runtime through a supervised worker.
+- **SuperDex** is the contact-rich specialist through a separate supervised worker. It is
+  not a silent fallback or a replacement for task-specific capability evidence.
 - External workers such as reconstruction or simulator services remain explicit, optional
   processes with versioned inputs and outputs.
 
 A change to these boundaries must follow the
 [Newton migration gates](docs/blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/NEWTON_MIGRATION_MILESTONES.md),
-with compatibility tests and a rollback path. Do not add a silent Rapier fallback after
-Newton cutover.
+with compatibility tests and a rollback path. After Rapier cutover, do not add a hidden
+browser fallback or switch between Newton and SuperDex when an explicit request fails.
 
 ## Authority Language
 
@@ -118,7 +119,7 @@ Before proposing an external dependency, model, dataset, or code reference, reco
   dependency, model, or dataset;
 - transitive license, platform, security, maintenance, and distribution implications;
 - compatibility with the six modes, Spark/Three.js visual boundary, and solver-neutral
-  Newton target architecture;
+  capability-routed physics architecture;
 - adoption, defer, research-only, or reject decision with acceptance gates.
 
 Do not copy GPL, proprietary, or license-unclear code into the Apache-2.0 runtime. Research

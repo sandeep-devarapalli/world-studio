@@ -27,8 +27,8 @@ It is not a claim that every proposed subsystem exists.
   tiers and promotion rules.
 - [`NEXT_IMPLEMENTATION_PROMPT.md`](NEXT_IMPLEMENTATION_PROMPT.md) is the current actionable
   handoff.
-- [`r2s2r-newton-2026-07-29/`](r2s2r-newton-2026-07-29/) reconciles the supplied R2S2R
-  research and defines the gated Newton target architecture.
+- [`r2s2r-newton-2026-07-29/`](r2s2r-newton-2026-07-29/) preserves the original Newton
+  adoption research and defines its place in the gated capability-routed architecture.
 - [`SOURCE_BRIEF.md`](SOURCE_BRIEF.md) is the repository-linked version of the supplied
   proposal.
 - [`source/`](source/) preserves every extracted source file unchanged.
@@ -60,12 +60,13 @@ enums.
 
 ## Runtime Boundary
 
-Spark + Three.js remains the visual browser/Electron runtime. Rapier remains the active
-simulation implementation only while solver-neutral and Newton parity gates are built.
-Newton is the target physics runtime through a supervised Python worker; it is not yet an
-implemented dependency. Isaac Lab Newton, Isaac RTX, Isaac Sim, and ROS 2 remain external,
-capability-tested adapters.
+Spark + Three.js remains the visual browser/Electron runtime. Rapier remains active only
+while solver-neutral worker parity gates are built. Newton is the default OpenUSD/general
+runtime; SuperDex is the contact-rich specialist. Both run through separate supervised
+workers selected by explicit capabilities. Isaac Lab Newton, Isaac RTX, Isaac Sim, and ROS 2
+remain external, capability-tested adapters.
 
-The migration ends by removing Rapier after parity and cutover. It does not retain a silent
-fallback or two competing physics authorities. This blueprint preserves the six World
-Studio modes: View, Edit, Simulate, Pilot, Sensors, and Episode.
+The migration ends by removing Rapier after parity and cutover. An explicit backend request
+never falls back to another engine, and each result retains its backend/task authority. This
+blueprint preserves the six World Studio modes: View, Edit, Simulate, Pilot, Sensors, and
+Episode.

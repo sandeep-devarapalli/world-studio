@@ -6,8 +6,9 @@ is relevant and whether it can be used as a dependency in an Apache 2.0 project.
 | Repo | License | World Studio Role | Apache Repo Status |
 |---|---:|---|---|
 | `sparkjsdev/spark` | MIT | Primary Three.js Gaussian splat renderer candidate. | Safe dependency after API review. |
-| `dimforge/rapier` | Apache-2.0 | Current browser/Electron physics implementation and migration parity baseline. | Active but removal-bound after Newton cutover; freeze new backend-specific product work. |
-| `newton-physics/newton` | Apache-2.0 | Target physics runtime through a supervised Python worker. | Planned runtime dependency after pinned local/remote parity, collision, and Episode gates. |
+| `dimforge/rapier` | Apache-2.0 | Current browser/Electron physics implementation and migration parity baseline. | Active but removal-bound after solver-neutral worker cutover; freeze new backend-specific product work. |
+| `newton-physics/newton` | Apache-2.0 | Default OpenUSD/general physics runtime through a supervised Python worker. | Planned runtime dependency after pinned local/remote parity, collision, and Episode gates. |
+| `facebookresearch/project_superdex` at `1d7150946fa3f3d3fb09c2bff07eaa138cbfdee6` | Apache-2.0 first-party code; CC-BY-4.0 docs/assets; component-specific third-party terms | Contact-rich physics/robotics worker and native Studio behavior reference. | Use pinned `superdex-physics` and `superdex-robotics` packages only after capability gates. Never bundle the GPLv3 `superdex_mesh_cli` or assume bundled asset rights; audit every redistributed asset. |
 | `NVIDIA/warp` | Apache-2.0 | Newton compute/runtime foundation and device capability boundary. | Transitive target dependency; pin and report exact version/device capabilities. |
 | `playcanvas/splat-transform` | MIT | Splat conversion, filtering, LoD, voxel/collision preprocessing reference/tool. | Safe dependency after CLI/runtime review. |
 | `playcanvas/supersplat` | MIT | Browser 3DGS editor UX reference. | Reference or dependency after review. |

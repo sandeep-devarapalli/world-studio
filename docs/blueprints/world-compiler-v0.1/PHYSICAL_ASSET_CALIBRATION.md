@@ -9,7 +9,8 @@ guessing and does not add a seventh application mode.
 - **Edit:** objectization, visual/metric/collision geometry, priors, parameter review, and
   asset versions.
 - **Sensors:** apparatus, scale, camera, clock, force/torque, and robot calibration.
-- **Simulate:** current Rapier fixtures, target Newton experiments, external adapter replay,
+- **Simulate:** current Rapier fixtures, capability-routed Newton/SuperDex experiments,
+  external adapter replay,
   sampled parameters, and residual overlays.
 - **Episode:** immutable real/sim trial groups, holdouts, decisions, and promoted versions.
 
@@ -78,10 +79,10 @@ Calibration tiers (`C0-C5`), asset maturity (`A0-A6`), Real2Sim Promise levels (
 and world/robot readiness (`R0-R5`) are separate namespaces. Advancement in one does not
 automatically advance another.
 
-Newton becomes the canonical simulator scope only after the
+Capability-routed workers become product simulator scope only after the
 [migration gates](r2s2r-newton-2026-07-29/NEWTON_MIGRATION_MILESTONES.md) pass. Existing
 Rapier experiments remain historical or parity evidence and cannot silently substitute for
-a declared Newton solver profile.
+a declared Newton or SuperDex profile.
 
 ## Technical References
 

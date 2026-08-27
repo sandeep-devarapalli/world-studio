@@ -4,6 +4,9 @@
 
 - World Studio is Apache 2.0. Do not copy GPL or proprietary runtime code into the shipped
   source tree.
+- Project SuperDex is audited at `1d7150946fa3f3d3fb09c2bff07eaa138cbfdee6`.
+  Install `superdex-physics` and `superdex-robotics` separately in an isolated worker; do
+  not depend on the umbrella package, bundle `superdex_mesh_cli`, or copy SuperDex Studio UI.
 - Spirula Studio is reference/external-process only at audited revision
   `aede0ae3b2d01a7930c71b9c7f52354dc180146b` (GPL-3.0). Do not vendor, translate,
   or copy its implementation block-by-block into World Studio.
@@ -41,6 +44,11 @@
 - Room-01 is the active physics-ready vertical slice: Gaussian appearance stays visual-only,
   while registered metric geometry supplies scale, collision, navigation, and Newton/OpenUSD
   inputs through separate acceptance gates.
+- Newton is the default OpenUSD, general simulation, Isaac, and batched-training backend.
+  SuperDex is the contact-rich specialist. Select either only through versioned task
+  capabilities, never through a silent fallback, and keep backend results task-scoped.
+- Reproduce SuperDex Studio behavior inside the existing Edit, Simulate, Pilot, Sensors, and
+  Episode modes; do not add a seventh mode or embed its native desktop application.
 - For an interior-only capture, clouding and floaters outside the observed camera volume are
   expected missing-ray behavior. Grade declared interior views and keep training steps distinct
   from retained Gaussian count; unsupported exterior views do not block an experimental World.
