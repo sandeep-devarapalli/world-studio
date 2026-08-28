@@ -12,13 +12,14 @@ outcomes and acceptance gates.
 | M2 Canonical World, Asset And Delta Graph | Immutable versions, transform graph, content-addressed artifacts, reversible edits, site deltas, and proposal-only 3DGS job/asset/benchmark contracts | partial; Room-01 visual handoff and Spark functional candidate exist, but the new native revision's canonical publish/reopen remains open |
 | M3 Room-01 Metric/Collision World And First Deployment Twin - R3 | Registered appearance and metric evidence, complete collision/free space, and a reproducible reference-robot route | active and evidence-blocked; registered metric/appearance evidence exists, portal/free-space and collider rails fail closed |
 | M4 Physics Asset Factory - A0-A4 | Objectization, direct measurement, collider validation, and task-scoped physical calibration | planned |
-| M5 Newton Runtime And OpenUSD Foundation | Solver-neutral client, supervised Newton worker, local/remote parity, Rapier removal; Room-01 is the first fixture | planned |
+| M5 Capability-Routed Physics And OpenUSD Foundation | Solver-neutral client, supervised Newton and SuperDex workers, explicit capabilities, Rapier removal; Room-01 is the first fixture | active; additive backend-requirements contract exists |
+| M5A Observed-Room Tabletop Manipulation | Fixed Franka, validated table/cube assets, backend A/B, contact-rich pick/place/reset Episode | planned after M4 contact assets and M5 worker foundation |
 | M6 Newton/Isaac Lab/ROS Sensor Conformance - R4 | OpenUSD compiler, Newton backend parity, robot/sensor/clock conformance on Room-01 | planned |
 | M6A Indoor UAV Room-01 Pilot | Bounded takeoff, hover, doorway/corridor, avoidance, landing, and reset episode | planned; starts after M6 without waiting for M7-M9 |
 | M7 Real2Sim Promise And Rigid Calibration - P5/P6 | Matched open-loop trials and held-out task dynamics that improve over defaults | planned |
 | M8 Predictive Eval Studio - P7 | Variations, failure regions, critical-failure recall, and useful policy ranking | planned |
 | M9 Deployment Operations And Continuous R2S2R - P8 | Site revisions, impact analysis, shadow/canary, rollback, and freshness | planned |
-| M10 Expanded Embodiments And Multiphysics | Expansion beyond M6A: broader indoor and outdoor UAVs, vehicles, articulated manipulation, deformables, and coupled physics | planned |
+| M10 Expanded Embodiments And Multiphysics | Expansion beyond M5A/M6A: broader manipulation, dexterous hands, indoor/outdoor UAVs, vehicles, deformables, and coupled physics | planned |
 
 ## Immediate Product Slice: Room-01
 
@@ -94,7 +95,7 @@ or runtime gate.
 - The M1 software worker boundary now defines strict capabilities, immutable checksum-bound
   inputs, requested budgets, explicit start/stop/retry, bounded logs, durable restart
   reconciliation, and verified proposal outputs. No reconstruction runtime is bundled, and
-  these jobs do not implement or claim the M5 Newton physics runtime.
+  these jobs do not implement or claim the M5 physics workers.
 - Local Capture Splat finalization plus Manual Export is the production ingestion path.
   Physical Bonjour, firewall, interruption, restart, and multi-cycle evidence are optional
   live-transport promotion gates and do not block M1 progressive-world work.
@@ -176,14 +177,14 @@ or runtime gate.
 
 ### Simulation, Calibration And R2S2R
 
-- Rapier remains the active implementation while Newton parity fixtures are built. New
-  product physics work targets the solver-neutral client and Newton worker instead of
-  deepening Rapier-specific coupling.
+- Rapier remains the active implementation while solver-neutral worker parity fixtures are
+  built. New product physics work targets the capability-routed client and supervised
+  workers instead of deepening Rapier-specific coupling.
 - Room-01 is the frozen first parity fixture. M6A begins after its M6 conformance set passes;
   M7-M9 are not prerequisites for that bounded indoor-UAV pilot.
-- Newton is the only intended long-term product physics backend. It must pass local CPU,
-  remote NVIDIA, collision, Episode, and task-outcome gates before cutover. Rapier is then
-  removed rather than retained as a silent fallback.
+- Newton is the default OpenUSD/general/Isaac backend; SuperDex is the contact-rich
+  specialist. Each must pass its declared import, contact, reset, Episode, and task-outcome
+  gates. Explicit backend requests fail closed, and Rapier is removed after client parity.
 - Physical Asset Calibration spans Edit, Sensors, Simulate, and Episode; it is not a new
   top-level mode.
 - Real2Sim Promise, Physics Asset Factory, Eval Studio, and Deployment Twin are connected
@@ -214,7 +215,7 @@ unrelated candidate formation or separately gated Room-01 work.
   distributions, and fixed-camera quality on each claimed hardware class;
 - cross-vendor Vulkan, native equirectangular, and 10M SH3 in 8GB claims;
 - physical calibration apparatus and held-out trials;
-- Newton local/remote parity and effective-collider conformance;
+- Newton local/remote parity, SuperDex contact-task parity, and effective-collider conformance;
 - matched open-loop real/sim observation and outcome residuals;
 - useful policy ranking, failure-region overlap, and false-safe controls;
 - deployment recapture, impact analysis, canary, and rollback evidence;

@@ -1,8 +1,8 @@
 # R2S2R And Newton Adoption Note
 
-This folder reconciles the supplied Dirac-inspired Real2Sim material, the World Labs
-real-to-sim-to-real (R2S2R) direction, and the request to make Newton the target World
-Studio physics runtime.
+This folder began as the Newton adoption package. The active architecture now keeps Newton
+as the default OpenUSD/general runtime and adds SuperDex as a contact-rich specialist behind
+the same solver-neutral product boundary.
 
 It is a planning and provenance package. It does not establish that Newton integration,
 physics calibration, policy predictivity, or deployment operations are implemented.
@@ -15,11 +15,11 @@ physics calibration, policy predictivity, or deployment operations are implement
   Deployment versions plus promotion decisions.
 - Spark and Three.js remain World Studio's visual composition and Gaussian rendering
   layer.
-- Newton is the only intended long-term product physics backend. It runs in a supervised
-  Python worker rather than in the React bundle.
-- Rapier remains a temporary implementation dependency until Newton reproduces the
-  accepted local movement, collision, and Episode fixtures. It is not a silent fallback or
-  a second physics authority after cutover.
+- Newton is the default OpenUSD/general/Isaac backend. SuperDex is the contact-rich
+  specialist. Each runs in its own supervised worker rather than in the React bundle.
+- Rapier remains temporary until the solver-neutral client reproduces accepted fixtures. It
+  is not a silent fallback after cutover, and an explicit Newton or SuperDex request may not
+  switch engines on failure.
 - Isaac Lab Newton is the first parallel training and evaluation adapter. Isaac RTX,
   Isaac Sim, and ROS 2 remain separately capability-tested adapters.
 - The six World Studio modes remain View, Edit, Simulate, Pilot, Sensors, and Episode.
@@ -96,3 +96,9 @@ As of 2026-07-29:
 
 These facts justify the target architecture. They do not prove World Studio parity,
 performance, or physical validity.
+
+Current update (2026-08-27): Newton 1.5.0 is the pinned general-runtime baseline. Project
+SuperDex 1.0.0 at `1d7150946fa3f3d3fb09c2bff07eaa138cbfdee6` is the pinned contact-rich
+research baseline. Its first-party code is Apache-2.0, but `superdex_mesh_cli` is GPLv3 and
+third-party assets retain separate terms. World Studio therefore installs only the reviewed
+Physics and Robotics packages in an isolated worker and implements Studio behavior natively.

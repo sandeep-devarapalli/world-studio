@@ -23,8 +23,9 @@ task-scoped simulation. The public
 direction with the implementation already on `main`, including milestone gates and the
 Physical Asset Calibration subsystem. The
 [R2S2R and Newton adoption note](docs/blueprints/world-compiler-v0.1/r2s2r-newton-2026-07-29/README.md)
-defines Newton as the target physics runtime and preserves Rapier as the current,
-removal-bound migration baseline until parity gates pass.
+defines Newton as the default OpenUSD/general runtime, SuperDex as the contact-rich
+specialist, and Rapier as the current removal-bound migration baseline until parity gates
+pass.
 
 This repository is the Apache 2.0 implementation of the World Studio product described
 in `docs/source-materials/World studio development.docx` and designed in
@@ -57,9 +58,8 @@ access flow in this repo today.
   breadcrumbs, and screenshot smoke coverage.
 - Rapier-backed simulation substrate for deterministic Pilot movement, spawn placement,
   prop spawning, collision/debug overlays, selected-prop inspection, and Episode recording.
-- A documented Newton migration boundary. Newton is not implemented yet; the target is an
-  Electron-supervised Python worker with explicit solver profiles, capability reports, and
-  local CPU or remote NVIDIA execution.
+- A documented capability-routed physics boundary. Newton and SuperDex are not implemented
+  product workers yet; each requires explicit profiles, capability reports, and task gates.
 - Browser and Electron package loading for World Studio packages, generic JSON packages,
   Budo-compatible manifests, article figure views, and verified export folders.
 - An explicit loopback-only Capture Splat live-session receiver for replaying source-frame

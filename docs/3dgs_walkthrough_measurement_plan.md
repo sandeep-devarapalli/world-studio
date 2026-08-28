@@ -674,8 +674,8 @@ checksum-bound candidate report. Metric measurement remains blocked.
   `aede0ae3b2d01a7930c71b9c7f52354dc180146b`; no implementation code is copied into World
   Studio.
 - Rapier remains the current browser physics implementation for this plan checkpoint. The
-  public roadmap targets a supervised Newton worker and removes Rapier only after parity
-  and cutover gates pass.
+  public roadmap targets capability-routed supervised workers and removes Rapier only after
+  parity and cutover gates pass.
 - Potree is an evaluation reference for ordinary large point clouds.
 - AHOLO patterns inform navigation and LoD UX but are not a runtime dependency.
 - Source frames remain visual evidence.

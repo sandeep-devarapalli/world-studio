@@ -111,7 +111,8 @@ ownership model:
   edits, readiness, robot/task profiles, adapters, and Episodes.
 - Spark + Three.js provides visual composition and Gaussian rendering.
 - Rapier is the active, feature-frozen migration baseline for local preview execution.
-- Newton is the target physics runtime through a supervised Python worker.
+- Newton is the default OpenUSD/general runtime through a supervised Python worker.
+- SuperDex is the contact-rich specialist through a separate supervised worker.
 - Isaac Lab Newton, Isaac RTX, Isaac Sim, ROS 2, reconstruction, and other adapters run
   through external, capability-reporting workers.
 
@@ -243,13 +244,13 @@ one role never gains another role's authority automatically.
 
 ## Physics Runtime Migration Boundary
 
-Newton is not imported into the React bundle. Electron supervises an isolated Python worker
-and exposes a solver-neutral `SimulationClient` to the renderer.
+Newton and SuperDex are not imported into the React bundle. Electron supervises isolated
+workers and exposes a solver-neutral, capability-routed `SimulationClient` to the renderer.
 
-The worker owns physics state, contacts, joints, physics sensors, stepping, and failure
-evidence. Every session binds exact World, Asset, Robot, Sensor, Task, solver profile,
-Newton, Warp, MuJoCo, contact-pipeline, platform, device, timestep, substep, seed, and
-capability data. Spark and Three.js display interpolated state but never become the
+The selected worker owns physics state, contacts, joints, physics sensors, stepping, and
+failure evidence. Every session binds exact World, Asset, Robot, Sensor, Task, backend,
+adapter, solver profile, runtime dependencies, platform, device, timestep, substep, seed,
+and capability data. Spark and Three.js display interpolated state but never become the
 authoritative physics clock.
 
 Migration is gated:
@@ -258,9 +259,10 @@ Migration is gated:
 2. move UI code behind the solver-neutral client;
 3. add worker lifecycle, corruption, traversal, timeout, restart, and unavailable-state
    tests;
-4. reproduce accepted fixtures on local Newton CPU and remote Newton CUDA;
+4. reproduce accepted fixtures on local Newton CPU, remote Newton CUDA, and the selected
+   SuperDex contact profile;
 5. validate effective colliders and task outcomes;
-6. switch Simulate, Pilot, and Episode to Newton;
+6. switch Simulate, Pilot, and Episode to capability-routed workers;
 7. remove Rapier dependencies and runtime paths.
 
 Browser-only builds report `worker unavailable` after cutover. They do not silently select

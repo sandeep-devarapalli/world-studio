@@ -196,16 +196,17 @@ Acceptance:
   experiment-conditioned estimates with feasibility checks.
 - Reports compare against simulator defaults without claiming universal physical accuracy.
 
-## M5 Newton Runtime And OpenUSD Foundation
+## M5 Capability-Routed Physics Runtime And OpenUSD Foundation
 
-Outcome: Newton becomes the sole product physics backend after gated parity and Rapier
-removal.
+Outcome: Newton becomes the default OpenUSD/general/Isaac backend and SuperDex becomes the
+contact-rich specialist after task-scoped parity and Rapier removal.
 
 Acceptance:
 
 - React and product UI use a solver-neutral `SimulationClient`.
-- Electron supervises an isolated Python worker with safe job roots, capabilities, bounded
-  logs, timeout, cancellation, restart, and fail-closed unavailable state.
+- Electron supervises isolated Newton and SuperDex workers with safe job roots, explicit
+  capabilities, bounded logs, timeout, cancellation, restart, and fail-closed unavailable
+  state.
 - Local macOS CPU and remote Linux/NVIDIA jobs bind exact Newton, Warp, MuJoCo, solver,
   contact, device, timestep, seed, and source-version evidence.
 - Layered OpenUSD compilation preserves frames, units, visual/collision separation, and
@@ -215,8 +216,10 @@ Acceptance:
   load/spawn/contact/reset evidence precedes remote Linux/NVIDIA parity.
 - Spawn, movement, contacts, props, sensors, reset, and deterministic Episode fixtures pass
   the declared parity thresholds.
-- Simulate, Pilot, and Episode cut over to Newton, then Rapier code and dependencies are
-  removed with no silent fallback.
+- General tasks prefer Newton; contact-force-distribution, tactile, and supported deformable
+  tasks prefer SuperDex. An explicit request never falls back to the other backend.
+- Simulate, Pilot, and Episode cut over to capability-routed workers, then Rapier code and
+  dependencies are removed.
 
 Current Room-01 gate (2026-08-23): experimental Newton execution may start with synthetic or
 hypothesis-tagged proxy layers whose authority is false and whose unknown space is no-go.
@@ -230,6 +233,27 @@ held because the pinned environment did not include `pxr`.
 Production collision, route episodes, robot/drone training, and product cutover remain blocked
 until M3 promotes registered free space and a collider that passes floor, wall, doorway,
 component, physical, and replayable-probe rails.
+
+## M5A Observed-Room Tabletop Manipulation
+
+Outcome: a fixed Franka Panda or FR3 performs a bounded rigid pick/place/reset Episode on a
+validated table inside the observed room, with Newton and SuperDex results kept distinct.
+
+Acceptance:
+
+- The table top, arm mount, 50 mm cube, robot model, gripper, masses, frames, and effective
+  colliders have immutable hashes and task-scoped authority.
+- World Studio compiles the same canonical assets into layered OpenUSD and checksum-bound
+  SuperDex derivatives without using Gaussian appearance as collision geometry.
+- The native Edit, Simulate, Pilot, Sensors, and Episode surfaces support placement, joint and
+  IK control, gripper commands, contact inspection, replay, and reset without embedding
+  SuperDex Studio or adding a seventh mode.
+- The Episode executes `home -> pre-grasp -> approach -> close -> lift -> translate -> place
+  -> retreat -> home -> reset` for ten deterministic repetitions per eligible backend.
+- Reports preserve backend-specific object pose, slip, penetration, contacts, forces, joint
+  effort, timing, memory, reset residuals, unsupported features, and prohibited uses.
+- A successful simulated pick/place is software evidence only until a measured real tabletop
+  trial supports the declared physical-prediction envelope.
 
 ## M6 Newton/Isaac Lab/ROS Sensor Conformance - R4
 

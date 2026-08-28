@@ -18,7 +18,8 @@ accepted metric registration, or registered evidence-mesh review.
 - The previously named standalone review package is not currently reverified on disk.
   Recover or reproduce a self-contained checksum-bound package before deriving collision.
 - Spirula remains an external GPL process. Its Gaussian output is appearance only.
-- Rapier is the frozen parity baseline while the solver-neutral Newton path is built.
+- Rapier is the frozen parity baseline while capability-routed Newton and SuperDex workers
+  are built.
 
 ## Required Sequence
 
@@ -47,7 +48,8 @@ accepted metric registration, or registered evidence-mesh review.
    - bind deterministic state, contact, route, sensor, and outcome evidence.
 6. Build the non-authoritative M5 foundation in parallel with M3 promotion, in separate PRs:
    - introduce the solver-neutral `SimulationClient`;
-   - add the supervised Python worker and layered OpenUSD compilation;
+   - add separate supervised Newton and SuperDex workers with explicit capability reports;
+   - keep layered OpenUSD canonical and compile checksum-bound SuperDex derivatives;
    - prove a synthetic load/spawn/contact/reset fixture on macOS CPU, then exercise a
      hypothesis-tagged Room-01 proxy with unknown space as no-go;
    - run the same fixture on pinned Linux/NVIDIA before product cutover.

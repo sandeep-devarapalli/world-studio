@@ -1,3 +1,8 @@
+import {
+  SIMULATION_BACKEND_REQUIREMENTS_SCHEMA,
+  type SimulationBackendRequirementsV1
+} from "./simulation-backend-contract.js";
+
 export const PHYSICS_SMOKE_JOB_SCHEMA = "world_studio.physics_smoke_job.v0.1" as const;
 
 export interface PhysicsSmokeJobV1 {
@@ -23,7 +28,15 @@ export interface PhysicsSmokeJobV1 {
 
 export interface PhysicsSmokeCellBundleV1 {
   job: PhysicsSmokeJobV1;
-  files: Record<"world.usda" | "10_smoke_collision.usda" | "20_room01_collision_held.usda" | "physics-smoke-job.json", string>;
+  backendRequirements: SimulationBackendRequirementsV1;
+  files: Record<
+    | "world.usda"
+    | "10_smoke_collision.usda"
+    | "20_room01_collision_held.usda"
+    | "physics-smoke-job.json"
+    | "physics-smoke-backend-requirements.json",
+    string
+  >;
 }
 
 const cube = (name: string, scale: [number, number, number], translate: [number, number, number]) => `
@@ -59,6 +72,18 @@ export function compilePhysicsSmokeCell(): PhysicsSmokeCellBundleV1 {
       reset_linear_velocity_tolerance_m_s: 1e-6,
       reset_angular_velocity_tolerance_rad_s: 1e-6
     }
+  };
+  const backendRequirements: SimulationBackendRequirementsV1 = {
+    schema: SIMULATION_BACKEND_REQUIREMENTS_SCHEMA,
+    device_class: "cpu",
+    scene_format: "openusd",
+    coordinate_frame: "right_y_up",
+    required_capabilities: [
+      "rigid_body",
+      "primitive_contact",
+      "contact_points",
+      "deterministic_reset"
+    ]
   };
 
   const root = `#usda 1.0
@@ -143,11 +168,17 @@ def Xform "World"
 
   return {
     job,
+    backendRequirements,
     files: {
       "world.usda": root,
       "10_smoke_collision.usda": collision,
       "20_room01_collision_held.usda": heldRoom,
-      "physics-smoke-job.json": `${JSON.stringify(job, null, 2)}\n`
+      "physics-smoke-job.json": `${JSON.stringify(job, null, 2)}\n`,
+      "physics-smoke-backend-requirements.json": `${JSON.stringify(
+        backendRequirements,
+        null,
+        2
+      )}\n`
     }
   };
 }

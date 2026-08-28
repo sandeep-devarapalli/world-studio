@@ -16,7 +16,8 @@ describe("physics smoke-cell compiler", () => {
       "world.usda",
       "10_smoke_collision.usda",
       "20_room01_collision_held.usda",
-      "physics-smoke-job.json"
+      "physics-smoke-job.json",
+      "physics-smoke-backend-requirements.json"
     ]);
     expect(first.files["world.usda"]).toContain("metersPerUnit = 1");
     expect(first.files["world.usda"]).toContain('upAxis = "Y"');
@@ -33,6 +34,9 @@ describe("physics smoke-cell compiler", () => {
       reset_between_repetitions: true
     });
     expect(JSON.parse(first.files["physics-smoke-job.json"])).toEqual(first.job);
+    expect(JSON.parse(first.files["physics-smoke-backend-requirements.json"])).toEqual(
+      first.backendRequirements
+    );
   });
 
   it("bounds the synthetic fixture while leaving Room-01 collision explicitly empty and held", () => {
