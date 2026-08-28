@@ -268,6 +268,14 @@ Migration is gated:
 Browser-only builds report `worker unavailable` after cutover. They do not silently select
 a JavaScript physics backend.
 
+Current implementation (2026-08-28): Electron owns a supervised SuperDex 1.0.0 capability
+probe configured only through `WORLD_STUDIO_SUPERDEX_PYTHON`. Renderer IPC carries registered
+worker and run IDs only. The private run store bounds logs, wall time, and report bytes; commits
+strictly validated reports by SHA-256; supports stop, timeout, retry, restart reconciliation,
+and suspend/lock/quit shutdown; and exposes the result in Simulate as
+`software_capability_only`. This is lifecycle evidence, not a World loader, scene compiler,
+authoritative physics clock, or robot episode.
+
 ## Renderer Boundary
 
 The renderer contract intentionally matches the prototype's `ws-render.js` behavior while

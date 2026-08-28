@@ -6,7 +6,8 @@ import type {
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
   ReconstructionWorkerSnapshot,
-  SaveEpisodeBundleInput
+  SaveEpisodeBundleInput,
+  SimulationWorkerSnapshot
 } from "@world-studio/world-core";
 
 contextBridge.exposeInMainWorld("worldStudioDesktop", {
@@ -64,5 +65,18 @@ contextBridge.exposeInMainWorld("worldStudioDesktop", {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: ReconstructionWorkerSnapshot) => listener(snapshot);
     ipcRenderer.on("world-studio:reconstruction-worker-update", handler);
     return () => ipcRenderer.removeListener("world-studio:reconstruction-worker-update", handler);
+  },
+  getSimulationWorkerStatus: () =>
+    ipcRenderer.invoke("world-studio:get-simulation-worker-status") as Promise<SimulationWorkerSnapshot>,
+  startSimulationWorker: (input: { workerId: string }) =>
+    ipcRenderer.invoke("world-studio:start-simulation-worker", input) as Promise<SimulationWorkerSnapshot>,
+  stopSimulationWorker: (input: { runId: string }) =>
+    ipcRenderer.invoke("world-studio:stop-simulation-worker", input) as Promise<SimulationWorkerSnapshot>,
+  retrySimulationWorker: (input: { runId: string }) =>
+    ipcRenderer.invoke("world-studio:retry-simulation-worker", input) as Promise<SimulationWorkerSnapshot>,
+  onSimulationWorkerUpdate: (listener: (snapshot: SimulationWorkerSnapshot) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, snapshot: SimulationWorkerSnapshot) => listener(snapshot);
+    ipcRenderer.on("world-studio:simulation-worker-update", handler);
+    return () => ipcRenderer.removeListener("world-studio:simulation-worker-update", handler);
   }
 });

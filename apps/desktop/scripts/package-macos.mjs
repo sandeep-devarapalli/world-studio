@@ -35,6 +35,11 @@ try {
   await mkdir(path.join(payloadDir, "apps", "web"), { recursive: true });
   await cp(path.join(desktopDir, "dist"), path.join(payloadDir, "apps", "desktop", "dist"), { recursive: true });
   await cp(path.join(repoRoot, "apps", "web", "dist"), path.join(payloadDir, "apps", "web", "dist"), { recursive: true });
+  await cp(
+    path.join(repoRoot, "workers", "superdex"),
+    path.join(payloadDir, "workers", "superdex"),
+    { recursive: true }
+  );
   await writeFile(
     path.join(payloadDir, "package.json"),
     `${JSON.stringify({

@@ -53,6 +53,22 @@ describe("desktop main-process security boundary", () => {
     expect(source).not.toMatch(/input\.(?:executable|command|arguments|environment|workingDirectory)/);
   });
 
+  it("restricts every simulation worker action to identifier-only trusted-main-frame IPC", async () => {
+    const source = await readFile(mainPath, "utf8");
+    const channels = [
+      "world-studio:get-simulation-worker-status",
+      "world-studio:start-simulation-worker",
+      "world-studio:stop-simulation-worker",
+      "world-studio:retry-simulation-worker"
+    ];
+    for (const channel of channels) expect(source).toContain(`"${channel}"`);
+    expect(source.match(/assertTrustedSimulationWorkerIpcSender\(event\);/g)).toHaveLength(channels.length);
+    expect(source).toContain('assertTrustedLiveIpcSender(event, "Simulation worker IPC");');
+    expect(source).toContain('hasExactKeys(input, ["workerId"])');
+    expect(source).toContain('hasExactKeys(input, ["runId"])');
+    expect(source).not.toMatch(/input\.(?:executable|scriptPath|command|arguments|environment|workingDirectory)/);
+  });
+
   it("does not initialize optional live security before creating the base window", async () => {
     const source = await readFile(mainPath, "utf8");
     const readyStart = source.indexOf("app.whenReady().then");

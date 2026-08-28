@@ -48,7 +48,8 @@ accepted metric registration, or registered evidence-mesh review.
    - bind deterministic state, contact, route, sensor, and outcome evidence.
 6. Build the non-authoritative M5 foundation in parallel with M3 promotion, in separate PRs:
    - introduce the solver-neutral `SimulationClient`;
-   - add separate supervised Newton and SuperDex workers with explicit capability reports;
+   - extend the supervised SuperDex capability-probe lifecycle into checksum-bound scene jobs,
+     and add the separate supervised Newton worker with explicit capability reports;
    - keep layered OpenUSD canonical and compile checksum-bound SuperDex derivatives;
    - prove a synthetic load/spawn/contact/reset fixture on macOS CPU, then exercise a
      hypothesis-tagged Room-01 proxy with unknown space as no-go;

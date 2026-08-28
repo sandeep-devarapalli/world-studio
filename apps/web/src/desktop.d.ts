@@ -5,7 +5,8 @@ import type {
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
   ReconstructionWorkerSnapshot,
-  SaveEpisodeBundleInput
+  SaveEpisodeBundleInput,
+  SimulationWorkerSnapshot
 } from "@world-studio/world-core";
 
 export {};
@@ -46,6 +47,13 @@ declare global {
       retryReconstructionWorker?: (input: { jobId: string }) => Promise<ReconstructionWorkerSnapshot>;
       onReconstructionWorkerUpdate?: (
         listener: (snapshot: ReconstructionWorkerSnapshot) => void
+      ) => () => void;
+      getSimulationWorkerStatus?: () => Promise<SimulationWorkerSnapshot>;
+      startSimulationWorker?: (input: { workerId: string }) => Promise<SimulationWorkerSnapshot>;
+      stopSimulationWorker?: (input: { runId: string }) => Promise<SimulationWorkerSnapshot>;
+      retrySimulationWorker?: (input: { runId: string }) => Promise<SimulationWorkerSnapshot>;
+      onSimulationWorkerUpdate?: (
+        listener: (snapshot: SimulationWorkerSnapshot) => void
       ) => () => void;
     };
   }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { LiveFrameSummary, LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, ReconstructionWorkerSnapshot, SaveEpisodeBundleInput, WorldAssetManifestEntry } from "@world-studio/world-core";
+import type { LiveFrameSummary, LiveSecuritySnapshot, LiveSessionSnapshot, LocalWorldPackagePayload, ReconstructionWorkerSnapshot, SaveEpisodeBundleInput, SimulationWorkerSnapshot, WorldAssetManifestEntry } from "@world-studio/world-core";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -1116,6 +1116,159 @@ test("keeps reconstruction workers explicitly unavailable in the browser", async
   await expect(panel.getByRole("button", { name: "Start Worker" })).toBeDisabled();
   await expect(panel.getByRole("button", { name: "Stop Worker" })).toBeDisabled();
   await expect(panel.getByRole("button", { name: "Retry Same Input" })).toBeDisabled();
+
+  const simulation = page.getByTestId("simulation-worker-panel");
+  await expect(simulation).toBeVisible();
+  await expect(page.getByTestId("simulation-worker-state")).toHaveText("unavailable");
+  await expect(simulation).toContainText("packaged desktop only");
+  await expect(simulation.getByRole("button", { name: "Run Probe" })).toBeDisabled();
+});
+
+test("controls a supervised checksum-bound simulation capability probe", async ({ page }) => {
+  const budget = { maxWallTimeMs: 60_000, maxReportBytes: 2 * 1024 * 1024, maxLogBytes: 64 * 1024 };
+  const idle: SimulationWorkerSnapshot = {
+    state: "idle",
+    workers: [{
+      workerId: "superdex-1.0.0-local",
+      backendId: "superdex",
+      label: "SuperDex 1.0.0 local",
+      available: true,
+      unavailableReason: null,
+      budget
+    }],
+    run: null,
+    authority: "software_capability_only",
+    updatedAt: null
+  };
+  const running: SimulationWorkerSnapshot = {
+    ...idle,
+    state: "running",
+    run: {
+      runId: `swr_${"a".repeat(22)}`,
+      workerId: "superdex-1.0.0-local",
+      backendId: "superdex",
+      attempt: 1,
+      state: "running",
+      budget,
+      reportSha256: null,
+      reportSizeBytes: null,
+      capability: null,
+      evidence: null,
+      logs: [{ timestamp: "2026-08-28T12:00:01.000Z", stream: "stdout", message: "probe started" }],
+      failure: null,
+      createdAt: "2026-08-28T12:00:00.000Z",
+      startedAt: "2026-08-28T12:00:01.000Z",
+      finishedAt: null,
+      updatedAt: "2026-08-28T12:00:01.000Z",
+      authority: "software_capability_only"
+    },
+    updatedAt: "2026-08-28T12:00:01.000Z"
+  };
+  const cancelled: SimulationWorkerSnapshot = {
+    ...running,
+    state: "cancelled",
+    run: {
+      ...running.run!,
+      state: "cancelled",
+      failure: { code: "cancelled", message: "stopped by user", retryable: true },
+      finishedAt: "2026-08-28T12:00:02.000Z"
+    }
+  };
+  const completed: SimulationWorkerSnapshot = {
+    ...running,
+    state: "completed",
+    run: {
+      ...running.run!,
+      attempt: 2,
+      state: "completed",
+      reportSha256: `sha256:${"b".repeat(64)}`,
+      reportSizeBytes: 4096,
+      capability: {
+        schema: "world_studio.simulation_backend_capability.v0.1",
+        backend_id: "superdex",
+        backend_version: "1.0.0",
+        adapter_version: "0.1.0",
+        device_classes: ["cpu"],
+        scene_formats: ["superdex_mochi_scene"],
+        coordinate_frames: ["right_y_up"],
+        capabilities: ["rigid_body", "primitive_contact", "contact_points", "contact_force_distribution", "deterministic_reset"],
+        authority: "software_capability_only",
+        limitations: ["Synthetic fixture only."]
+      },
+      evidence: {
+        fixtureId: "synthetic-rigid-contact-reset-v1",
+        repetitions: 3,
+        framesPerRepetition: 180,
+        firstContactFrame: 20,
+        maxContactPoints: 6,
+        maxResetResidual: 0
+      },
+      logs: [],
+      failure: null,
+      finishedAt: "2026-08-28T12:00:03.000Z"
+    }
+  };
+
+  await page.addInitScript(({ idleSnapshot, runningSnapshot, cancelledSnapshot }) => {
+    let current = idleSnapshot;
+    let listener: ((snapshot: SimulationWorkerSnapshot) => void) | null = null;
+    const calls: Array<{ action: string; input: unknown }> = [];
+    const testWindow = window as typeof window & {
+      __emitSimulationWorkerSnapshot?: (snapshot: SimulationWorkerSnapshot) => void;
+      __simulationWorkerCalls?: () => Array<{ action: string; input: unknown }>;
+    };
+    const publish = (snapshot: SimulationWorkerSnapshot) => {
+      current = snapshot;
+      listener?.(snapshot);
+      return snapshot;
+    };
+    testWindow.__emitSimulationWorkerSnapshot = publish;
+    testWindow.__simulationWorkerCalls = () => structuredClone(calls);
+    window.worldStudioDesktop = {
+      getSimulationWorkerStatus: async () => current,
+      onSimulationWorkerUpdate: (nextListener) => {
+        listener = nextListener;
+        return () => { listener = null; };
+      },
+      startSimulationWorker: async (input) => {
+        calls.push({ action: "start", input });
+        return publish(runningSnapshot);
+      },
+      stopSimulationWorker: async (input) => {
+        calls.push({ action: "stop", input });
+        return publish(cancelledSnapshot);
+      },
+      retrySimulationWorker: async (input) => {
+        calls.push({ action: "retry", input });
+        return publish({ ...runningSnapshot, run: { ...runningSnapshot.run!, attempt: 2 } });
+      }
+    };
+  }, { idleSnapshot: idle, runningSnapshot: running, cancelledSnapshot: cancelled });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Simulate" }).click();
+  const panel = page.getByTestId("simulation-worker-panel");
+  await expect(page.getByTestId("simulation-worker-state")).toHaveText("idle");
+  await panel.getByRole("button", { name: "Run Probe" }).click();
+  await expect(page.getByTestId("simulation-worker-state")).toHaveText("running");
+  await expect(page.getByTestId("simulation-worker-logs")).toContainText("probe started");
+  await panel.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.getByTestId("simulation-worker-state")).toHaveText("cancelled");
+  await panel.getByRole("button", { name: "Retry", exact: true }).click();
+  await page.evaluate((snapshot) => (
+    window as typeof window & { __emitSimulationWorkerSnapshot: (value: SimulationWorkerSnapshot) => void }
+  ).__emitSimulationWorkerSnapshot(snapshot), completed);
+  await expect(page.getByTestId("simulation-worker-state")).toHaveText("completed");
+  await expect(panel).toContainText("3×180 frames · contact 20 · reset 0");
+  await expect(panel).toContainText(`sha256:${"b".repeat(64)}`);
+  await expect(panel).toContainText("software capability only · not measured world, collision, navigation, or robot-training authority");
+  expect(await page.evaluate(() => (
+    window as typeof window & { __simulationWorkerCalls: () => Array<{ action: string; input: unknown }> }
+  ).__simulationWorkerCalls())).toEqual([
+    { action: "start", input: { workerId: "superdex-1.0.0-local" } },
+    { action: "stop", input: { runId: `swr_${"a".repeat(22)}` } },
+    { action: "retry", input: { runId: `swr_${"a".repeat(22)}` } }
+  ]);
 });
 
 test("controls a bounded reconstruction worker without mutating the loaded world", async ({ page }) => {
