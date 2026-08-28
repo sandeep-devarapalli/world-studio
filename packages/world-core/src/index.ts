@@ -10,6 +10,7 @@ export * from "./world-graph-contract.js";
 export * from "./physics-smoke-cell.js";
 export * from "./simulation-backend-contract.js";
 export * from "./superdex-worker-contract.js";
+export * from "./superdex-scene-contract.js";
 
 export type RenderMode = "splat" | "points" | "mesh" | "semantic" | "depth";
 

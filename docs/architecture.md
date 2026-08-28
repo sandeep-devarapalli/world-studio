@@ -273,8 +273,17 @@ probe configured only through `WORLD_STUDIO_SUPERDEX_PYTHON`. Renderer IPC carri
 worker and run IDs only. The private run store bounds logs, wall time, and report bytes; commits
 strictly validated reports by SHA-256; supports stop, timeout, retry, restart reconciliation,
 and suspend/lock/quit shutdown; and exposes the result in Simulate as
-`software_capability_only`. This is lifecycle evidence, not a World loader, scene compiler,
-authoritative physics clock, or robot episode.
+`software_capability_only`.
+
+The first World-to-SuperDex compiler reads an immutable canonical World through the confined
+package store, requires a right-handed +Y-up collision lane in an active authority state, and
+selects only lane-bound `collision_mesh` OBJ artifacts. It normalizes parsed triangles, composes
+the declared root transform, and emits static `Mesh` actors in a native `.mochi_scene` plus the
+exact source World manifest, conversion report, normalized meshes, and a root package manifest.
+Every source and output reference is SHA-256 bound. Visual splats and linked Assets are recorded
+as excluded, and source authority is preserved without promotion. The native format has a pinned
+SuperDex 1.0.0 loader fixture, but every real compiled package still requires its own supervised
+load/contact/reset receipt before it is execution evidence or an authoritative physics clock.
 
 ## Renderer Boundary
 

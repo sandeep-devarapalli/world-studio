@@ -60,8 +60,10 @@ access flow in this repo today.
   prop spawning, collision/debug overlays, selected-prop inspection, and Episode recording.
 - A capability-routed physics boundary plus a supervised, pinned SuperDex 1.0.0 CPU
   capability/contact/reset probe with bounded reports, stop, timeout, retry, restart recovery,
-  and fail-closed unavailability. It is software-only evidence; scene execution and task gates
-  remain pending.
+  and fail-closed unavailability. A deterministic compiler now converts eligible canonical
+  World collision-lane OBJ artifacts into checksum-bound static SuperDex `.mochi_scene`
+  derivatives without importing visual splats or promoting authority. Per-World scene execution
+  and task gates remain pending.
 - Browser and Electron package loading for World Studio packages, generic JSON packages,
   Budo-compatible manifests, article figure views, and verified export folders.
 - An explicit loopback-only Capture Splat live-session receiver for replaying source-frame

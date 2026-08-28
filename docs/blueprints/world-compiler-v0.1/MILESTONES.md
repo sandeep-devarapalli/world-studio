@@ -224,8 +224,16 @@ Acceptance:
 Current SuperDex lifecycle gate (2026-08-28): the pinned synthetic contact/reset probe is now
 supervised by Electron with identifier-only IPC, a private durable run root, bounded logs/report
 bytes/wall time, stop, timeout, retry, restart reconciliation, and fail-closed unavailability.
-The checksum-bound probe remains `software_capability_only`; it does not satisfy canonical
-World-to-SuperDex compilation, Room-01 execution, Franka manipulation, or Rapier cutover.
+The checksum-bound probe remains `software_capability_only`.
+
+Current SuperDex compiler gate (2026-08-28): eligible canonical World collision-lane OBJ
+artifacts can now be compiled deterministically into normalized static meshes and a native
+SuperDex `.mochi_scene`. The package binds the exact source World manifest, source and generated
+mesh hashes, composed row-major transforms, actor translation/rotation/scale, retained authority,
+excluded visual/Asset inputs, and a conversion report. A generated fixture loads through pinned
+SuperDex 1.0.0, but each real package records native load as `not_run` until a supervised worker
+receipt proves it. Room-01 execution, robot Asset compilation, Franka manipulation, general
+physics state streaming, and Rapier cutover remain unsatisfied.
 
 Current Room-01 gate (2026-08-23): experimental Newton execution may start with synthetic or
 hypothesis-tagged proxy layers whose authority is false and whose unknown space is no-go.
