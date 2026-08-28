@@ -221,6 +221,12 @@ Acceptance:
 - Simulate, Pilot, and Episode cut over to capability-routed workers, then Rapier code and
   dependencies are removed.
 
+Current SuperDex lifecycle gate (2026-08-28): the pinned synthetic contact/reset probe is now
+supervised by Electron with identifier-only IPC, a private durable run root, bounded logs/report
+bytes/wall time, stop, timeout, retry, restart reconciliation, and fail-closed unavailability.
+The checksum-bound probe remains `software_capability_only`; it does not satisfy canonical
+World-to-SuperDex compilation, Room-01 execution, Franka manipulation, or Rapier cutover.
+
 Current Room-01 gate (2026-08-23): experimental Newton execution may start with synthetic or
 hypothesis-tagged proxy layers whose authority is false and whose unknown space is no-go.
 Newton 1.5.0 on Apple M2 Max CPU has passed a bounded synthetic floor/wall contact and exact

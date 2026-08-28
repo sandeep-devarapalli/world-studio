@@ -99,6 +99,7 @@ import type {
   RenderMode,
   RenderOptions,
   SensorRigChannel,
+  SimulationWorkerSnapshot,
   SparkRenderProfile,
   StudioMode,
   WorldAssetManifestEntry,
@@ -219,6 +220,14 @@ const unavailableReconstructionWorkerSnapshot: ReconstructionWorkerSnapshot = {
   capabilities: [],
   job: null,
   authority: "proposal_only",
+  updatedAt: null
+};
+
+const unavailableSimulationWorkerSnapshot: SimulationWorkerSnapshot = {
+  state: "unavailable",
+  workers: [],
+  run: null,
+  authority: "software_capability_only",
   updatedAt: null
 };
 
@@ -649,6 +658,12 @@ export function App() {
   const [selectedReconstructionOutputId, setSelectedReconstructionOutputId] = useState<string | null>(null);
   const [reconstructionWorkerBusy, setReconstructionWorkerBusy] = useState(false);
   const [reconstructionWorkerError, setReconstructionWorkerError] = useState<string | null>(null);
+  const [simulationWorker, setSimulationWorker] = useState<SimulationWorkerSnapshot>(
+    unavailableSimulationWorkerSnapshot
+  );
+  const [selectedSimulationWorkerId, setSelectedSimulationWorkerId] = useState("");
+  const [simulationWorkerBusy, setSimulationWorkerBusy] = useState(false);
+  const [simulationWorkerError, setSimulationWorkerError] = useState<string | null>(null);
   const [sensorCaptures, setSensorCaptures] = useState<SensorCaptureArtifact[]>([]);
   const [selectedSensorId, setSelectedSensorId] = useState(initialSensors[0]?.id ?? "rgb");
   const [stepCount, setStepCount] = useState(0);
@@ -1365,6 +1380,55 @@ export function App() {
     );
   }, [reconstructionWorker.job?.jobId, runReconstructionWorkerAction]);
 
+  const acceptSimulationWorkerSnapshot = useCallback((snapshot: SimulationWorkerSnapshot) => {
+    setSimulationWorker(snapshot);
+    setSelectedSimulationWorkerId((current) => {
+      if (snapshot.workers.some((entry) => entry.workerId === current)) return current;
+      return snapshot.workers.find((entry) => entry.available)?.workerId
+        ?? snapshot.workers[0]?.workerId
+        ?? "";
+    });
+  }, []);
+
+  const runSimulationWorkerAction = useCallback(async (
+    action: (() => Promise<SimulationWorkerSnapshot>) | undefined,
+    fallbackMessage: string
+  ) => {
+    if (!action) return;
+    setSimulationWorkerBusy(true);
+    setSimulationWorkerError(null);
+    try {
+      acceptSimulationWorkerSnapshot(await action());
+    } catch (error) {
+      setSimulationWorkerError(error instanceof Error ? error.message : fallbackMessage);
+    } finally {
+      setSimulationWorkerBusy(false);
+    }
+  }, [acceptSimulationWorkerSnapshot]);
+
+  const startSimulationWorker = useCallback(async () => {
+    const start = getDesktopApi()?.startSimulationWorker;
+    if (!start || !selectedSimulationWorkerId) return;
+    await runSimulationWorkerAction(
+      () => start({ workerId: selectedSimulationWorkerId }),
+      "Failed to start simulation worker"
+    );
+  }, [runSimulationWorkerAction, selectedSimulationWorkerId]);
+
+  const stopSimulationWorker = useCallback(async () => {
+    const stop = getDesktopApi()?.stopSimulationWorker;
+    const runId = simulationWorker.run?.runId;
+    if (!stop || !runId) return;
+    await runSimulationWorkerAction(() => stop({ runId }), "Failed to stop simulation worker");
+  }, [runSimulationWorkerAction, simulationWorker.run?.runId]);
+
+  const retrySimulationWorker = useCallback(async () => {
+    const retry = getDesktopApi()?.retrySimulationWorker;
+    const runId = simulationWorker.run?.runId;
+    if (!retry || !runId) return;
+    await runSimulationWorkerAction(() => retry({ runId }), "Failed to retry simulation worker");
+  }, [runSimulationWorkerAction, simulationWorker.run?.runId]);
+
   const startLiveReceiver = useCallback(async () => {
     const start = getDesktopApi()?.startLiveReceiver;
     if (!start) return;
@@ -1445,6 +1509,25 @@ export function App() {
       unsubscribe?.();
     };
   }, [acceptReconstructionWorkerSnapshot]);
+
+  useEffect(() => {
+    const desktop = getDesktopApi();
+    if (!desktop?.getSimulationWorkerStatus) return;
+    let active = true;
+    const onSnapshot = (snapshot: SimulationWorkerSnapshot) => {
+      if (active) acceptSimulationWorkerSnapshot(snapshot);
+    };
+    const unsubscribe = desktop.onSimulationWorkerUpdate?.(onSnapshot);
+    void desktop.getSimulationWorkerStatus().then(onSnapshot).catch((error: unknown) => {
+      if (active) {
+        setSimulationWorkerError(error instanceof Error ? error.message : "Failed to read simulation worker status");
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [acceptSimulationWorkerSnapshot]);
 
   useEffect(() => {
     const invitationUri = liveSecurity.pairingInvitationUri;
@@ -2846,6 +2929,12 @@ export function App() {
     && getDesktopApi()?.startReconstructionWorker
     && getDesktopApi()?.stopReconstructionWorker
     && getDesktopApi()?.retryReconstructionWorker
+  );
+  const hasSimulationWorkerApi = Boolean(
+    getDesktopApi()?.getSimulationWorkerStatus
+    && getDesktopApi()?.startSimulationWorker
+    && getDesktopApi()?.stopSimulationWorker
+    && getDesktopApi()?.retrySimulationWorker
   );
   const showLiveSession = hasLiveReceiverApi || hasLiveSecurityApi || Boolean(liveSnapshot.sessionId);
   const measureStart = measurePoints[0];
@@ -4291,6 +4380,17 @@ export function App() {
               onSelectRole={setSelectedLiveEvidenceRole}
             />
           ) : null}
+          <SimulationWorkerPanel
+            busy={simulationWorkerBusy}
+            error={simulationWorkerError}
+            hasDesktopApi={hasSimulationWorkerApi}
+            onRetry={() => void retrySimulationWorker()}
+            onSelectWorker={setSelectedSimulationWorkerId}
+            onStart={() => void startSimulationWorker()}
+            onStop={() => void stopSimulationWorker()}
+            selectedWorkerId={selectedSimulationWorkerId}
+            snapshot={simulationWorker}
+          />
           <ReconstructionWorkerPanel
             busy={reconstructionWorkerBusy}
             currentSessionId={liveSnapshot.sessionId}
@@ -6426,6 +6526,114 @@ const liveEvidenceRoles: LiveEvidenceAssetRole[] = [
   "mask-valid",
   "mask-object"
 ];
+
+function SimulationWorkerPanel({
+  busy,
+  error,
+  hasDesktopApi,
+  onRetry,
+  onSelectWorker,
+  onStart,
+  onStop,
+  selectedWorkerId,
+  snapshot
+}: {
+  busy: boolean;
+  error: string | null;
+  hasDesktopApi: boolean;
+  onRetry: () => void;
+  onSelectWorker: (workerId: string) => void;
+  onStart: () => void;
+  onStop: () => void;
+  selectedWorkerId: string;
+  snapshot: SimulationWorkerSnapshot;
+}) {
+  const worker = snapshot.workers.find((entry) => entry.workerId === selectedWorkerId)
+    ?? snapshot.workers[0]
+    ?? null;
+  const run = snapshot.run;
+  const active = ["queued", "starting", "running", "stopping"].includes(snapshot.state);
+  const retryable = Boolean(
+    run
+    && ["failed", "cancelled", "timed_out", "interrupted"].includes(snapshot.state)
+    && (run.failure?.retryable ?? true)
+  );
+  const canStart = hasDesktopApi && Boolean(worker?.available) && !active && !busy;
+  const canStop = hasDesktopApi && Boolean(run) && ["queued", "starting", "running"].includes(snapshot.state) && !busy;
+  const evidence = run?.evidence;
+
+  return (
+    <WSPanel
+      className="ws-simulation-worker-panel"
+      data-testid="simulation-worker-panel"
+      meta="software capability"
+      title="Physics Worker"
+    >
+      <div className="ws-live-state-row" role="status" aria-live="polite">
+        <WSDot color={active ? "var(--acc)" : "var(--ink-faint)"} pulse={active} />
+        <b data-testid="simulation-worker-state">{hasDesktopApi ? snapshot.state : "unavailable"}</b>
+        <span>{worker?.label ?? (hasDesktopApi ? "no runtime configured" : "packaged desktop only")}</span>
+      </div>
+      <label className="ws-live-interface">
+        <span>Backend runtime</span>
+        <select
+          aria-label="Simulation worker runtime"
+          disabled={!hasDesktopApi || busy || active || !snapshot.workers.length}
+          onChange={(event) => onSelectWorker(event.target.value)}
+          value={worker?.workerId ?? ""}
+        >
+          {snapshot.workers.length ? snapshot.workers.map((entry) => (
+            <option key={entry.workerId} value={entry.workerId}>
+              {entry.label}{entry.available ? "" : " · unavailable"}
+            </option>
+          )) : <option value="">No configured worker</option>}
+        </select>
+      </label>
+      <div className="ws-kv">
+        <span>probe</span>
+        <b>{run ? `${run.runId} · attempt ${run.attempt}` : "not run"}</b>
+      </div>
+      <div className="ws-kv">
+        <span>budget</span>
+        <b>{worker ? `${formatWorkerDuration(worker.budget.maxWallTimeMs)} · ${formatBytes(worker.budget.maxReportBytes)} report` : "not declared"}</b>
+      </div>
+      <div className="ws-kv">
+        <span>evidence</span>
+        <b>{evidence
+          ? `${evidence.repetitions}×${evidence.framesPerRepetition} frames · contact ${evidence.firstContactFrame} · reset ${evidence.maxResetResidual}`
+          : "no accepted contact/reset evidence"}</b>
+      </div>
+      {run?.reportSha256 ? (
+        <div className="ws-kv ws-live-evidence-hash">
+          <span>report</span>
+          <b title={run.reportSha256}>{run.reportSha256}</b>
+        </div>
+      ) : null}
+      <div className="ws-btn-row ws-worker-actions">
+        <WSButton accent disabled={!canStart} onClick={onStart}>Run Probe</WSButton>
+        <WSButton disabled={!canStop} onClick={onStop}>Stop</WSButton>
+        <WSButton disabled={!hasDesktopApi || !retryable || busy} onClick={onRetry}>Retry</WSButton>
+      </div>
+      {run?.failure ? (
+        <div className="ws-live-error" data-testid="simulation-worker-failure">
+          {run.failure.code} · {run.failure.message}
+        </div>
+      ) : null}
+      {worker?.unavailableReason || error || snapshot.error ? (
+        <div className="ws-live-error">{error ?? snapshot.error ?? worker?.unavailableReason}</div>
+      ) : null}
+      <pre className="ws-detail-preview ws-worker-log" data-testid="simulation-worker-logs">
+        {run?.logs.length
+          ? run.logs.map((entry) => `${entry.stream} · ${entry.message}`).join("\n")
+          : "no worker logs"}
+      </pre>
+      <div className="ws-kv ws-live-authority">
+        <span>authority</span>
+        <b>software capability only · not measured world, collision, navigation, or robot-training authority</b>
+      </div>
+    </WSPanel>
+  );
+}
 
 function ReconstructionWorkerPanel({
   busy,

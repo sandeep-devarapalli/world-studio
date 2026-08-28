@@ -8,7 +8,8 @@ import type {
   LiveSessionSnapshot,
   LocalWorldPackagePayload,
   ReconstructionWorkerSnapshot,
-  SaveEpisodeBundleInput
+  SaveEpisodeBundleInput,
+  SimulationWorkerSnapshot
 } from "@world-studio/world-core";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +25,10 @@ import { readLocalPackage } from "./package-reader.js";
 import { ReconstructionLiveSessionInputStager } from "./reconstruction-live-session-stager.js";
 import { ReconstructionWorkerSupervisor } from "./reconstruction-worker-supervisor.js";
 import {
+  SimulationWorkerSupervisor,
+  type SimulationWorkerRegistration
+} from "./simulation-worker-supervisor.js";
+import {
   assertTrustedRendererInvocation,
   isTrustedRendererUrl,
   trustedRendererUrl
@@ -35,6 +40,7 @@ if (smokeUserDataPath) app.setPath("userData", smokeUserDataPath);
 let liveReceiver: LiveSessionReceiver | null = null;
 let liveSecurityGateway: LiveSecureGateway | null = null;
 let reconstructionWorkerSupervisor: ReconstructionWorkerSupervisor | null = null;
+let simulationWorkerSupervisor: SimulationWorkerSupervisor | null = null;
 let servicesStoppedForQuit = false;
 const trustedRendererUrls = new Map<number, string>();
 
@@ -219,6 +225,35 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle("world-studio:get-simulation-worker-status", async (event): Promise<SimulationWorkerSnapshot> => {
+  assertTrustedSimulationWorkerIpcSender(event);
+  return getSimulationWorkerSupervisor().getStatus();
+});
+
+ipcMain.handle(
+  "world-studio:start-simulation-worker",
+  async (event, input: unknown): Promise<SimulationWorkerSnapshot> => {
+    assertTrustedSimulationWorkerIpcSender(event);
+    return getSimulationWorkerSupervisor().start(validateSimulationWorkerStartInput(input));
+  }
+);
+
+ipcMain.handle(
+  "world-studio:stop-simulation-worker",
+  async (event, input: unknown): Promise<SimulationWorkerSnapshot> => {
+    assertTrustedSimulationWorkerIpcSender(event);
+    return getSimulationWorkerSupervisor().stop(validateSimulationWorkerRunInput(input, "Stop"));
+  }
+);
+
+ipcMain.handle(
+  "world-studio:retry-simulation-worker",
+  async (event, input: unknown): Promise<SimulationWorkerSnapshot> => {
+    assertTrustedSimulationWorkerIpcSender(event);
+    return getSimulationWorkerSupervisor().retry(validateSimulationWorkerRunInput(input, "Retry"));
+  }
+);
+
 ipcMain.handle("world-studio:get-live-security-status", async (event): Promise<LiveSecuritySnapshot> => {
   assertTrustedSecurityIpcSender(event);
   return readLiveSecurityStatus();
@@ -290,6 +325,7 @@ app.whenReady().then(async () => {
   const stopOptionalServices = () => {
     if (liveSecurityGateway) void liveSecurityGateway.stop();
     if (reconstructionWorkerSupervisor) void reconstructionWorkerSupervisor.stopAll();
+    if (simulationWorkerSupervisor) void simulationWorkerSupervisor.stopAll();
   };
   powerMonitor.on("suspend", stopOptionalServices);
   powerMonitor.on("lock-screen", stopOptionalServices);
@@ -301,13 +337,14 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
-  if ((!liveReceiver && !liveSecurityGateway && !reconstructionWorkerSupervisor) || servicesStoppedForQuit) return;
+  if ((!liveReceiver && !liveSecurityGateway && !reconstructionWorkerSupervisor && !simulationWorkerSupervisor) || servicesStoppedForQuit) return;
   event.preventDefault();
   servicesStoppedForQuit = true;
   void Promise.all([
     liveReceiver ? liveReceiver.stop() : Promise.resolve(),
     liveSecurityGateway ? liveSecurityGateway.stop() : Promise.resolve(),
-    reconstructionWorkerSupervisor ? reconstructionWorkerSupervisor.stopAll() : Promise.resolve()
+    reconstructionWorkerSupervisor ? reconstructionWorkerSupervisor.stopAll() : Promise.resolve(),
+    simulationWorkerSupervisor ? simulationWorkerSupervisor.stopAll() : Promise.resolve()
   ]).finally(() => app.quit());
 });
 
@@ -339,6 +376,10 @@ function assertTrustedEvidenceIpcSender(event: IpcMainInvokeEvent): void {
 
 function assertTrustedReconstructionWorkerIpcSender(event: IpcMainInvokeEvent): void {
   assertTrustedLiveIpcSender(event, "Reconstruction worker IPC");
+}
+
+function assertTrustedSimulationWorkerIpcSender(event: IpcMainInvokeEvent): void {
+  assertTrustedLiveIpcSender(event, "Simulation worker IPC");
 }
 
 function assertTrustedLiveIpcSender(event: IpcMainInvokeEvent, label: string): void {
@@ -406,6 +447,38 @@ function getReconstructionWorkerSupervisor(): ReconstructionWorkerSupervisor {
   return supervisor;
 }
 
+function getSimulationWorkerSupervisor(): SimulationWorkerSupervisor {
+  if (simulationWorkerSupervisor) return simulationWorkerSupervisor;
+  const supervisor = new SimulationWorkerSupervisor({
+    root: path.join(app.getPath("userData"), "simulation-worker-runs"),
+    registrations: configuredSimulationWorkers()
+  });
+  supervisor.subscribe((snapshot) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send("world-studio:simulation-worker-update", snapshot);
+    }
+  });
+  simulationWorkerSupervisor = supervisor;
+  return supervisor;
+}
+
+function configuredSimulationWorkers(): SimulationWorkerRegistration[] {
+  const executable = process.env.WORLD_STUDIO_SUPERDEX_PYTHON?.trim();
+  if (!executable) return [];
+  if (!path.isAbsolute(executable) || executable.includes("\0")) {
+    throw new Error("WORLD_STUDIO_SUPERDEX_PYTHON must be an absolute executable path.");
+  }
+  return [{
+    workerId: "superdex-1.0.0-local",
+    backendId: "superdex",
+    label: "SuperDex 1.0.0 local",
+    executable,
+    scriptPath: app.isPackaged
+      ? path.join(process.resourcesPath, "app", "workers", "superdex", "superdex_worker.py")
+      : path.resolve(__dirname, "../../../workers/superdex/superdex_worker.py")
+  }];
+}
+
 function validateReconstructionWorkerStartInput(input: unknown): { workerId: string; sessionId: string } {
   if (!isRecord(input) || !hasExactKeys(input, ["sessionId", "workerId"])) {
     throw new Error("Reconstruction start accepts only a registered worker ID and live-session ID.");
@@ -429,6 +502,30 @@ function validateReconstructionWorkerJobInput(input: unknown, action: string): {
     throw new Error(`${action} requires a valid reconstruction job ID.`);
   }
   return { jobId: input.jobId };
+}
+
+function validateSimulationWorkerStartInput(input: unknown): { workerId: string } {
+  if (
+    !isRecord(input)
+    || !hasExactKeys(input, ["workerId"])
+    || typeof input.workerId !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.workerId)
+  ) {
+    throw new Error("Simulation start accepts only a registered worker ID.");
+  }
+  return { workerId: input.workerId };
+}
+
+function validateSimulationWorkerRunInput(input: unknown, action: string): { runId: string } {
+  if (
+    !isRecord(input)
+    || !hasExactKeys(input, ["runId"])
+    || typeof input.runId !== "string"
+    || !/^swr_[A-Za-z0-9_-]{22}$/.test(input.runId)
+  ) {
+    throw new Error(`${action} requires a valid simulation run ID.`);
+  }
+  return { runId: input.runId };
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {

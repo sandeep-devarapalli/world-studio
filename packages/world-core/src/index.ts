@@ -1,5 +1,6 @@
 import type { CaptureSplatTrainingDatasetV1 } from "./gaussian-pipeline-contract.js";
 import type { CaptureSplatConsumerReceiptV1 } from "./capture-splat-consumer-receipt-contract.js";
+import type { SimulationBackendCapabilityV1 } from "./simulation-backend-contract.js";
 
 export type StudioMode = "view" | "edit" | "simulate" | "pilot" | "sensors" | "episode";
 
@@ -321,6 +322,82 @@ export interface ReconstructionWorkerSnapshot {
   capabilities: ReconstructionWorkerCapabilitySummary[];
   job: ReconstructionWorkerJobSummary | null;
   authority: "proposal_only";
+  updatedAt: string | null;
+  error?: string;
+}
+
+export type SimulationWorkerState =
+  | "unavailable"
+  | "idle"
+  | "queued"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "interrupted";
+
+export interface SimulationWorkerBudget {
+  maxWallTimeMs: number;
+  maxReportBytes: number;
+  maxLogBytes: number;
+}
+
+export interface SimulationWorkerSummary {
+  workerId: string;
+  backendId: "newton" | "superdex";
+  label: string;
+  available: boolean;
+  unavailableReason: string | null;
+  budget: SimulationWorkerBudget;
+}
+
+export interface SimulationWorkerEvidenceSummary {
+  fixtureId: string;
+  repetitions: number;
+  framesPerRepetition: number;
+  firstContactFrame: number;
+  maxContactPoints: number;
+  maxResetResidual: number;
+}
+
+export interface SimulationWorkerLogSummary {
+  timestamp: string;
+  stream: "stdout" | "stderr";
+  message: string;
+}
+
+export interface SimulationWorkerRunSummary {
+  runId: string;
+  workerId: string;
+  backendId: "newton" | "superdex";
+  attempt: number;
+  state: Exclude<SimulationWorkerState, "unavailable" | "idle">;
+  budget: SimulationWorkerBudget;
+  reportSha256: string | null;
+  reportSizeBytes: number | null;
+  capability: SimulationBackendCapabilityV1 | null;
+  evidence: SimulationWorkerEvidenceSummary | null;
+  logs: SimulationWorkerLogSummary[];
+  failure: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  } | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  updatedAt: string;
+  authority: "software_capability_only";
+}
+
+export interface SimulationWorkerSnapshot {
+  state: SimulationWorkerState;
+  workers: SimulationWorkerSummary[];
+  run: SimulationWorkerRunSummary | null;
+  authority: "software_capability_only";
   updatedAt: string | null;
   error?: string;
 }
