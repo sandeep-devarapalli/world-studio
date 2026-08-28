@@ -234,7 +234,7 @@ export class SimulationWorkerSupervisor {
         workerId: worker.summary.workerId,
         backendId: worker.summary.backendId,
         job: structuredClone(job),
-        recoveryToken: randomBytes(16).toString("base64url"),
+        recoveryToken: newRecoveryToken(),
         processGroupId: null,
         attempt: 1,
         state: "queued",
@@ -315,7 +315,7 @@ export class SimulationWorkerSupervisor {
       if (!worker.summary.available) throw new Error(worker.summary.unavailableReason ?? "Simulation worker is unavailable.");
       if (run.job.kind === "scene_contact_reset") this.requireMatchingSceneJob(run.job);
       run.attempt += 1;
-      run.recoveryToken = randomBytes(16).toString("base64url");
+      run.recoveryToken = newRecoveryToken();
       run.processGroupId = null;
       run.state = "queued";
       run.reportSha256 = null;
@@ -1317,6 +1317,10 @@ function decodeUtf8(bytes: Buffer, label: string): string {
 
 function hash(bytes: Buffer): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function newRecoveryToken(): string {
+  return `swt_${randomBytes(16).toString("base64url")}`;
 }
 
 function timestamp(value: unknown, label: string): string {

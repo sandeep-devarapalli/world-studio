@@ -59,6 +59,12 @@ describe("SimulationWorkerSupervisor", () => {
     expect(completed.run?.reportSha256).toBe(hash(report));
     expect(completed.run?.reportSizeBytes).toBe(report.byteLength);
     expect(await readdir(path.join(current.root, completed.run!.runId, ".incoming"))).toEqual([]);
+    const state = JSON.parse(await readFile(path.join(
+      current.root,
+      completed.run!.runId,
+      "state.json"
+    ), "utf8")) as { recoveryToken: string };
+    expect(state.recoveryToken).toMatch(/^swt_[A-Za-z0-9_-]{22}$/);
     await expect(current.clone().getStatus()).resolves.toMatchObject({ state: "completed" });
   });
 
