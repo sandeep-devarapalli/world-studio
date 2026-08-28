@@ -1,0 +1,2 @@
+superdex-physics==1.0.0
+superdex-robotics==1.0.0
