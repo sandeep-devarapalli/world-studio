@@ -289,9 +289,18 @@ regression returned the selected Playroom PLY byte-for-byte with `converted: fal
 scale clamps, rotation normalizations, or dropped outliers. Report
 `playroom-prepare-spark-regression.v0.1.json` has SHA-256
 `31b53e38ea97b5194562060a40d3ce651dadd5c846afb29e9204dbdc88f0181c`.
-This is preparation-path non-regression only. The earlier `3ea4107` load/orbit/zoom evidence
-remains distinct; fresh `cb0a93d` packaged UI replay is held because no honest generic
-Playroom harness exists without fabricating unrelated dataset provenance.
+On 2026-08-22 a generic standard-dataset harness bound the complete `229`-file fixture,
+dataset and per-file manifests, corrected trainer report, and exact selected PLY without
+fabricating Capture Splat or Lego provenance. The packaged app reported Spark `2.1.0`, profile
+`world-studio-default`, source `binary_little_endian`, preparation `native`, and 100,000 splats.
+Initial visibility, orbit, inward zoom, clean diagnostics, source immutability, teardown, and
+storage gates passed. Functional and manual-review report SHA-256 values are
+`a6b03e825e9cec7849c1d4fe3f81d6558b6677119ec12dd7ea36f7b356d0410b` and
+`bde803c8551151dcbe943dae0360841ff55e191289a03a94cfd875c4fd60e15a`.
+Functional visualization is promoted; visible blur, smearing, and peripheral floaters keep
+visual quality and candidate release held. A two-pair manual review bound to the all-eight
+metrics confirms large-structure retention but material edge, texture, and thin-detail loss;
+its SHA-256 is `ae6ba23a6aaa1be42c6a2e43d2bebdfcd034322b37c6cbeb3a16b64122d335c5`.
 
 ### Measured Lego known-pose ladder and Spark gate - 2026-08-21
 

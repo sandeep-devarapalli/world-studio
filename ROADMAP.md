@@ -151,9 +151,13 @@ or runtime gate.
   checksum-bound 100,000-splat PLY subsequently passed candidate Spark load, centered framing,
   orbit, and zoom at revision `3ea4107`. Revision `cb0a93d` also returned the exact source bytes
   through the packaged preparation path with no conversion, clamps, normalization, or drops;
-  that regression hashes to `31b53e38...8f0181c`. Fresh `cb0a93d` UI replay remains held because
-  no honest generic Playroom harness is available. Performance, quality, metric, collision,
-  navigation, and physics remain held.
+  that regression hashes to `31b53e38...8f0181c`. A fresh provenance-bound standard-dataset UI
+  replay now passes exact native Spark 2.1 load, orbit, inward zoom, diagnostics, source
+  immutability, teardown, and manual inspection; functional and manual reports hash to
+  `a6b03e82...6d0410b` and `bde803c8...60e15a`. Functional visualization is promoted. Visible
+  blur, smearing, and peripheral floaters keep release and visual quality held; the bound
+  fixed-camera review hashes to `ae6ba23a...d335c5`. Performance, metric, collision,
+  navigation, and physics also remain held.
 - The checksum-bound Lego known-pose adapter, external Spirula 7,000-step result, and finite
   99,996-splat SH3 PLY passed candidate Spark 2.1 load, orbit, and inward zoom at revision
   `cb0a93d`. The run result hashes to `a16f0d23...a7323d4`, the r4 functional report to
