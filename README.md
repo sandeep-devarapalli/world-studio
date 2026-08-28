@@ -58,8 +58,9 @@ access flow in this repo today.
   breadcrumbs, and screenshot smoke coverage.
 - Rapier-backed simulation substrate for deterministic Pilot movement, spawn placement,
   prop spawning, collision/debug overlays, selected-prop inspection, and Episode recording.
-- A documented capability-routed physics boundary. Newton and SuperDex are not implemented
-  product workers yet; each requires explicit profiles, capability reports, and task gates.
+- A capability-routed physics boundary plus a pinned one-shot SuperDex 1.0.0 CPU
+  capability/contact/reset probe. It is software-only evidence; Newton and SuperDex are not
+  registered product workers yet and still require supervised lifecycle and task gates.
 - Browser and Electron package loading for World Studio packages, generic JSON packages,
   Budo-compatible manifests, article figure views, and verified export folders.
 - An explicit loopback-only Capture Splat live-session receiver for replaying source-frame
