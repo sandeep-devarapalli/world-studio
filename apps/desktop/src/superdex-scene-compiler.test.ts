@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CANONICAL_WORLD_SCHEMA,
@@ -29,9 +28,10 @@ import {
   type SuperDexSceneCompilerError,
 } from "./superdex-scene-compiler.js";
 import { CanonicalWorldPackageStore } from "./world-package-store.js";
+import { SimulationWorkerSupervisor } from "./simulation-worker-supervisor.js";
 
 const temporaryRoots: string[] = [];
-const execFileAsync = promisify(execFile);
+const superDexWorker = fileURLToPath(new URL("../../../workers/superdex/superdex_worker.py", import.meta.url));
 const createdAt = "2026-08-28T12:00:00.000Z";
 const units = { length: "m", mass: "kg", time: "s", angle: "rad", force: "N", torque: "N*m" } as const;
 const unknown = { status: "unknown", reason: "No validated uncertainty bound." } as const;
@@ -170,27 +170,41 @@ describe("canonical World to SuperDex scene compilation", () => {
 });
 
 const nativePython = process.env.WORLD_STUDIO_SUPERDEX_PYTHON;
-(nativePython ? it : it.skip)("loads the emitted scene through pinned SuperDex 1.0.0", async () => {
+(nativePython ? it : it.skip)("loads the emitted scene and proves supervised native contact/reset", async () => {
   const fixture = makeWorld();
   const store = await publish(fixture);
   const outputRoot = await temporaryPath("native-output");
-  await compileCanonicalWorldToSuperDex({ store, world: fixture.reference, outputRoot });
-  const script = [
-    "import pathlib, sys",
-    "from importlib.metadata import version",
-    "import superdex.physics as physics",
-    "from superdex.physics.utils.scene_helpers import create_scene_from_prefab",
-    "assert version('superdex-physics') == '1.0.0'",
-    "assert version('superdex-robotics') == '1.0.0'",
-    "root = pathlib.Path(sys.argv[1])",
-    "physics.initialize(num_worker_threads=0)",
-    "scene = create_scene_from_prefab(str(root / 'scene.mochi_scene'), root_dir=root)",
-    "print('loaded' if scene is not None else 'missing')",
-    "physics.destroy_scene(scene)",
-    "physics.shutdown()",
-  ].join("\n");
-  const { stdout } = await execFileAsync(nativePython!, ["-c", script, outputRoot], { timeout: 30_000 });
-  expect(stdout.trim()).toBe("loaded");
+  const compiled = await compileCanonicalWorldToSuperDex({ store, world: fixture.reference, outputRoot });
+  const supervisor = new SimulationWorkerSupervisor({
+    root: await temporaryPath("native-worker-runs"),
+    registrations: [{
+      workerId: "superdex-native",
+      backendId: "superdex",
+      label: "SuperDex 1.0.0 native integration",
+      executable: nativePython!,
+      scriptPath: superDexWorker,
+      budget: { maxWallTimeMs: 60_000, maxReportBytes: 2 * 1024 * 1024, maxLogBytes: 64 * 1024 },
+    }],
+    sceneJobs: [{
+      sceneJobId: "compiled-tabletop-contact-v1",
+      packageId: compiled.manifest.package_id,
+      packageRoot: outputRoot,
+      packageManifestSha256: compiled.manifest_reference.sha256,
+      targetActorName: "tabletop_collision",
+      probeInitialPositionM: [1.4, 3.6, 2.6],
+    }],
+  });
+  await supervisor.startSceneJob({ workerId: "superdex-native", sceneJobId: "compiled-tabletop-contact-v1" });
+  const completed = await waitForSimulationState(supervisor, "completed", 65_000);
+  expect(completed.run).toMatchObject({
+    evidence: {
+      jobKind: "scene_contact_reset",
+      fixtureId: "compiled-scene-contact-reset-v1",
+      packageId: compiled.manifest.package_id,
+      repetitions: 3,
+      maxResetResidual: 0,
+    },
+  });
 });
 
 function makeWorld(options: {
@@ -406,6 +420,23 @@ async function temporaryRoot(name: string): Promise<string> {
 async function temporaryPath(name: string): Promise<string> {
   const parent = await temporaryRoot(`${name}-parent`);
   return join(parent, name);
+}
+
+async function waitForSimulationState(
+  supervisor: SimulationWorkerSupervisor,
+  expected: string,
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<SimulationWorkerSupervisor["getStatus"]>>> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snapshot = await supervisor.getStatus();
+    if (snapshot.state === expected) return snapshot;
+    if (["completed", "failed", "cancelled", "timed_out", "interrupted"].includes(snapshot.state)) {
+      throw new Error(`Expected ${expected}, reached ${snapshot.state}: ${snapshot.run?.failure?.message ?? "no failure"}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ${expected}.`);
 }
 
 function jsonBytes(value: unknown): Buffer {

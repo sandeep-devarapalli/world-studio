@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,8 +7,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   SimulationWorkerSupervisor,
-  type SimulationWorkerRegistration
+  type SimulationWorkerRegistration,
+  type SimulationWorkerSupervisorOptions
 } from "./simulation-worker-supervisor.js";
+import { writeSuperDexScenePackageFixture } from "../test-fixtures/superdex-scene-package-fixture.js";
 
 const fixture = fileURLToPath(new URL("../test-fixtures/simulation-worker-fixture.mjs", import.meta.url));
 const roots: string[] = [];
@@ -158,10 +161,197 @@ describe("SimulationWorkerSupervisor", () => {
       run: { failure: { code: "desktop_restart", retryable: true } }
     });
   });
+
+  it("terminates a token-matched live worker process group before restart reconciliation", async () => {
+    const current = await harness("success");
+    await current.supervisor.start({ workerId: "superdex-local" });
+    const completed = await waitForState(current.supervisor, "completed");
+    const runRoot = path.join(current.root, completed.run!.runId);
+    const statePath = path.join(runRoot, "state.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    const child = spawn(process.execPath, [
+      fixture,
+      "--mode", "hang",
+      "--output", path.join(runRoot, ".incoming/recovered-report.json"),
+      "--supervisor-token", state.recoveryToken,
+    ], { cwd: runRoot, detached: true, stdio: "ignore" });
+    if (!child.pid) throw new Error("Recovery fixture did not expose a process-group ID.");
+    state.state = "running";
+    state.processGroupId = child.pid;
+    state.reportSha256 = null;
+    state.reportSizeBytes = null;
+    state.capability = null;
+    state.evidence = null;
+    state.failure = null;
+    state.finishedAt = null;
+    state.updatedAt = state.startedAt;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    const command = `${process.execPath} ${fixture} --supervisor-token ${state.recoveryToken}`;
+    try {
+      await expect(current.clone({
+        listProcesses: async () => [{ pid: child.pid!, processGroupId: child.pid!, command }],
+      }).getStatus()).resolves.toMatchObject({
+        state: "interrupted",
+        run: { failure: { code: "desktop_restart", retryable: true } },
+      });
+      await expectProcessExit(child.pid);
+    } finally {
+      try { process.kill(-child.pid, "SIGKILL"); } catch {}
+    }
+  });
+
+  it("fails closed when restart state cannot identify a retained descendant process group", async () => {
+    const current = await harness("success");
+    await current.supervisor.start({ workerId: "superdex-local" });
+    const completed = await waitForState(current.supervisor, "completed");
+    const statePath = path.join(current.root, completed.run!.runId, "state.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.state = "running";
+    state.processGroupId = 424_242;
+    state.reportSha256 = null;
+    state.reportSizeBytes = null;
+    state.capability = null;
+    state.evidence = null;
+    state.failure = null;
+    state.finishedAt = null;
+    state.updatedAt = state.startedAt;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    await expect(current.clone({
+      listProcesses: async () => [{ pid: 424_243, processGroupId: 424_242, command: "surviving-descendant" }],
+    }).getStatus()).rejects.toThrow(/could not be matched to its recovery token/);
+  });
+
+  it("fails closed instead of retrying an active legacy run without recovery identity", async () => {
+    const current = await harness("success");
+    await current.supervisor.start({ workerId: "superdex-local" });
+    const completed = await waitForState(current.supervisor, "completed");
+    const statePath = path.join(current.root, completed.run!.runId, "state.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.schema = "world_studio.simulation_worker_run_store.v0.1";
+    delete state.job;
+    delete state.recoveryToken;
+    delete state.processGroupId;
+    state.state = "running";
+    state.reportSha256 = null;
+    state.reportSizeBytes = null;
+    state.capability = null;
+    state.evidence = null;
+    state.failure = null;
+    state.finishedAt = null;
+    state.updatedAt = state.startedAt;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    await expect(current.clone().getStatus()).rejects.toThrow(/legacy active simulation run cannot be recovered safely/);
+  });
+
+  it("loads a registered compiled scene and commits a checksum-bound contact/reset receipt", async () => {
+    const current = await harness("success", {}, true);
+    const started = await current.supervisor.startSceneJob({
+      workerId: "superdex-local",
+      sceneJobId: "table-contact-v1"
+    });
+    expect(started.run?.job).toMatchObject({
+      kind: "scene_contact_reset",
+      sceneJobId: "table-contact-v1",
+      packageId: "superdex-package-v1"
+    });
+    const completed = await waitForState(current.supervisor, "completed");
+    expect(completed.run).toMatchObject({
+      evidence: {
+        jobKind: "scene_contact_reset",
+        fixtureId: "compiled-scene-contact-reset-v1",
+        packageId: "superdex-package-v1",
+        repetitions: 3,
+        firstContactFrame: 20,
+        maxResetResidual: 0
+      },
+      authority: "software_capability_only"
+    });
+    const attemptRoot = path.join(current.root, completed.run!.runId, "attempts/00000001");
+    expect(JSON.parse(await readFile(path.join(attemptRoot, "report.json"), "utf8"))).toMatchObject({
+      schema: "world_studio.superdex_scene_job_receipt.v0.1",
+      authority: "compiled_scene_execution_only"
+    });
+    expect(await readdir(path.join(attemptRoot, "input"))).toEqual(["job.json"]);
+    await expect(current.clone().getStatus()).resolves.toMatchObject({
+      state: "completed",
+      run: { job: { kind: "scene_contact_reset", sceneJobId: "table-contact-v1" } }
+    });
+  });
+
+  it("bounds compiled-scene timeout and cancellation without falling back to the probe", async () => {
+    const timed = await harness("hang", { maxWallTimeMs: 60 }, true);
+    await timed.supervisor.startSceneJob({ workerId: "superdex-local", sceneJobId: "table-contact-v1" });
+    await expect(waitForState(timed.supervisor, "timed_out")).resolves.toMatchObject({
+      run: {
+        job: { kind: "scene_contact_reset" },
+        failure: { code: "timeout" },
+        evidence: null
+      }
+    });
+
+    const cancelled = await harness("hang", { maxWallTimeMs: 2_000 }, true);
+    const started = await cancelled.supervisor.startSceneJob({
+      workerId: "superdex-local",
+      sceneJobId: "table-contact-v1"
+    });
+    await expect(cancelled.supervisor.stop({ runId: started.run!.runId })).resolves.toMatchObject({
+      state: "cancelled",
+      run: { job: { kind: "scene_contact_reset" }, evidence: null }
+    });
+  });
+
+  it("retries and restart-reconciles the same durable compiled-scene job identity", async () => {
+    const retrying = await harness("scene-fail-once", {}, true);
+    const started = await retrying.supervisor.startSceneJob({
+      workerId: "superdex-local",
+      sceneJobId: "table-contact-v1"
+    });
+    const failed = await waitForState(retrying.supervisor, "failed");
+    expect(failed.run?.failure).toMatchObject({ code: "runtime_failure", retryable: true });
+    await expect(retrying.clone({
+      sceneJobs: [{
+        ...retrying.sceneJob!,
+        probeInitialPositionM: [0, 2, 0],
+      }],
+    }).retry({ runId: started.run!.runId })).rejects.toThrow(/durable run identity/);
+    await retrying.supervisor.retry({ runId: started.run!.runId });
+    await expect(waitForState(retrying.supervisor, "completed")).resolves.toMatchObject({
+      run: { attempt: 2, job: { sceneJobId: "table-contact-v1" } }
+    });
+
+    const restarting = await harness("success", {}, true);
+    await restarting.supervisor.startSceneJob({ workerId: "superdex-local", sceneJobId: "table-contact-v1" });
+    const completed = await waitForState(restarting.supervisor, "completed");
+    const statePath = path.join(restarting.root, completed.run!.runId, "state.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.state = "running";
+    state.reportSha256 = null;
+    state.reportSizeBytes = null;
+    state.capability = null;
+    state.evidence = null;
+    state.failure = null;
+    state.finishedAt = null;
+    state.updatedAt = state.startedAt;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    await expect(restarting.clone().getStatus()).resolves.toMatchObject({
+      state: "interrupted",
+      run: {
+        job: { kind: "scene_contact_reset", sceneJobId: "table-contact-v1" },
+        failure: { code: "desktop_restart", retryable: true }
+      }
+    });
+  });
 });
 
-async function harness(mode: string, budgetOverride: Partial<SimulationWorkerRegistration["budget"]> = {}) {
+async function harness(
+  mode: string,
+  budgetOverride: Partial<SimulationWorkerRegistration["budget"]> = {},
+  includeSceneJob = false
+) {
   const root = await tempRoot(mode);
+  const scene = includeSceneJob
+    ? await writeSuperDexScenePackageFixture(await tempRoot(`${mode}-scene-package`))
+    : null;
   const registration: SimulationWorkerRegistration = {
     workerId: "superdex-local",
     backendId: "superdex",
@@ -180,13 +370,18 @@ async function harness(mode: string, budgetOverride: Partial<SimulationWorkerReg
   const options = {
     root,
     registrations: [registration],
+    sceneJobs: scene ? [scene.registration] : [],
     randomId: () => (++ids).toString(36).padStart(22, "0"),
+    listProcesses: async () => [],
     terminationGraceMs: 30
   };
   return {
     root,
+    sceneJob: scene?.registration ?? null,
     supervisor: new SimulationWorkerSupervisor(options),
-    clone: () => new SimulationWorkerSupervisor(options)
+    clone: (overrides: Pick<SimulationWorkerSupervisorOptions, "sceneJobs" | "listProcesses"> = {}) => (
+      new SimulationWorkerSupervisor({ ...options, ...overrides })
+    )
   };
 }
 
@@ -213,7 +408,8 @@ async function waitForFile(filePath: string): Promise<string> {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
     try {
-      return await readFile(filePath, "utf8");
+      const value = await readFile(filePath, "utf8");
+      if (value.trim()) return value;
     } catch (error) {
       if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
     }

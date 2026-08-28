@@ -6,9 +6,17 @@ import {
   type SimulationDeviceClass,
   type SimulationSceneFormat
 } from "./simulation-backend-contract.js";
+import type { CanonicalVersionReferenceV1 } from "./world-graph-contract.js";
 
 export const SUPERDEX_WORKER_PROBE_SCHEMA = "world_studio.superdex_worker_probe.v0.1" as const;
 export const SUPERDEX_SMOKE_RESULT_SCHEMA = "world_studio.superdex_smoke_result.v0.1" as const;
+export const SUPERDEX_SCENE_JOB_REQUEST_SCHEMA = "world_studio.superdex_scene_job_request.v0.1" as const;
+export const SUPERDEX_SCENE_JOB_RECEIPT_SCHEMA = "world_studio.superdex_scene_job_receipt.v0.1" as const;
+export const SUPERDEX_SCENE_JOB_LIMITATIONS = [
+  "The receipt proves only native loading and deterministic probe contact/reset for the checksum-bound compiled scene.",
+  "It grants no physical-prediction, robot-training, navigation, collision-fidelity, or measured-geometry authority.",
+  "The integrity boundary assumes app-controlled local staging and does not defend against a hostile same-user process."
+] as const;
 
 export interface SuperDexSmokeRunV1 {
   repetition: number;
@@ -57,6 +65,67 @@ export interface SuperDexWorkerProbeV1 {
   } | null;
 }
 
+export interface SuperDexSceneJobRequestV1 {
+  schema: typeof SUPERDEX_SCENE_JOB_REQUEST_SCHEMA;
+  scene_job_id: string;
+  package_id: string;
+  package_manifest_sha256: string;
+  source_world: CanonicalVersionReferenceV1 & { kind: "world" };
+  scene_sha256: string;
+  scene_actor_names: string[];
+  target_actor_name: string;
+  probe_initial_position_m: [number, number, number];
+  probe_size_m: [0.05, 0.05, 0.05];
+  timestep_seconds: number;
+  frames_per_repetition: 180;
+  repetitions: 3;
+  reset_tolerance: 0.000001;
+  authority: "compiled_scene_execution_only";
+  limitations: [
+    typeof SUPERDEX_SCENE_JOB_LIMITATIONS[0],
+    typeof SUPERDEX_SCENE_JOB_LIMITATIONS[1],
+    typeof SUPERDEX_SCENE_JOB_LIMITATIONS[2]
+  ];
+}
+
+export interface SuperDexSceneContactRunV1 extends SuperDexSmokeRunV1 {
+  target_contact_frames: number;
+  max_target_force_n: number;
+}
+
+export interface SuperDexSceneJobExecutionV1 {
+  fixture_id: "compiled-scene-contact-reset-v1";
+  native_scene_load: "passed";
+  loaded_actor_names: string[];
+  timestep_seconds: number;
+  frames_per_repetition: 180;
+  repetitions: 3;
+  reset_tolerance: 0.000001;
+  runs: SuperDexSceneContactRunV1[];
+  repeatable: true;
+  passed: true;
+}
+
+export interface SuperDexSceneJobReceiptV1 {
+  schema: typeof SUPERDEX_SCENE_JOB_RECEIPT_SCHEMA;
+  status: "passed" | "unavailable" | "failed";
+  job_sha256: string;
+  request: SuperDexSceneJobRequestV1;
+  runtime: SuperDexWorkerProbeV1["runtime"];
+  capability: SimulationBackendCapabilityV1 | null;
+  execution: SuperDexSceneJobExecutionV1 | null;
+  failure: {
+    code: "unsupported_runtime" | "package_unavailable" | "package_invalid" | "scene_load_failure" | "contact_failure" | "runtime_failure";
+    message: string;
+  } | null;
+  authority: "compiled_scene_execution_only";
+  limitations: [
+    typeof SUPERDEX_SCENE_JOB_LIMITATIONS[0],
+    typeof SUPERDEX_SCENE_JOB_LIMITATIONS[1],
+    typeof SUPERDEX_SCENE_JOB_LIMITATIONS[2]
+  ];
+}
+
 const capabilities: SimulationCapability[] = [
   "rigid_body", "articulation", "fixed_manipulator", "inverse_kinematics",
   "joint_position_control", "joint_torque_control", "primitive_contact", "mesh_contact",
@@ -94,6 +163,112 @@ export function validateSuperDexWorkerProbe(value: unknown): SuperDexWorkerProbe
   if (probe.failure !== null) throw new Error("Passing probe cannot contain a failure.");
   const capability = validateCapability(probe.capability);
   const smoke = validateSmoke(probe.smoke);
+  validatePinnedCapability(runtime, capability);
+  return { schema: SUPERDEX_WORKER_PROBE_SCHEMA, status, runtime, capability, smoke, failure: null };
+}
+
+export function validateSuperDexSceneJobRequest(value: unknown): SuperDexSceneJobRequestV1 {
+  const request = record(value, "scene job request");
+  exactKeys(request, [
+    "schema", "scene_job_id", "package_id", "package_manifest_sha256", "source_world",
+    "scene_sha256", "scene_actor_names", "target_actor_name", "probe_initial_position_m", "probe_size_m",
+    "timestep_seconds", "frames_per_repetition", "repetitions", "reset_tolerance",
+    "authority", "limitations"
+  ], "scene job request");
+  literal(request.schema, SUPERDEX_SCENE_JOB_REQUEST_SCHEMA, "scene job request.schema");
+  const frames = integer(request.frames_per_repetition, "scene job request.frames_per_repetition", 1);
+  const repetitions = integer(request.repetitions, "scene job request.repetitions", 1);
+  const tolerance = finite(request.reset_tolerance, "scene job request.reset_tolerance", Number.MIN_VALUE);
+  if (request.timestep_seconds !== 1 / 60 || frames !== 180 || repetitions !== 3 || tolerance !== 1e-6) {
+    throw new Error("Scene job execution parameters differ from the bounded v0.1 contract.");
+  }
+  const probeSize = boundedTriplet(request.probe_size_m, "scene job request.probe_size_m", 0.001, 1);
+  if (probeSize.some((entry) => entry !== 0.05)) throw new Error("Scene job probe size is unsupported.");
+  const actorNames = stringArray(request.scene_actor_names, "scene job request.scene_actor_names");
+  if (actorNames.length > 64 || actorNames.some((name) => !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name))) {
+    throw new Error("Scene job actor inventory is invalid.");
+  }
+  const targetActorName = identifier(request.target_actor_name, "scene job request.target_actor_name");
+  if (!actorNames.includes(targetActorName)) throw new Error("Scene job target actor is absent from the actor inventory.");
+  const limitations = exactStringValues(request.limitations, SUPERDEX_SCENE_JOB_LIMITATIONS, "scene job request.limitations");
+  return {
+    schema: SUPERDEX_SCENE_JOB_REQUEST_SCHEMA,
+    scene_job_id: identifier(request.scene_job_id, "scene job request.scene_job_id"),
+    package_id: identifier(request.package_id, "scene job request.package_id"),
+    package_manifest_sha256: sha256(request.package_manifest_sha256, "scene job request.package_manifest_sha256"),
+    source_world: worldReference(request.source_world, "scene job request.source_world"),
+    scene_sha256: sha256(request.scene_sha256, "scene job request.scene_sha256"),
+    scene_actor_names: actorNames,
+    target_actor_name: targetActorName,
+    probe_initial_position_m: boundedTriplet(request.probe_initial_position_m, "scene job request.probe_initial_position_m", -10_000, 10_000),
+    probe_size_m: probeSize as [0.05, 0.05, 0.05],
+    timestep_seconds: finite(request.timestep_seconds, "scene job request.timestep_seconds", Number.MIN_VALUE),
+    frames_per_repetition: frames as 180,
+    repetitions: repetitions as 3,
+    reset_tolerance: tolerance as 0.000001,
+    authority: literal(request.authority, "compiled_scene_execution_only", "scene job request.authority"),
+    limitations: limitations as SuperDexSceneJobRequestV1["limitations"]
+  };
+}
+
+export function validateSuperDexSceneJobReceipt(value: unknown): SuperDexSceneJobReceiptV1 {
+  const receipt = record(value, "scene job receipt");
+  exactKeys(receipt, [
+    "schema", "status", "job_sha256", "request", "runtime", "capability", "execution",
+    "failure", "authority", "limitations"
+  ], "scene job receipt");
+  literal(receipt.schema, SUPERDEX_SCENE_JOB_RECEIPT_SCHEMA, "scene job receipt.schema");
+  const status = oneOf(receipt.status, ["passed", "unavailable", "failed"] as const, "scene job receipt.status");
+  const request = validateSuperDexSceneJobRequest(receipt.request);
+  const runtime = validateRuntime(receipt.runtime);
+  const jobSha256 = sha256(receipt.job_sha256, "scene job receipt.job_sha256");
+  const authority = literal(receipt.authority, "compiled_scene_execution_only", "scene job receipt.authority");
+  const limitations = exactStringValues(receipt.limitations, SUPERDEX_SCENE_JOB_LIMITATIONS, "scene job receipt.limitations") as SuperDexSceneJobReceiptV1["limitations"];
+
+  if (status !== "passed") {
+    if (receipt.capability !== null || receipt.execution !== null) {
+      throw new Error("Non-passing scene job receipt must not advertise capability or execution evidence.");
+    }
+    return {
+      schema: SUPERDEX_SCENE_JOB_RECEIPT_SCHEMA,
+      status,
+      job_sha256: jobSha256,
+      request,
+      runtime,
+      capability: null,
+      execution: null,
+      failure: validateSceneFailure(receipt.failure),
+      authority,
+      limitations
+    };
+  }
+
+  if (receipt.failure !== null) throw new Error("Passing scene job receipt cannot contain a failure.");
+  const capability = validateCapability(receipt.capability);
+  validatePinnedCapability(runtime, capability);
+  const execution = validateSceneExecution(receipt.execution);
+  if (execution.loaded_actor_names.length !== request.scene_actor_names.length
+    || execution.loaded_actor_names.some((name, index) => name !== request.scene_actor_names[index])) {
+    throw new Error("Scene job receipt actor inventory differs from its request.");
+  }
+  return {
+    schema: SUPERDEX_SCENE_JOB_RECEIPT_SCHEMA,
+    status,
+    job_sha256: jobSha256,
+    request,
+    runtime,
+    capability,
+    execution,
+    failure: null,
+    authority,
+    limitations
+  };
+}
+
+function validatePinnedCapability(
+  runtime: SuperDexWorkerProbeV1["runtime"],
+  capability: SimulationBackendCapabilityV1
+): void {
   if (capability.backend_id !== "superdex") throw new Error("Probe capability must identify SuperDex.");
   if (capability.backend_version !== runtime.packages.superdex_physics) throw new Error("Probe package and backend versions differ.");
   if (!/^3\.12\./.test(runtime.python_version)
@@ -104,7 +279,6 @@ export function validateSuperDexWorkerProbe(value: unknown): SuperDexWorkerProbe
   exactValues(capability.coordinate_frames, ["right_y_up"], "probe.capability.coordinate_frames");
   exactValues(capability.capabilities, probedCapabilities, "probe.capability.capabilities");
   if (capability.adapter_version !== "0.1.0") throw new Error("Probe adapter version is unsupported.");
-  return { schema: SUPERDEX_WORKER_PROBE_SCHEMA, status, runtime, capability, smoke, failure: null };
 }
 
 function validateRuntime(value: unknown): SuperDexWorkerProbeV1["runtime"] {
@@ -198,12 +372,111 @@ function validateRun(value: unknown, repetition: number, frames: number, toleran
   return result;
 }
 
+function validateSceneExecution(value: unknown): SuperDexSceneJobExecutionV1 {
+  const execution = record(value, "scene job receipt.execution");
+  exactKeys(execution, [
+    "fixture_id", "native_scene_load", "loaded_actor_names", "timestep_seconds",
+    "frames_per_repetition", "repetitions", "reset_tolerance", "runs", "repeatable", "passed"
+  ], "scene job receipt.execution");
+  const frames = integer(execution.frames_per_repetition, "scene job receipt.execution.frames_per_repetition", 1);
+  const repetitions = integer(execution.repetitions, "scene job receipt.execution.repetitions", 1);
+  const tolerance = finite(execution.reset_tolerance, "scene job receipt.execution.reset_tolerance", Number.MIN_VALUE);
+  if (execution.timestep_seconds !== 1 / 60 || frames !== 180 || repetitions !== 3 || tolerance !== 1e-6) {
+    throw new Error("Scene job receipt execution parameters differ from the bounded v0.1 contract.");
+  }
+  const actorNames = stringArray(execution.loaded_actor_names, "scene job receipt.execution.loaded_actor_names");
+  if (actorNames.length > 64 || actorNames.some((name) => !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name))) {
+    throw new Error("Scene job receipt actor inventory is invalid.");
+  }
+  if (!Array.isArray(execution.runs) || execution.runs.length !== repetitions) {
+    throw new Error("Scene job receipt run count must match repetitions.");
+  }
+  const runs = execution.runs.map((run, index) => validateSceneRun(run, index + 1, frames, tolerance));
+  const reference = JSON.stringify({ ...runs[0], repetition: 0 });
+  if (runs.some((run) => JSON.stringify({ ...run, repetition: 0 }) !== reference)) {
+    throw new Error("Scene job receipt repetitions are not identical.");
+  }
+  return {
+    fixture_id: literal(execution.fixture_id, "compiled-scene-contact-reset-v1", "scene job receipt.execution.fixture_id"),
+    native_scene_load: literal(execution.native_scene_load, "passed", "scene job receipt.execution.native_scene_load"),
+    loaded_actor_names: actorNames,
+    timestep_seconds: finite(execution.timestep_seconds, "scene job receipt.execution.timestep_seconds", Number.MIN_VALUE),
+    frames_per_repetition: frames as 180,
+    repetitions: repetitions as 3,
+    reset_tolerance: tolerance as 0.000001,
+    runs,
+    repeatable: literal(execution.repeatable, true, "scene job receipt.execution.repeatable"),
+    passed: literal(execution.passed, true, "scene job receipt.execution.passed")
+  };
+}
+
+function validateSceneRun(
+  value: unknown,
+  repetition: number,
+  frames: number,
+  tolerance: number
+): SuperDexSceneContactRunV1 {
+  const label = `scene job receipt.execution.runs[${repetition - 1}]`;
+  const run = record(value, label);
+  exactKeys(run, [
+    "repetition", "first_contact_frame", "contact_frames", "target_contact_frames",
+    "max_contact_points", "max_point_force_n", "max_total_force_n", "max_target_force_n",
+    "final_position_m", "reset_position_error_m", "reset_rotation_component_error",
+    "reset_linear_velocity_m_s", "reset_angular_velocity_rad_s"
+  ], label);
+  if (integer(run.repetition, `${label}.repetition`, 1) !== repetition) {
+    throw new Error("Scene job receipt repetitions must be ordered.");
+  }
+  const firstContact = integer(run.first_contact_frame, `${label}.first_contact_frame`, 1);
+  const contactFrames = integer(run.contact_frames, `${label}.contact_frames`, 1);
+  const targetContactFrames = integer(run.target_contact_frames, `${label}.target_contact_frames`, 1);
+  if (firstContact > frames || contactFrames > frames || targetContactFrames > contactFrames) {
+    throw new Error("Scene job receipt contact frames exceed the frame budget.");
+  }
+  const result: SuperDexSceneContactRunV1 = {
+    repetition,
+    first_contact_frame: firstContact,
+    contact_frames: contactFrames,
+    target_contact_frames: targetContactFrames,
+    max_contact_points: integer(run.max_contact_points, `${label}.max_contact_points`, 1),
+    max_point_force_n: finite(run.max_point_force_n, `${label}.max_point_force_n`, Number.MIN_VALUE),
+    max_total_force_n: finite(run.max_total_force_n, `${label}.max_total_force_n`, Number.MIN_VALUE),
+    max_target_force_n: finite(run.max_target_force_n, `${label}.max_target_force_n`, Number.MIN_VALUE),
+    final_position_m: boundedTriplet(run.final_position_m, `${label}.final_position_m`, -10_000, 10_000),
+    reset_position_error_m: finite(run.reset_position_error_m, `${label}.reset_position_error_m`, 0),
+    reset_rotation_component_error: finite(run.reset_rotation_component_error, `${label}.reset_rotation_component_error`, 0),
+    reset_linear_velocity_m_s: finite(run.reset_linear_velocity_m_s, `${label}.reset_linear_velocity_m_s`, 0),
+    reset_angular_velocity_rad_s: finite(run.reset_angular_velocity_rad_s, `${label}.reset_angular_velocity_rad_s`, 0)
+  };
+  if (Math.max(
+    result.reset_position_error_m,
+    result.reset_rotation_component_error,
+    result.reset_linear_velocity_m_s,
+    result.reset_angular_velocity_rad_s
+  ) > tolerance) throw new Error("Scene job receipt reset exceeded its declared tolerance.");
+  return result;
+}
+
 function validateFailure(value: unknown): NonNullable<SuperDexWorkerProbeV1["failure"]> {
   const failure = record(value, "probe.failure");
   exactKeys(failure, ["code", "message"], "probe.failure");
   const message = nonEmpty(failure.message, "probe.failure.message");
   if (message.length > 512 || /[\r\n]/.test(message)) throw new Error("Probe failure message is unsafe.");
   return { code: oneOf(failure.code, ["unsupported_runtime", "package_unavailable", "runtime_failure"] as const, "probe.failure.code"), message };
+}
+
+function validateSceneFailure(value: unknown): NonNullable<SuperDexSceneJobReceiptV1["failure"]> {
+  const failure = record(value, "scene job receipt.failure");
+  exactKeys(failure, ["code", "message"], "scene job receipt.failure");
+  const message = nonEmpty(failure.message, "scene job receipt.failure.message");
+  if (/[^\x20-\x7e]/.test(message)) throw new Error("Scene job receipt failure message is unsafe.");
+  return {
+    code: oneOf(failure.code, [
+      "unsupported_runtime", "package_unavailable", "package_invalid", "scene_load_failure",
+      "contact_failure", "runtime_failure"
+    ] as const, "scene job receipt.failure.code"),
+    message
+  };
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -223,6 +496,12 @@ function exactValues<T extends string>(value: readonly T[], expected: readonly T
   }
 }
 
+function exactStringValues(value: unknown, expected: readonly string[], label: string): string[] {
+  const result = stringArray(value, label);
+  exactValues(result, expected, label);
+  return result;
+}
+
 function literal<T extends string | boolean>(value: unknown, expected: T, label: string): T {
   if (value !== expected) throw new Error(`${label} must be ${String(expected)}.`);
   return expected;
@@ -236,6 +515,31 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[], label: s
 function nonEmpty(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length === 0 || value.length > 512) throw new Error(`${label} must be a bounded string.`);
   return value;
+}
+
+function identifier(value: unknown, label: string): string {
+  const result = nonEmpty(value, label);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(result)) throw new Error(`${label} must be an identifier.`);
+  return result;
+}
+
+function sha256(value: unknown, label: string): string {
+  if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) throw new Error(`${label} must be a SHA-256 reference.`);
+  return value;
+}
+
+function worldReference(value: unknown, label: string): SuperDexSceneJobRequestV1["source_world"] {
+  const reference = record(value, label);
+  exactKeys(reference, ["kind", "id", "version_id", "version", "manifest_sha256"], label);
+  if (reference.kind !== "world") throw new Error(`${label}.kind must be world.`);
+  const version = integer(reference.version, `${label}.version`, 1);
+  return {
+    kind: "world",
+    id: identifier(reference.id, `${label}.id`),
+    version_id: identifier(reference.version_id, `${label}.version_id`),
+    version,
+    manifest_sha256: sha256(reference.manifest_sha256, `${label}.manifest_sha256`)
+  };
 }
 
 function nullableString(value: unknown, label: string): string | null {
@@ -267,6 +571,15 @@ function integer(value: unknown, label: string, minimum: number): number {
 }
 
 function triplet(value: unknown, label: string): [number, number, number] {
+  return boundedTriplet(value, label, -2, 2);
+}
+
+function boundedTriplet(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number
+): [number, number, number] {
   if (!Array.isArray(value) || value.length !== 3) throw new Error(`${label} must contain three values.`);
-  return value.map((entry, index) => finite(entry, `${label}[${index}]`, -2, 2)) as [number, number, number];
+  return value.map((entry, index) => finite(entry, `${label}[${index}]`, minimum, maximum)) as [number, number, number];
 }

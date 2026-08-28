@@ -355,13 +355,28 @@ export interface SimulationWorkerSummary {
   budget: SimulationWorkerBudget;
 }
 
+export type SimulationWorkerJobSummary =
+  | { kind: "capability_probe" }
+  | {
+    kind: "scene_contact_reset";
+    sceneJobId: string;
+    packageId: string;
+    packageManifestSha256: string;
+    targetActorName: string;
+    probeInitialPositionM: [number, number, number];
+  };
+
 export interface SimulationWorkerEvidenceSummary {
+  jobKind: SimulationWorkerJobSummary["kind"];
   fixtureId: string;
   repetitions: number;
   framesPerRepetition: number;
   firstContactFrame: number;
   maxContactPoints: number;
   maxResetResidual: number;
+  packageId: string | null;
+  packageManifestSha256: string | null;
+  sceneJobSha256: string | null;
 }
 
 export interface SimulationWorkerLogSummary {
@@ -374,6 +389,7 @@ export interface SimulationWorkerRunSummary {
   runId: string;
   workerId: string;
   backendId: "newton" | "superdex";
+  job: SimulationWorkerJobSummary;
   attempt: number;
   state: Exclude<SimulationWorkerState, "unavailable" | "idle">;
   budget: SimulationWorkerBudget;
