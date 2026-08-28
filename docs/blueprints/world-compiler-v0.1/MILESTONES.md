@@ -230,10 +230,17 @@ Current SuperDex compiler gate (2026-08-28): eligible canonical World collision-
 artifacts can now be compiled deterministically into normalized static meshes and a native
 SuperDex `.mochi_scene`. The package binds the exact source World manifest, source and generated
 mesh hashes, composed row-major transforms, actor translation/rotation/scale, retained authority,
-excluded visual/Asset inputs, and a conversion report. A generated fixture loads through pinned
-SuperDex 1.0.0, but each real package records native load as `not_run` until a supervised worker
-receipt proves it. Room-01 execution, robot Asset compilation, Franka manipulation, general
-physics state streaming, and Rapier cutover remain unsatisfied.
+excluded visual/Asset inputs, and a conversion report.
+
+Current SuperDex compiled-scene execution gate (2026-08-28): an owner-registered scene job now
+revalidates and privately stages that package, loads its native scene through pinned SuperDex
+1.0.0, verifies the compiled actor inventory, contacts a named static actor with a 50 mm probe,
+restores the full scene state three times, and emits a strict checksum-bound receipt. Tamper,
+traversal, link, timeout, cancellation, retry, token-matched live-restart recovery, and native
+Apple ARM CPU tests pass. The
+receipt is `compiled_scene_execution_only`; source collision authority is not promoted. Room-01
+still needs structured PLY ingestion before its package can run this gate. Robot Asset compilation,
+Franka manipulation, general physics state streaming, and Rapier cutover remain unsatisfied.
 
 Current Room-01 gate (2026-08-23): experimental Newton execution may start with synthetic or
 hypothesis-tagged proxy layers whose authority is false and whose unknown space is no-go.

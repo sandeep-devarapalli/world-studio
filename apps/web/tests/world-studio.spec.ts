@@ -1147,6 +1147,7 @@ test("controls a supervised checksum-bound simulation capability probe", async (
       runId: `swr_${"a".repeat(22)}`,
       workerId: "superdex-1.0.0-local",
       backendId: "superdex",
+      job: { kind: "capability_probe" },
       attempt: 1,
       state: "running",
       budget,
@@ -1196,12 +1197,16 @@ test("controls a supervised checksum-bound simulation capability probe", async (
         limitations: ["Synthetic fixture only."]
       },
       evidence: {
+        jobKind: "capability_probe",
         fixtureId: "synthetic-rigid-contact-reset-v1",
         repetitions: 3,
         framesPerRepetition: 180,
         firstContactFrame: 20,
         maxContactPoints: 6,
-        maxResetResidual: 0
+        maxResetResidual: 0,
+        packageId: null,
+        packageManifestSha256: null,
+        sceneJobSha256: null
       },
       logs: [],
       failure: null,

@@ -1,5 +1,6 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const args = new Map();
@@ -8,6 +9,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 }
 const mode = args.get("--mode") ?? "success";
 const output = args.get("--output");
+const jobFile = args.get("--job-file");
 if (!output) throw new Error("missing output");
 
 if (mode === "descendant-hang") {
@@ -31,17 +33,17 @@ if (mode === "descendant-hang") {
     process.stdout.write("fixture stdout\n");
     process.stderr.write("fixture stderr\n");
   }
-  if (mode === "fail-once" && !(await exists(path.join(process.cwd(), "failed-once.marker")))) {
+  if ((mode === "fail-once" || mode === "scene-fail-once") && !(await exists(path.join(process.cwd(), "failed-once.marker")))) {
     await writeFile(path.join(process.cwd(), "failed-once.marker"), "failed\n");
-    await writeFile(output, `${JSON.stringify(failedReport(), null, 2)}\n`);
+    await writeFile(output, `${JSON.stringify(jobFile ? await failedSceneReport(jobFile) : failedReport(), null, 2)}\n`);
     process.exitCode = 1;
   } else if (mode === "malformed") {
     await writeFile(output, "{}\n");
   } else if (mode === "unavailable") {
-    await writeFile(output, `${JSON.stringify(unavailableReport(), null, 2)}\n`);
+    await writeFile(output, `${JSON.stringify(jobFile ? await unavailableSceneReport(jobFile) : unavailableReport(), null, 2)}\n`);
     process.exitCode = 2;
   } else {
-    await writeFile(output, `${JSON.stringify(passedReport(), null, 2)}\n`);
+    await writeFile(output, `${JSON.stringify(jobFile ? await passedSceneReport(jobFile) : passedReport(), null, 2)}\n`);
     if (mode === "nonzero-pass") process.exitCode = 1;
   }
 }
@@ -121,6 +123,68 @@ function failedReport() {
     ...report,
     status: "failed",
     failure: { code: "runtime_failure", message: "Synthetic first attempt failed." }
+  };
+}
+
+async function passedSceneReport(jobFile) {
+  const bytes = await readFile(jobFile);
+  const request = JSON.parse(bytes.toString("utf8"));
+  const run = {
+    first_contact_frame: 20,
+    contact_frames: 161,
+    target_contact_frames: 161,
+    max_contact_points: 6,
+    max_point_force_n: 1413.8,
+    max_total_force_n: 8483.2,
+    max_target_force_n: 8483.2,
+    final_position_m: [0, 0.525, 0],
+    reset_position_error_m: 0,
+    reset_rotation_component_error: 0,
+    reset_linear_velocity_m_s: 0,
+    reset_angular_velocity_rad_s: 0
+  };
+  return {
+    schema: "world_studio.superdex_scene_job_receipt.v0.1",
+    status: "passed",
+    job_sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    request,
+    runtime: passedReport().runtime,
+    capability: passedReport().capability,
+    execution: {
+      fixture_id: "compiled-scene-contact-reset-v1",
+      native_scene_load: "passed",
+      loaded_actor_names: request.scene_actor_names,
+      timestep_seconds: request.timestep_seconds,
+      frames_per_repetition: request.frames_per_repetition,
+      repetitions: request.repetitions,
+      reset_tolerance: request.reset_tolerance,
+      runs: [1, 2, 3].map((repetition) => ({ repetition, ...run })),
+      repeatable: true,
+      passed: true
+    },
+    failure: null,
+    authority: "compiled_scene_execution_only",
+    limitations: request.limitations
+  };
+}
+
+async function failedSceneReport(jobFile) {
+  const report = await passedSceneReport(jobFile);
+  return {
+    ...report,
+    status: "failed",
+    capability: null,
+    execution: null,
+    failure: { code: "runtime_failure", message: "Synthetic scene attempt failed." }
+  };
+}
+
+async function unavailableSceneReport(jobFile) {
+  const report = await failedSceneReport(jobFile);
+  return {
+    ...report,
+    status: "unavailable",
+    failure: { code: "package_unavailable", message: "Pinned SuperDex packages are unavailable." }
   };
 }
 
