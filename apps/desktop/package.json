@@ -15,7 +15,7 @@
   "dependencies": {
     "@world-studio/artifacts": "workspace:*",
     "@world-studio/world-core": "workspace:*",
-    "electron": "43.0.0"
+    "electron": "43.5.0"
   },
   "devDependencies": {
     "typescript": "6.0.3"
